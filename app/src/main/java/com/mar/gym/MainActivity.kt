@@ -5,7 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
-import com.mar.gym.feature.system.SystemRoute
+import com.mar.gym.feature.auth.ui.AuthRoute
+import com.mar.gym.feature.auth.ui.AuthViewModel
+import com.mar.gym.feature.auth.ui.AuthViewModelFactory
 import com.mar.gym.feature.system.SystemViewModel
 import com.mar.gym.feature.system.SystemViewModelFactory
 import com.mar.gym.ui.theme.GYmAppTheme
@@ -15,14 +17,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val viewModel = ViewModelProvider(
+        val authViewModel = ViewModelProvider(
+            this,
+            AuthViewModelFactory(AppContainer.authRepository, AppContainer.sessionStore),
+        )[AuthViewModel::class.java]
+        val systemViewModel = ViewModelProvider(
             this,
             SystemViewModelFactory(AppContainer.systemRepository),
         )[SystemViewModel::class.java]
 
         setContent {
             GYmAppTheme {
-                SystemRoute(viewModel)
+                AuthRoute(authViewModel, systemViewModel)
             }
         }
     }

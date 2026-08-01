@@ -1,1 +1,39 @@
-/build
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Configuración local del SDK y propiedades locales
+local.properties
+
+# Archivos locales de entorno
+.env
+.env.*
+!.env.example
+
+# Claves y certificados
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Capturas y archivos generados
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Kotlin
+.kotlin/
