@@ -1,0 +1,11 @@
+# Copy these entries into the untracked local.properties file.
+# Android Studio manages sdk.dir separately.
+
+# Web/server OAuth client ID. Do not use the Android OAuth client ID here.
+GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_SERVER_CLIENT_ID.apps.googleusercontent.com
+
+# Required only when building or testing the release variant. There is no release fallback.
+RELEASE_API_BASE_URL=https://api.YOUR_CLOUDFLARE_DOMAIN/
+
+# Optional. Debug defaults to the Android emulator loopback address shown below.
+DEBUG_API_BASE_URL=http://10.0.2.2:8080/
