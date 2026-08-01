@@ -62,6 +62,46 @@ suspend fun <T : Any> executeNetworkRequest(
     NetworkResponse.Failure(NetworkFailure.Unexpected())
 }
 
+suspend fun executeNetworkUnitRequest(
+    request: suspend () -> Response<Unit>,
+): NetworkResponse<Unit> = try {
+    val response = request()
+    val correlationId = response.headers()[CORRELATION_ID_HEADER]
+    if (response.isSuccessful) {
+        NetworkResponse.Success(Unit, correlationId)
+    } else {
+        response.toFailure(correlationId)
+    }
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (_: InterruptedIOException) {
+    NetworkResponse.Failure(NetworkFailure.Timeout())
+} catch (_: SerializationException) {
+    NetworkResponse.Failure(NetworkFailure.InvalidResponse())
+} catch (_: IOException) {
+    NetworkResponse.Failure(NetworkFailure.Network())
+} catch (_: Exception) {
+    NetworkResponse.Failure(NetworkFailure.Unexpected())
+}
+
+private fun Response<*>.toFailure(correlationId: String?): NetworkResponse.Failure {
+    val problem = errorBody()
+        ?.string()
+        ?.takeIf(String::isNotBlank)
+        ?.let(::decodeProblemDetails)
+    return if (problem != null) {
+        NetworkResponse.Failure(
+            NetworkFailure.HttpProblem(
+                statusCode = code(),
+                problem = problem,
+                correlationId = correlationId ?: problem.correlationId,
+            )
+        )
+    } else {
+        NetworkResponse.Failure(NetworkFailure.HttpUnknown(code(), correlationId))
+    }
+}
+
 private fun decodeProblemDetails(body: String): ProblemDetails? =
     try {
         NetworkJson.instance.decodeFromString<ProblemDetails>(body).takeIf { problem ->

@@ -33,6 +33,13 @@ data class AuthenticationResponseDto(
 }
 
 @Serializable
+data class RefreshTokenRequestDto(
+    val refreshToken: String,
+) {
+    override fun toString(): String = "RefreshTokenRequestDto[refreshToken=REDACTED]"
+}
+
+@Serializable
 data class CurrentUserDto(
     val id: String,
     val displayName: String,

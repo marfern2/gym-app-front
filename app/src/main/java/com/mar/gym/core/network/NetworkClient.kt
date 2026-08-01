@@ -4,6 +4,7 @@ import com.mar.gym.BuildConfig
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.ExperimentalSerializationApi
 import okhttp3.Interceptor
+import okhttp3.Authenticator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -12,12 +13,16 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 object NetworkClient {
     private val baseUrl = BuildConfig.API_BASE_URL
 
-    private fun okHttpClient(interceptors: List<Interceptor>): OkHttpClient {
+    private fun okHttpClient(
+        interceptors: List<Interceptor>,
+        authenticator: Authenticator,
+    ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            .authenticator(authenticator)
             .addInterceptor { chain ->
                 val request = chain.request()
                     .newBuilder()
@@ -30,10 +35,13 @@ object NetworkClient {
     }
 
     @OptIn(ExperimentalSerializationApi::class)
-    private fun retrofit(interceptors: List<Interceptor>): Retrofit =
+    private fun retrofit(
+        interceptors: List<Interceptor>,
+        authenticator: Authenticator,
+    ): Retrofit =
         Retrofit.Builder()
             .baseUrl(baseUrl)
-            .client(okHttpClient(interceptors))
+            .client(okHttpClient(interceptors, authenticator))
             .addConverterFactory(
                 NetworkJson.instance.asConverterFactory("application/json".toMediaType())
             )
@@ -42,5 +50,6 @@ object NetworkClient {
     fun <T> create(
         service: Class<T>,
         interceptors: List<Interceptor> = emptyList(),
-    ): T = retrofit(interceptors).create(service)
+        authenticator: Authenticator = Authenticator.NONE,
+    ): T = retrofit(interceptors, authenticator).create(service)
 }

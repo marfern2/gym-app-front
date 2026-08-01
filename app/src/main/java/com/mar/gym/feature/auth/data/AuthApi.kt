@@ -16,7 +16,18 @@ interface AuthApi {
         @Body request: GoogleLoginRequestDto,
     ): Response<AuthenticationResponseDto>
 
-    @Headers("$AUTHENTICATION_REQUIRED_HEADER: true")
+    @POST("api/v1/auth/refresh")
+    suspend fun refresh(
+        @Body request: RefreshTokenRequestDto,
+    ): Response<AuthenticationResponseDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: retry-on-401")
     @GET("api/v1/users/me")
     suspend fun currentUser(): Response<CurrentUserDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: no-retry")
+    @POST("api/v1/auth/logout")
+    suspend fun logout(
+        @Body request: RefreshTokenRequestDto,
+    ): Response<Unit>
 }

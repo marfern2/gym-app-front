@@ -10,18 +10,22 @@
     <string name="correlation_id">ID de correlación: %1$s</string>
     <string name="check_connection">Comprobar conexión</string>
     <string name="retry">Reintentar</string>
-    <string name="auth_explanation">Inicia sesión con Google. El backend validará tu identidad y creará una sesión local temporal.</string>
+    <string name="auth_explanation">Inicia sesión con Google. El backend validará tu identidad y la sesión se protegerá en este dispositivo.</string>
     <string name="auth_continue_google">Continuar con Google</string>
     <string name="auth_requesting_challenge">Solicitando un challenge nuevo…</string>
     <string name="auth_awaiting_google">Esperando la selección de una cuenta de Google…</string>
     <string name="auth_authenticating_backend">Validando la credencial con el backend…</string>
+    <string name="auth_restoring_session">Restaurando y validando la sesión…</string>
+    <string name="auth_refreshing_session">Renovando la sesión…</string>
     <string name="auth_loading_profile">Cargando el perfil autenticado…</string>
+    <string name="auth_logging_out">Cerrando la sesión en el servidor…</string>
     <string name="auth_progress_description">Inicio de sesión en curso</string>
     <string name="auth_signed_in">Sesión iniciada</string>
     <string name="auth_account_status">Estado de la cuenta: %1$s</string>
     <string name="auth_user_id">ID local: %1$s</string>
-    <string name="auth_clear_local_session">Cerrar sesión local</string>
-    <string name="auth_clear_local_session_note">Acción temporal: borra los tokens de memoria, pero no cierra la sesión en el servidor.</string>
-    <string name="auth_error_title">No se pudo iniciar sesión</string>
+    <string name="auth_logout">Cerrar sesión</string>
+    <string name="auth_logout_note">Se solicitará la revocación remota antes de eliminar la copia local.</string>
+    <string name="auth_delete_local_session">Eliminar solo de este dispositivo</string>
+    <string name="auth_error_title">No se pudo completar la sesión</string>
     <string name="auth_backend_diagnostic">Diagnóstico del backend</string>
 </resources>

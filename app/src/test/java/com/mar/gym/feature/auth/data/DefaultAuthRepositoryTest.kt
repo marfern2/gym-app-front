@@ -99,6 +99,46 @@ class DefaultAuthRepositoryTest {
     }
 
     @Test
+    fun refreshSendsExactBodyAndRotatesBothTokens() = runBlocking {
+        enqueueJson(
+            """{"tokenType":"Bearer","accessToken":"rotated-access","accessTokenExpiresIn":600,"refreshToken":"rotated-refresh","refreshTokenExpiresIn":2592000}"""
+        )
+        val remote = DefaultTokenRefreshRemote(createApi())
+
+        val result = remote.refresh("previous-refresh") as AuthResult.Success<AuthSession>
+        val request = server.takeRequest()
+
+        assertEquals("rotated-access", result.value.accessToken)
+        assertEquals("rotated-refresh", result.value.refreshToken)
+        assertEquals("/api/v1/auth/refresh", request.path)
+        assertEquals("""{"refreshToken":"previous-refresh"}""", request.body.readUtf8())
+        assertEquals(null, request.getHeader("Authorization"))
+    }
+
+    @Test
+    fun logoutSendsExactRefreshTokenBodyAndAcceptsNoContent() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val result = repository.logout("current-refresh")
+        val request = server.takeRequest()
+
+        assertTrue(result is AuthResult.Success)
+        assertEquals("/api/v1/auth/logout", request.path)
+        assertEquals("""{"refreshToken":"current-refresh"}""", request.body.readUtf8())
+    }
+
+    @Test
+    fun invalidRefreshResponseIsRejected() = runBlocking {
+        enqueueJson(
+            """{"tokenType":"Bearer","accessToken":"","accessTokenExpiresIn":600,"refreshToken":"rotated-refresh","refreshTokenExpiresIn":2592000}"""
+        )
+
+        val result = DefaultTokenRefreshRemote(createApi()).refresh("previous-refresh")
+
+        assertTrue((result as AuthResult.Failure).error is NetworkFailure.InvalidResponse)
+    }
+
+    @Test
     fun returnsCurrentUser() = runBlocking {
         enqueueJson(
             """{"id":"48b573bb-c9b8-40ee-a3d6-a3b830f54c2c","displayName":"Test User","accountStatus":"ACTIVE"}"""

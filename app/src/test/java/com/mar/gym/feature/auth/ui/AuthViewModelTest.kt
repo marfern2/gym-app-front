@@ -4,17 +4,21 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.auth.data.AuthRepository
 import com.mar.gym.feature.auth.data.AuthResult
-import com.mar.gym.feature.auth.data.InMemorySessionStore
+import com.mar.gym.feature.auth.data.SessionRefreshCoordinator
+import com.mar.gym.feature.auth.data.TestSessionStore
+import com.mar.gym.feature.auth.data.TokenRefreshRemote
 import com.mar.gym.feature.auth.model.AuthSession
 import com.mar.gym.feature.auth.model.AuthenticatedUser
 import com.mar.gym.feature.auth.model.GoogleChallenge
 import com.mar.gym.feature.system.MainDispatcherRule
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -28,255 +32,179 @@ class AuthViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
+    private val now = Instant.parse("2026-08-01T10:00:00Z")
+    private val clock = Clock.fixed(now, ZoneOffset.UTC)
+
     @Test
-    fun idleTransitionsToRequestingChallenge() = runTest {
-        val pending = CompletableDeferred<AuthResult<GoogleChallenge>>()
-        val repository = FakeAuthRepository().apply { challenge = { pending.await() } }
-        val viewModel = viewModel(repository)
+    fun startsInRestoringSessionAndMissingSessionBecomesSignedOut() = runTest {
+        val fixture = fixture()
 
-        assertEquals(AuthUiState.Idle(), viewModel.uiState.value)
-        viewModel.startGoogleSignIn()
+        assertSame(AuthUiState.RestoringSession, fixture.viewModel.uiState.value)
+        runCurrent()
 
-        assertSame(AuthUiState.RequestingChallenge, viewModel.uiState.value)
-        pending.complete(AuthResult.Success(challenge()))
+        assertEquals(AuthUiState.SignedOut(), fixture.viewModel.uiState.value)
+    }
+
+    @Test
+    fun validRestoredSessionIsValidatedWithCurrentUser() = runTest {
+        val fixture = fixture(initialSession = session())
+
+        runCurrent()
+
+        assertEquals(AuthUiState.Authenticated(user()), fixture.viewModel.uiState.value)
+        assertEquals(1, fixture.repository.currentUserCalls)
+    }
+
+    @Test
+    fun expiredAccessRefreshesThenValidatesCurrentUser() = runTest {
+        val expiredAccess = session().copy(accessTokenExpiresAt = now.minusSeconds(1))
+        val fixture = fixture(
+            initialSession = expiredAccess,
+            refreshResult = { AuthResult.Success(session("new-access", "new-refresh")) },
+        )
+
+        runCurrent()
+
+        assertEquals(AuthUiState.Authenticated(user()), fixture.viewModel.uiState.value)
+        assertEquals(1, fixture.refreshRemote.calls)
+        assertEquals("new-refresh", fixture.store.currentSession()?.refreshToken)
+    }
+
+    @Test
+    fun refreshRejectionClearsAndSignsOut() = runTest {
+        val fixture = fixture(
+            initialSession = session().copy(accessTokenExpiresAt = now.minusSeconds(1)),
+            refreshResult = { AuthResult.Failure(problem(401, "INVALID_REFRESH_TOKEN")) },
+        )
+
+        runCurrent()
+
+        assertTrue(fixture.viewModel.uiState.value is AuthUiState.SignedOut)
+        assertNull(fixture.store.currentSession())
+    }
+
+    @Test
+    fun refreshNetworkFailureIsRecoverableAndKeepsSession() = runTest {
+        val original = session().copy(accessTokenExpiresAt = now.minusSeconds(1))
+        val fixture = fixture(
+            initialSession = original,
+            refreshResult = { AuthResult.Failure(NetworkFailure.Network()) },
+        )
+
+        runCurrent()
+
+        val state = fixture.viewModel.uiState.value as AuthUiState.RecoverableSessionError
+        assertEquals(AuthRecoveryAction.RetrySessionValidation, state.recoveryAction)
+        assertEquals(original, fixture.store.currentSession())
+    }
+
+    @Test
+    fun visibleRefreshStateIsRepresentedWhileRequestIsPending() = runTest {
+        val pending = CompletableDeferred<AuthResult<AuthSession>>()
+        val fixture = fixture(
+            initialSession = session().copy(accessTokenExpiresAt = now.minusSeconds(1)),
+            refreshResult = { pending.await() },
+        )
+
+        runCurrent()
+
+        assertSame(AuthUiState.RefreshingSession, fixture.viewModel.uiState.value)
+        pending.complete(AuthResult.Success(session("new-access", "new-refresh")))
         runCurrent()
     }
 
     @Test
-    fun validChallengeEmitsOneCredentialManagerEffect() = runTest {
+    fun loginPersistsBeforeLoadingProfileAndNeverExposesIdToken() = runTest {
+        val fixture = fixture()
+        runCurrent()
+        fixture.viewModel.startGoogleSignIn()
+        runCurrent()
+        val effect = fixture.viewModel.effects.first()
+
+        fixture.viewModel.onGoogleCredentialResult(
+            effect.requestId,
+            GoogleCredentialResult.Success("sensitive-google-id-token"),
+        )
+        runCurrent()
+
+        assertEquals(1, fixture.store.saveCalls)
+        assertEquals(AuthUiState.Authenticated(user()), fixture.viewModel.uiState.value)
+        assertFalse(fixture.viewModel.uiState.value.toString().contains("sensitive-google-id-token"))
+    }
+
+    @Test
+    fun successfulRemoteLogoutClearsEverything() = runTest {
+        val fixture = fixture(initialSession = session())
+        runCurrent()
+
+        fixture.viewModel.logout()
+        assertSame(AuthUiState.LoggingOut, fixture.viewModel.uiState.value)
+        runCurrent()
+
+        assertTrue(fixture.viewModel.uiState.value is AuthUiState.SignedOut)
+        assertNull(fixture.store.currentSession())
+        assertEquals(1, fixture.repository.logoutCalls)
+    }
+
+    @Test
+    fun unauthorizedLogoutStillClearsLocally() = runTest {
+        val fixture = fixture(initialSession = session()).apply {
+            repository.logoutResult = { AuthResult.Failure(problem(401, "UNAUTHORIZED")) }
+        }
+        runCurrent()
+
+        fixture.viewModel.logout()
+        runCurrent()
+
+        assertNull(fixture.store.currentSession())
+        assertTrue(fixture.viewModel.uiState.value is AuthUiState.SignedOut)
+    }
+
+    @Test
+    fun networkLogoutFailureDoesNotClaimRemoteClosureAndOffersLocalDeletion() = runTest {
+        val fixture = fixture(initialSession = session()).apply {
+            repository.logoutResult = { AuthResult.Failure(NetworkFailure.Network()) }
+        }
+        runCurrent()
+
+        fixture.viewModel.logout()
+        runCurrent()
+
+        val error = fixture.viewModel.uiState.value as AuthUiState.RecoverableSessionError
+        assertEquals(AuthRecoveryAction.RetryRemoteLogout, error.recoveryAction)
+        assertFalse(error.message.contains("confirmó el cierre"))
+        assertEquals("old-refresh", fixture.store.currentSession()?.refreshToken)
+
+        fixture.viewModel.deleteLocalSession()
+        runCurrent()
+        assertNull(fixture.store.currentSession())
+        assertTrue((fixture.viewModel.uiState.value as AuthUiState.SignedOut).message.orEmpty()
+            .contains("solo de este dispositivo"))
+    }
+
+    private fun fixture(
+        initialSession: AuthSession? = null,
+        refreshResult: suspend () -> AuthResult<AuthSession> = {
+            AuthResult.Success(session("new-access", "new-refresh"))
+        },
+    ): Fixture {
+        val store = TestSessionStore(initialSession)
         val repository = FakeAuthRepository()
-        val viewModel = viewModel(repository)
-
-        viewModel.startGoogleSignIn()
-        runCurrent()
-        val effect = viewModel.effects.first()
-
-        assertSame(AuthUiState.AwaitingGoogleCredential, viewModel.uiState.value)
-        assertEquals(CHALLENGE_ID, effect.challengeId)
-        assertEquals("exact-backend-nonce", effect.nonce)
-        assertNull(withTimeoutOrNull(1) { viewModel.effects.first() })
+        val remote = FakeViewModelRefreshRemote(refreshResult)
+        val coordinator = SessionRefreshCoordinator(remote, store, clock)
+        val viewModel = AuthViewModel(repository, store, coordinator, clock)
+        return Fixture(viewModel, repository, store, remote)
     }
 
-    @Test
-    fun twoRapidTapsCreateOnlyOneChallenge() = runTest {
-        val pending = CompletableDeferred<AuthResult<GoogleChallenge>>()
-        val repository = FakeAuthRepository().apply { challenge = { pending.await() } }
-        val viewModel = viewModel(repository)
-
-        viewModel.startGoogleSignIn()
-        viewModel.startGoogleSignIn()
-        runCurrent()
-
-        assertEquals(1, repository.challengeCalls)
-        pending.complete(AuthResult.Success(challenge()))
-        runCurrent()
-    }
-
-    @Test
-    fun cancellationReturnsToSafeSignedOutState() = runTest {
-        val viewModel = viewModel()
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(effect.requestId, GoogleCredentialResult.Cancelled)
-
-        val state = viewModel.uiState.value as AuthUiState.Idle
-        assertTrue(requireNotNull(state.message).contains("cancelado"))
-    }
-
-    @Test
-    fun validCredentialTransitionsToAuthenticatingWithBackend() = runTest {
-        val login = CompletableDeferred<AuthResult<AuthSession>>()
-        val repository = FakeAuthRepository().apply { this.login = { _, _ -> login.await() } }
-        val viewModel = viewModel(repository)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-
-        assertSame(AuthUiState.AuthenticatingWithBackend, viewModel.uiState.value)
-        login.complete(AuthResult.Success(session()))
-        runCurrent()
-    }
-
-    @Test
-    fun successfulLoginTransitionsToLoadingProfile() = runTest {
-        val profile = CompletableDeferred<AuthResult<AuthenticatedUser>>()
-        val repository = FakeAuthRepository().apply { currentUserResponse = { profile.await() } }
-        val viewModel = viewModel(repository)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-        runCurrent()
-
-        assertSame(AuthUiState.LoadingProfile, viewModel.uiState.value)
-        profile.complete(AuthResult.Success(user()))
-        runCurrent()
-    }
-
-    @Test
-    fun successfulProfileTransitionsToAuthenticated() = runTest {
-        val viewModel = viewModel()
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-        runCurrent()
-
-        assertEquals(AuthUiState.Authenticated(user()), viewModel.uiState.value)
-    }
-
-    @Test
-    fun backendTokenRejectionBecomesRecoverableError() = runTest {
-        val repository = FakeAuthRepository().apply {
-            login = { _, _ -> AuthResult.Failure(problem(401, "INVALID_EXTERNAL_TOKEN")) }
-        }
-        val store = InMemorySessionStore()
-        val viewModel = AuthViewModel(repository, store)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("rejected-google-token"),
-        )
-        runCurrent()
-
-        val state = viewModel.uiState.value as AuthUiState.Error
-        assertTrue(state.message.contains("rechazó"))
-        assertEquals(AuthRecoveryAction.RestartLogin, state.recoveryAction)
-        assertNull(store.currentSession())
-    }
-
-    @Test
-    fun expiredChallengeRequiresANewChallenge() = runTest {
-        val repository = FakeAuthRepository().apply {
-            login = { _, _ -> AuthResult.Failure(problem(401, "LOGIN_CHALLENGE_EXPIRED")) }
-        }
-        val viewModel = viewModel(repository)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-        runCurrent()
-        val error = viewModel.uiState.value as AuthUiState.Error
-        viewModel.retry()
-        runCurrent()
-
-        assertTrue(error.message.contains("expirado"))
-        assertEquals(2, repository.challengeCalls)
-    }
-
-    @Test
-    fun profileFailureKeepsSessionAndOffersProfileRetry() = runTest {
-        val repository = FakeAuthRepository().apply {
-            currentUserResponse = { AuthResult.Failure(NetworkFailure.Network()) }
-        }
-        val store = InMemorySessionStore()
-        val viewModel = AuthViewModel(repository, store)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-        runCurrent()
-
-        val state = viewModel.uiState.value as AuthUiState.Error
-        assertEquals(AuthRecoveryAction.RetryProfile, state.recoveryAction)
-        assertEquals("local-access-token", store.currentAccessToken())
-    }
-
-    @Test
-    fun unauthorizedProfileClearsSession() = runTest {
-        val repository = FakeAuthRepository().apply {
-            currentUserResponse = { AuthResult.Failure(problem(401, "UNAUTHORIZED")) }
-        }
-        val store = InMemorySessionStore()
-        val viewModel = AuthViewModel(repository, store)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("google-id-token"),
-        )
-        runCurrent()
-
-        val state = viewModel.uiState.value as AuthUiState.Error
-        assertEquals(AuthRecoveryAction.RestartLogin, state.recoveryAction)
-        assertNull(store.currentSession())
-    }
-
-    @Test
-    fun clearLocalSessionRemovesTokensAndReturnsToSignedOut() = runTest {
-        val store = InMemorySessionStore().apply { save(session()) }
-        val viewModel = AuthViewModel(FakeAuthRepository(), store)
-
-        viewModel.clearLocalSession()
-
-        assertNull(store.currentSession())
-        assertTrue(viewModel.uiState.value is AuthUiState.Idle)
-    }
-
-    @Test
-    fun idTokenNeverAppearsInUiState() = runTest {
-        val login = CompletableDeferred<AuthResult<AuthSession>>()
-        val repository = FakeAuthRepository().apply { this.login = { _, _ -> login.await() } }
-        val viewModel = viewModel(repository)
-        val effect = startAndReceiveEffect(viewModel)
-
-        viewModel.onGoogleCredentialResult(
-            effect.requestId,
-            GoogleCredentialResult.Success("highly-sensitive-google-id-token"),
-        )
-
-        assertFalse(viewModel.uiState.value.toString().contains("highly-sensitive-google-id-token"))
-        login.complete(AuthResult.Success(session()))
-        runCurrent()
-    }
-
-    @Test
-    fun detachingCredentialUiDoesNotReemitOrReuseChallenge() = runTest {
-        val repository = FakeAuthRepository()
-        val viewModel = viewModel(repository)
-        startAndReceiveEffect(viewModel)
-
-        viewModel.onCredentialUiDetached()
-
-        assertTrue(viewModel.uiState.value is AuthUiState.Idle)
-        assertNull(withTimeoutOrNull(1) { viewModel.effects.first() })
-        viewModel.startGoogleSignIn()
-        runCurrent()
-        assertEquals(2, repository.challengeCalls)
-    }
-
-    private suspend fun startAndReceiveEffect(viewModel: AuthViewModel): LaunchGoogleSignIn {
-        viewModel.startGoogleSignIn()
-        return viewModel.effects.first()
-    }
-
-    private fun viewModel(repository: FakeAuthRepository = FakeAuthRepository()) =
-        AuthViewModel(repository, InMemorySessionStore())
-
-    private fun challenge() = GoogleChallenge(
-        challengeId = CHALLENGE_ID,
-        nonce = "exact-backend-nonce",
-        expiresInSeconds = 300,
-    )
-
-    private fun session() = AuthSession(
+    private fun session(
+        accessToken: String = "old-access",
+        refreshToken: String = "old-refresh",
+    ) = AuthSession(
         tokenType = "Bearer",
-        accessToken = "local-access-token",
-        accessTokenExpiresInSeconds = 600,
-        refreshToken = "local-refresh-token",
-        refreshTokenExpiresInSeconds = 2_592_000,
+        accessToken = accessToken,
+        refreshToken = refreshToken,
+        accessTokenExpiresAt = now.plusSeconds(600),
+        refreshTokenExpiresAt = now.plusSeconds(86_400),
     )
 
     private fun user() = AuthenticatedUser(
@@ -285,23 +213,22 @@ class AuthViewModelTest {
         accountStatus = "ACTIVE",
     )
 
-    private fun problem(status: Int, errorCode: String) = NetworkFailure.HttpProblem(
+    private fun problem(status: Int, code: String) = NetworkFailure.HttpProblem(
         statusCode = status,
-        problem = ProblemDetails(
-            status = status,
-            detail = "Safe backend detail",
-            errorCode = errorCode,
-        ),
+        problem = ProblemDetails(status = status, errorCode = code),
         correlationId = "correlation-test",
     )
 
-    companion object {
-        private const val CHALLENGE_ID = "48b573bb-c9b8-40ee-a3d6-a3b830f54c2c"
-    }
+    private data class Fixture(
+        val viewModel: AuthViewModel,
+        val repository: FakeAuthRepository,
+        val store: TestSessionStore,
+        val refreshRemote: FakeViewModelRefreshRemote,
+    )
 }
 
 private class FakeAuthRepository : AuthRepository {
-    var challenge: suspend () -> AuthResult<GoogleChallenge> = {
+    var challengeResult: suspend () -> AuthResult<GoogleChallenge> = {
         AuthResult.Success(
             GoogleChallenge(
                 challengeId = "48b573bb-c9b8-40ee-a3d6-a3b830f54c2c",
@@ -310,18 +237,18 @@ private class FakeAuthRepository : AuthRepository {
             )
         )
     }
-    var login: suspend (String, String) -> AuthResult<AuthSession> = { _, _ ->
+    var loginResult: suspend () -> AuthResult<AuthSession> = {
         AuthResult.Success(
             AuthSession(
                 tokenType = "Bearer",
-                accessToken = "local-access-token",
-                accessTokenExpiresInSeconds = 600,
-                refreshToken = "local-refresh-token",
-                refreshTokenExpiresInSeconds = 2_592_000,
+                accessToken = "old-access",
+                refreshToken = "old-refresh",
+                accessTokenExpiresAt = Instant.parse("2026-08-01T10:10:00Z"),
+                refreshTokenExpiresAt = Instant.parse("2026-08-02T10:00:00Z"),
             )
         )
     }
-    var currentUserResponse: suspend () -> AuthResult<AuthenticatedUser> = {
+    var currentUserResult: suspend () -> AuthResult<AuthenticatedUser> = {
         AuthResult.Success(
             AuthenticatedUser(
                 id = "48b573bb-c9b8-40ee-a3d6-a3b830f54c2c",
@@ -330,29 +257,31 @@ private class FakeAuthRepository : AuthRepository {
             )
         )
     }
-
-    var challengeCalls = 0
-        private set
-    var loginCalls = 0
-        private set
+    var logoutResult: suspend () -> AuthResult<Unit> = { AuthResult.Success(Unit) }
     var currentUserCalls = 0
-        private set
+    var logoutCalls = 0
 
-    override suspend fun requestGoogleChallenge(): AuthResult<GoogleChallenge> {
-        challengeCalls += 1
-        return challenge()
-    }
+    override suspend fun requestGoogleChallenge() = challengeResult()
 
-    override suspend fun loginWithGoogle(
-        challengeId: String,
-        idToken: String,
-    ): AuthResult<AuthSession> {
-        loginCalls += 1
-        return login(challengeId, idToken)
-    }
+    override suspend fun loginWithGoogle(challengeId: String, idToken: String) = loginResult()
 
     override suspend fun currentUser(): AuthResult<AuthenticatedUser> {
         currentUserCalls += 1
-        return currentUserResponse()
+        return currentUserResult()
+    }
+
+    override suspend fun logout(refreshToken: String): AuthResult<Unit> {
+        logoutCalls += 1
+        return logoutResult()
+    }
+}
+
+private class FakeViewModelRefreshRemote(
+    private val result: suspend () -> AuthResult<AuthSession>,
+) : TokenRefreshRemote {
+    var calls = 0
+    override suspend fun refresh(refreshToken: String): AuthResult<AuthSession> {
+        calls += 1
+        return result()
     }
 }

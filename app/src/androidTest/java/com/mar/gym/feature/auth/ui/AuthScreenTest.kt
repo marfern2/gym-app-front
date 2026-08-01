@@ -23,7 +23,7 @@ class AuthScreenTest {
     fun signedOutShowsGoogleButtonAndEmitsOneActionPerTap() {
         var clickCount = 0
         setScreen(
-            state = AuthUiState.Idle(),
+            state = AuthUiState.SignedOut(),
             onContinueWithGoogle = { clickCount += 1 },
         )
 
@@ -67,7 +67,7 @@ class AuthScreenTest {
     fun recoverableErrorShowsMessageAndRetriesOnce() {
         var retries = 0
         setScreen(
-            state = AuthUiState.Error(
+            state = AuthUiState.RecoverableSessionError(
                 message = "El challenge ha expirado. Inicia el proceso de nuevo.",
                 correlationId = "correlation-test",
                 recoveryAction = AuthRecoveryAction.RestartLogin,
@@ -75,7 +75,7 @@ class AuthScreenTest {
             onRetry = { retries += 1 },
         )
 
-        composeRule.onNodeWithText("No se pudo iniciar sesión").assertIsDisplayed()
+        composeRule.onNodeWithText("No se pudo completar la sesión").assertIsDisplayed()
         composeRule.onNodeWithText("El challenge ha expirado. Inicia el proceso de nuevo.")
             .assertIsDisplayed()
         composeRule.onNodeWithText("Reintentar").performClick()
@@ -83,10 +83,31 @@ class AuthScreenTest {
         composeRule.runOnIdle { assertEquals(1, retries) }
     }
 
+    @Test
+    fun unconfirmedLogoutOffersRetryAndExplicitLocalDeletion() {
+        var localDeletes = 0
+        setScreen(
+            state = AuthUiState.RecoverableSessionError(
+                message = "El servidor no pudo confirmar el cierre.",
+                correlationId = null,
+                recoveryAction = AuthRecoveryAction.RetryRemoteLogout,
+            ),
+            onDeleteLocalSession = { localDeletes += 1 },
+        )
+
+        composeRule.onNodeWithText("Reintentar").assertIsDisplayed()
+        composeRule.onNodeWithText("Eliminar solo de este dispositivo")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle { assertEquals(1, localDeletes) }
+    }
+
     private fun setScreen(
         state: AuthUiState,
         onContinueWithGoogle: () -> Unit = {},
         onRetry: () -> Unit = {},
+        onDeleteLocalSession: () -> Unit = {},
     ) {
         composeRule.setContent {
             GYmAppTheme {
@@ -95,7 +116,8 @@ class AuthScreenTest {
                     systemState = SystemUiState.Initial,
                     onContinueWithGoogle = onContinueWithGoogle,
                     onRetry = onRetry,
-                    onClearLocalSession = {},
+                    onLogout = {},
+                    onDeleteLocalSession = onDeleteLocalSession,
                     onCheckConnection = {},
                 )
             }

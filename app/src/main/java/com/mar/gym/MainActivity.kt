@@ -16,10 +16,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AppContainer.initialize(applicationContext)
 
         val authViewModel = ViewModelProvider(
             this,
-            AuthViewModelFactory(AppContainer.authRepository, AppContainer.sessionStore),
+            AuthViewModelFactory(
+                AppContainer.authRepository,
+                AppContainer.sessionStore,
+                AppContainer.refreshCoordinator,
+            ),
         )[AuthViewModel::class.java]
         val systemViewModel = ViewModelProvider(
             this,

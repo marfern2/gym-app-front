@@ -1,5 +1,9 @@
 package com.mar.gym.feature.auth.model
 
+import java.time.Clock
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+
 data class GoogleChallenge(
     val challengeId: String,
     val nonce: String,
@@ -12,14 +16,32 @@ data class GoogleChallenge(
 data class AuthSession(
     val tokenType: String,
     val accessToken: String,
-    val accessTokenExpiresInSeconds: Long,
     val refreshToken: String,
-    val refreshTokenExpiresInSeconds: Long,
+    val accessTokenExpiresAt: Instant,
+    val refreshTokenExpiresAt: Instant,
 ) {
+    fun hasUsableAccessToken(
+        clock: Clock,
+        expirationMarginSeconds: Long = DEFAULT_EXPIRATION_MARGIN_SECONDS,
+    ): Boolean = accessTokenExpiresAt.isAfter(
+        clock.instant().plus(expirationMarginSeconds, ChronoUnit.SECONDS)
+    )
+
+    fun hasUsableRefreshToken(
+        clock: Clock,
+        expirationMarginSeconds: Long = DEFAULT_EXPIRATION_MARGIN_SECONDS,
+    ): Boolean = refreshTokenExpiresAt.isAfter(
+        clock.instant().plus(expirationMarginSeconds, ChronoUnit.SECONDS)
+    )
+
     override fun toString(): String =
         "AuthSession[tokenType=$tokenType, tokens=REDACTED, " +
-            "accessTokenExpiresInSeconds=$accessTokenExpiresInSeconds, " +
-            "refreshTokenExpiresInSeconds=$refreshTokenExpiresInSeconds]"
+            "accessTokenExpiresAt=$accessTokenExpiresAt, " +
+            "refreshTokenExpiresAt=$refreshTokenExpiresAt]"
+
+    companion object {
+        const val DEFAULT_EXPIRATION_MARGIN_SECONDS = 30L
+    }
 }
 
 data class AuthenticatedUser(

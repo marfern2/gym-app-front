@@ -11,6 +11,8 @@ interface AuthRepository {
     suspend fun loginWithGoogle(challengeId: String, idToken: String): AuthResult<AuthSession>
 
     suspend fun currentUser(): AuthResult<AuthenticatedUser>
+
+    suspend fun logout(refreshToken: String): AuthResult<Unit>
 }
 
 sealed interface AuthResult<out T> {

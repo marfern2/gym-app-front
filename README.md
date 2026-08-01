@@ -74,7 +74,23 @@ POST /api/v1/auth/google
      refreshTokenExpiresIn: Long
    }
 
+POST /api/v1/auth/refresh
+<- { refreshToken: String }
+-> {
+     tokenType: "Bearer",
+     accessToken: String,
+     accessTokenExpiresIn: Long,
+     refreshToken: String,
+     refreshTokenExpiresIn: Long
+   }
+
+POST /api/v1/auth/logout
+Authorization: Bearer <local-access-token>
+<- { refreshToken: String }
+-> 204 No Content
+
 GET /api/v1/users/me
+Authorization: Bearer <local-access-token>
 -> { id: UUID, displayName: String, accountStatus: String }
 ```
 
@@ -91,14 +107,16 @@ el backend autoriza.
    client ID de `BuildConfig.GOOGLE_SERVER_CLIENT_ID` y el nonce exacto del backend.
 3. Android acepta solamente un `CustomCredential` del tipo de `GoogleIdTokenCredential` y entrega
    su ID token, junto al `challengeId`, a `POST /api/v1/auth/google`.
-4. La sesión local devuelta se conserva solo en memoria. Un interceptor elimina su marcador
-   interno y añade el access token local como Bearer exclusivamente a `/api/v1/users/me`.
-5. La UI considera el login completo únicamente cuando `/users/me` responde y entonces muestra
+4. La respuesta se transforma en una sesión con expiraciones absolutas calculadas desde las
+   duraciones del backend y se persiste cifrada antes de publicarla en la caché de memoria.
+5. Un interceptor elimina el marcador interno y añade el access token local como Bearer solo a
+   llamadas marcadas explícitamente. Challenge, login y refresh son públicos; logout recibe
+   Bearer, pero está marcado para no activar refresh automático.
+6. La UI considera el login completo únicamente cuando `/users/me` responde y entonces muestra
    el usuario local.
 
-No hay refresh automático, reintento automático de `401`, persistencia, DataStore, logout remoto
-ni navegación. **Cerrar sesión local** es una acción temporal que solo elimina los tokens de la
-memoria del proceso. El ID token de Google no se usa como Bearer ni se conserva en estado de UI.
+El ID token de Google no se usa como Bearer, no se persiste y no se conserva en estado de UI.
+Este incremento no añade navegación ni funcionalidades de gimnasio.
 
 Los mensajes y representaciones textuales de objetos sensibles están redactados. OkHttp no tiene
 interceptor de logging y nunca se registran cuerpos, tokens ni `Authorization`.
@@ -144,11 +162,83 @@ El emulador usa `10.0.2.2` para alcanzar el `localhost` del anfitrión. La secci
 - **Cleartext bloqueado:** instala debug. Solo debug permite HTTP hacia `10.0.2.2`; release exige
   HTTPS y mantiene cleartext desactivado.
 
-## Sesión y copias de seguridad
+## Ciclo de vida de la sesión local
 
-En este incremento `InMemorySessionStore` no usa archivos, `SharedPreferences`, DataStore ni
-`SavedStateHandle`, por lo que backup y device transfer no contienen material de sesión. El
-manifest mantiene `android:allowBackup="true"` para datos futuros no sensibles. Antes de añadir
-almacenamiento seguro permanente será obligatorio cifrarlo mediante una abstracción basada en
-Android Keystore y excluir expresamente las credenciales tanto de cloud backup como de device
-transfer en `backup_rules.xml` y `data_extraction_rules.xml`.
+### Persistencia y Android Keystore
+
+`PersistentSessionStore` mantiene una única caché en memoria para que las peticiones no lean disco.
+La copia persistente está en `filesDir/secure_session/local_session.enc` y se escribe mediante
+`AtomicFile`: la caché solo cambia después de completar con éxito la escritura atómica.
+
+Antes de escribir, un codec binario serializa exclusivamente `tokenType`, access token, refresh
+token y los instantes UTC de expiración. El objeto y los resultados sensibles tienen `toString()`
+redactado. El plaintext transitorio se sobrescribe al terminar la operación. El archivo contiene
+solo una versión de formato, el IV y ciphertext autenticado; no contiene claves ni tokens legibles.
+
+`AndroidKeystoreSessionCipher` genera una clave AES de 256 bits no exportable en el proveedor
+`AndroidKeyStore`, limitada a `AES/GCM/NoPadding`, cifrado/descifrado y uso de IV aleatorio. Cada
+escritura inicializa una operación nueva y conserva el IV nuevo de 96 bits junto al ciphertext; la
+cabecera de versión está autenticada como AAD y GCM aporta una etiqueta de 128 bits. Estas APIs de
+plataforma están disponibles por debajo de minSdk 26, por lo que no se añade una librería de
+cifrado. `EncryptedSharedPreferences` no se usa porque su API actual está obsoleta.
+
+Si falta la clave, fue invalidada, el ciphertext está corrupto, falla GCM o el formato es inválido,
+la aplicación no intenta recuperar parcialmente credenciales: borra la caché, el archivo y el alias
+Keystore. Una copia del ciphertext restaurada en otro dispositivo sin su clave Keystore nunca se
+acepta como una sesión válida.
+
+### Copias de seguridad
+
+`backup_rules.xml` excluye `secure_session/` en el formato legacy. `data_extraction_rules.xml`
+excluye el mismo directorio tanto de `cloud-backup` como de `device-transfer`. Se excluye el
+directorio completo para cubrir `local_session.enc` y los artefactos transitorios de `AtomicFile`.
+El resto de datos futuros no sensibles puede seguir usando `android:allowBackup="true"`.
+
+### Expiración, restauración y refresh
+
+Las duraciones `accessTokenExpiresIn` y `refreshTokenExpiresIn`, expresadas en segundos, se
+convierten con un `Clock` inyectable en instantes absolutos al recibir cada respuesta. La decisión
+de uso aplica un margen de 30 segundos y no decodifica ni confía en claims JWT.
+
+Al arrancar se muestra `RestoringSession` y se lee/descifra fuera del hilo principal. Si no existe
+sesión se muestra `SignedOut`. Si el access token es utilizable se valida con `/users/me`; si no,
+pero el refresh token sigue siendo utilizable, se muestra `RefreshingSession`, se rota el par y se
+persiste antes de consultar `/users/me`. Nunca se muestra `Authenticated` por la mera presencia del
+archivo. Un refresh rechazado o expirado limpia la sesión. Un error temporal mantiene la copia
+potencialmente válida y muestra `RecoverableSessionError` con reintento.
+
+`SessionRefreshCoordinator` comparte una renovación en curso y la protege con `Mutex`. Cuando
+varias peticiones fallan con el mismo access token, una realiza refresh y las demás esperan su
+resultado; si al entrar ya existe un token nuevo, lo reutilizan. La rotación reemplaza siempre ambos
+tokens y sus expiraciones. Si no puede persistirse el par rotado, se destruye la sesión local para
+no mantener memoria y disco contradictorios.
+
+`SessionAuthenticator` actúa únicamente ante `401` de una petición marcada `retry-on-401`. Revisa
+`priorResponse`, realiza como máximo un refresh y construye como máximo una repetición con el token
+nuevo. No interviene ante otros códigos ni en challenge, login, refresh o logout. Las llamadas
+públicas sin marcador nunca reciben `Authorization`.
+
+### Logout remoto y borrado local
+
+**Cerrar sesión** envía el refresh token en JSON y el access token como Bearer, exactamente como
+exige el backend. Logout está marcado `no-retry`, por lo que un `401` no inicia refresh. Un `204`
+confirma la revocación remota y después se eliminan caché, archivo y clave. Un `401` también elimina
+la sesión local porque ya no es utilizable.
+
+Ante error de red no se afirma que el servidor haya cerrado la sesión y se mantiene la copia local
+para poder elegir entre **Reintentar** o **Eliminar solo de este dispositivo**. Esta segunda acción
+destruye la copia local explícitamente, pero informa de que la revocación remota no fue confirmada.
+El backend no mantiene una denylist de access tokens: uno emitido antes del logout puede seguir
+siendo válido hasta su expiración.
+
+### Diagnóstico básico de sesión
+
+- Si la sesión desaparece tras cambiar o restaurar el dispositivo, es el comportamiento esperado:
+  el ciphertext no sirve sin la clave Keystore original y además está excluido de transferencias.
+- Si aparece un error recuperable al arrancar, comprueba conectividad y usa **Reintentar**; un error
+  temporal no borra automáticamente la sesión.
+- Si el servidor rechaza refresh, revisa los códigos `INVALID_REFRESH_TOKEN`,
+  `REFRESH_TOKEN_EXPIRED` o `REFRESH_TOKEN_REUSED` en observabilidad del backend sin registrar el
+  token.
+- Si falla el almacenamiento seguro, revisa espacio disponible y salud de Android Keystore; la app
+  prioriza destruir el estado local antes que conservar un par rotado parcialmente.

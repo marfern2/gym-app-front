@@ -66,7 +66,8 @@ fun AuthRoute(
         systemState = systemState,
         onContinueWithGoogle = authViewModel::startGoogleSignIn,
         onRetry = authViewModel::retry,
-        onClearLocalSession = authViewModel::clearLocalSession,
+        onLogout = authViewModel::logout,
+        onDeleteLocalSession = authViewModel::deleteLocalSession,
         onCheckConnection = systemViewModel::checkConnection,
         modifier = modifier,
     )
@@ -78,7 +79,8 @@ fun AuthScreen(
     systemState: SystemUiState,
     onContinueWithGoogle: () -> Unit,
     onRetry: () -> Unit,
-    onClearLocalSession: () -> Unit,
+    onLogout: () -> Unit,
+    onDeleteLocalSession: () -> Unit,
     onCheckConnection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -105,7 +107,11 @@ fun AuthScreen(
             Spacer(Modifier.height(28.dp))
 
             when (authState) {
-                is AuthUiState.Idle -> SignedOutContent(authState, onContinueWithGoogle)
+                AuthUiState.RestoringSession -> LoadingContent(
+                    message = stringResource(R.string.auth_restoring_session)
+                )
+
+                is AuthUiState.SignedOut -> SignedOutContent(authState, onContinueWithGoogle)
                 AuthUiState.RequestingChallenge -> LoadingContent(
                     message = stringResource(R.string.auth_requesting_challenge)
                 )
@@ -118,16 +124,28 @@ fun AuthScreen(
                     message = stringResource(R.string.auth_authenticating_backend)
                 )
 
+                AuthUiState.RefreshingSession -> LoadingContent(
+                    message = stringResource(R.string.auth_refreshing_session)
+                )
+
                 AuthUiState.LoadingProfile -> LoadingContent(
                     message = stringResource(R.string.auth_loading_profile)
                 )
 
                 is AuthUiState.Authenticated -> AuthenticatedContent(
                     state = authState,
-                    onClearLocalSession = onClearLocalSession,
+                    onLogout = onLogout,
                 )
 
-                is AuthUiState.Error -> ErrorContent(authState, onRetry)
+                AuthUiState.LoggingOut -> LoadingContent(
+                    message = stringResource(R.string.auth_logging_out)
+                )
+
+                is AuthUiState.RecoverableSessionError -> ErrorContent(
+                    state = authState,
+                    onRetry = onRetry,
+                    onDeleteLocalSession = onDeleteLocalSession,
+                )
             }
 
             Spacer(Modifier.height(32.dp))
@@ -138,7 +156,7 @@ fun AuthScreen(
 
 @Composable
 private fun SignedOutContent(
-    state: AuthUiState.Idle,
+    state: AuthUiState.SignedOut,
     onContinueWithGoogle: () -> Unit,
 ) {
     state.message?.let { message ->
@@ -167,7 +185,7 @@ private fun LoadingContent(message: String) {
 @Composable
 private fun AuthenticatedContent(
     state: AuthUiState.Authenticated,
-    onClearLocalSession: () -> Unit,
+    onLogout: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.auth_signed_in),
@@ -194,16 +212,16 @@ private fun AuthenticatedContent(
     )
     Spacer(Modifier.height(20.dp))
     OutlinedButton(
-        onClick = onClearLocalSession,
+        onClick = onLogout,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp),
     ) {
-        Text(stringResource(R.string.auth_clear_local_session))
+        Text(stringResource(R.string.auth_logout))
     }
     Spacer(Modifier.height(8.dp))
     Text(
-        text = stringResource(R.string.auth_clear_local_session_note),
+        text = stringResource(R.string.auth_logout_note),
         style = MaterialTheme.typography.bodySmall,
         textAlign = TextAlign.Center,
     )
@@ -211,8 +229,9 @@ private fun AuthenticatedContent(
 
 @Composable
 private fun ErrorContent(
-    state: AuthUiState.Error,
+    state: AuthUiState.RecoverableSessionError,
     onRetry: () -> Unit,
+    onDeleteLocalSession: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.auth_error_title),
@@ -238,6 +257,17 @@ private fun ErrorContent(
             .heightIn(min = 48.dp),
     ) {
         Text(stringResource(R.string.retry))
+    }
+    if (state.recoveryAction == AuthRecoveryAction.RetryRemoteLogout) {
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onDeleteLocalSession,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+        ) {
+            Text(stringResource(R.string.auth_delete_local_session))
+        }
     }
 }
 
@@ -289,11 +319,12 @@ private fun SystemDiagnostic(
 private fun SignedOutPreview() {
     GYmAppTheme {
         AuthScreen(
-            authState = AuthUiState.Idle(),
+            authState = AuthUiState.SignedOut(),
             systemState = SystemUiState.Initial,
             onContinueWithGoogle = {},
             onRetry = {},
-            onClearLocalSession = {},
+            onLogout = {},
+            onDeleteLocalSession = {},
             onCheckConnection = {},
         )
     }
@@ -314,7 +345,8 @@ private fun AuthenticatedPreview() {
             systemState = SystemUiState.Success("2026-08-01T10:15:30Z", null),
             onContinueWithGoogle = {},
             onRetry = {},
-            onClearLocalSession = {},
+            onLogout = {},
+            onDeleteLocalSession = {},
             onCheckConnection = {},
         )
     }
@@ -325,7 +357,7 @@ private fun AuthenticatedPreview() {
 private fun ErrorPreview() {
     GYmAppTheme {
         AuthScreen(
-            authState = AuthUiState.Error(
+            authState = AuthUiState.RecoverableSessionError(
                 message = "El challenge ha expirado. Inicia el proceso de nuevo.",
                 correlationId = null,
                 recoveryAction = AuthRecoveryAction.RestartLogin,
@@ -333,7 +365,8 @@ private fun ErrorPreview() {
             systemState = SystemUiState.Initial,
             onContinueWithGoogle = {},
             onRetry = {},
-            onClearLocalSession = {},
+            onLogout = {},
+            onDeleteLocalSession = {},
             onCheckConnection = {},
         )
     }

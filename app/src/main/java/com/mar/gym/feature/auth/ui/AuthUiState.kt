@@ -3,7 +3,9 @@ package com.mar.gym.feature.auth.ui
 import com.mar.gym.feature.auth.model.AuthenticatedUser
 
 sealed interface AuthUiState {
-    data class Idle(val message: String? = null) : AuthUiState
+    data object RestoringSession : AuthUiState
+
+    data class SignedOut(val message: String? = null) : AuthUiState
 
     data object RequestingChallenge : AuthUiState
 
@@ -11,11 +13,15 @@ sealed interface AuthUiState {
 
     data object AuthenticatingWithBackend : AuthUiState
 
+    data object RefreshingSession : AuthUiState
+
     data object LoadingProfile : AuthUiState
 
     data class Authenticated(val user: AuthenticatedUser) : AuthUiState
 
-    data class Error(
+    data object LoggingOut : AuthUiState
+
+    data class RecoverableSessionError(
         val message: String,
         val correlationId: String?,
         val recoveryAction: AuthRecoveryAction,
@@ -24,7 +30,9 @@ sealed interface AuthUiState {
 
 enum class AuthRecoveryAction {
     RestartLogin,
-    RetryProfile,
+    RetrySessionValidation,
+    RetryRemoteLogout,
+    RetryLocalDeletion,
 }
 
 data class LaunchGoogleSignIn(
