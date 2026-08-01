@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">GYmApp</string>
+    <string name="connection_status_title">Estado de conexión</string>
+    <string name="connection_initial">La conexión con el backend aún no se ha comprobado.</string>
+    <string name="connection_loading">Comprobando conexión…</string>
+    <string name="connection_loading_description">Comprobando conexión con el backend</string>
+    <string name="connection_success">Backend conectado</string>
+    <string name="connection_error">No se pudo conectar</string>
+    <string name="connection_timestamp">Timestamp: %1$s</string>
+    <string name="correlation_id">ID de correlación: %1$s</string>
+    <string name="check_connection">Comprobar conexión</string>
+    <string name="retry">Reintentar</string>
 </resources>
