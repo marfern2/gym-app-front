@@ -13,6 +13,9 @@ import com.mar.gym.feature.auth.data.DefaultTokenRefreshRemote
 import com.mar.gym.feature.auth.data.PersistentSessionStore
 import com.mar.gym.feature.auth.data.SessionRefreshCoordinator
 import com.mar.gym.feature.auth.data.SessionStore
+import com.mar.gym.feature.exercises.data.DefaultExerciseTemplateRepository
+import com.mar.gym.feature.exercises.data.ExerciseTemplateApi
+import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.system.DefaultSystemRepository
 import com.mar.gym.feature.system.SystemApi
 import com.mar.gym.feature.system.SystemRepository
@@ -64,5 +67,17 @@ object AppContainer {
 
     val systemRepository: SystemRepository by lazy {
         DefaultSystemRepository(NetworkClient.create(SystemApi::class.java))
+    }
+
+    private val exerciseTemplateApi: ExerciseTemplateApi by lazy {
+        NetworkClient.create(
+            service = ExerciseTemplateApi::class.java,
+            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
+            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
+        )
+    }
+
+    val exerciseTemplateRepository: ExerciseTemplateRepository by lazy {
+        DefaultExerciseTemplateRepository(exerciseTemplateApi)
     }
 }

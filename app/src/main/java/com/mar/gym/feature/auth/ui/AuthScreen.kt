@@ -43,6 +43,7 @@ import com.mar.gym.ui.theme.GYmAppTheme
 fun AuthRoute(
     authViewModel: AuthViewModel,
     systemViewModel: SystemViewModel,
+    onOpenExercises: () -> Unit = {},
     modifier: Modifier = Modifier,
     credentialProvider: GoogleCredentialProvider? = null,
 ) {
@@ -69,6 +70,7 @@ fun AuthRoute(
         onLogout = authViewModel::logout,
         onDeleteLocalSession = authViewModel::deleteLocalSession,
         onCheckConnection = systemViewModel::checkConnection,
+        onOpenExercises = onOpenExercises,
         modifier = modifier,
     )
 }
@@ -82,6 +84,7 @@ fun AuthScreen(
     onLogout: () -> Unit,
     onDeleteLocalSession: () -> Unit,
     onCheckConnection: () -> Unit,
+    onOpenExercises: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -135,6 +138,7 @@ fun AuthScreen(
                 is AuthUiState.Authenticated -> AuthenticatedContent(
                     state = authState,
                     onLogout = onLogout,
+                    onOpenExercises = onOpenExercises,
                 )
 
                 AuthUiState.LoggingOut -> LoadingContent(
@@ -186,6 +190,7 @@ private fun LoadingContent(message: String) {
 private fun AuthenticatedContent(
     state: AuthUiState.Authenticated,
     onLogout: () -> Unit,
+    onOpenExercises: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.auth_signed_in),
@@ -211,6 +216,15 @@ private fun AuthenticatedContent(
         textAlign = TextAlign.Center,
     )
     Spacer(Modifier.height(20.dp))
+    Button(
+        onClick = onOpenExercises,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
+    ) {
+        Text(stringResource(R.string.auth_open_exercises))
+    }
+    Spacer(Modifier.height(8.dp))
     OutlinedButton(
         onClick = onLogout,
         modifier = Modifier
