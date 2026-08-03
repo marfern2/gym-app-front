@@ -303,3 +303,42 @@ refresh controlado tras un `401`.
 13. Con una sesión cuyo access token haya expirado, abre el catálogo y confirma en la
     observabilidad segura del backend que el refresh automático permite repetir una sola vez la
     petición protegida, sin registrar tokens.
+
+## Medios de plantillas de ejercicio
+
+El endpoint de detalle añade una lista `media`; el listado sigue sin incluir ni precargar medios.
+Cada elemento contiene `type`, `role`, URL HTTPS, dimensiones opcionales y atribución opcional. La
+aplicación selecciona una sola demostración: primero `ANIMATED_GIF`, después `IMAGE` como fallback,
+y nunca intenta reproducir `VIDEO`. Una lista vacía o una URL no HTTPS se representa como
+**Demostración no disponible** sin convertir el detalle completo en error.
+
+La pantalla utiliza Coil 3.0.4 con `coil-compose`, `coil-gif` y `coil-network-okhttp`. Esta versión
+estable es compatible con Kotlin 2.0.21, Java 11 y minSdk 26 del proyecto sin exigir una migración
+general del toolchain. Existe un único `ImageLoader` reutilizable en `AppContainer`: usa
+`AnimatedImageDecoder` desde API 28 y `GifDecoder` en API 26–27. Se mantienen las cachés de memoria
+y disco predeterminadas de Coil; no existe descarga propia, precarga, proxy ni almacenamiento
+offline.
+
+Las URLs de medio y atribución se validan antes de llegar a Compose y solo aceptan HTTPS. La
+representación textual del tipo validado está redactada. El enlace de atribución se abre mediante
+un intent `ACTION_VIEW` navegable únicamente si existe una Activity compatible; cualquier fallo se
+muestra localmente y no cierra la aplicación. La atribución visible es exactamente la entregada por
+el backend.
+
+Los GIF se descargan desde el proveedor al abrir el detalle y no están incorporados como recursos
+ni binarios dentro del APK. Si la carga externa falla, la descripción, músculos, equipamiento e
+instrucciones permanecen disponibles y se ofrece un reintento visual que no repite el endpoint de
+detalle.
+
+### Prueba manual de medios
+
+1. Arranca PostgreSQL, el backend y la aplicación Android.
+2. Abre una plantilla cuyo detalle contenga un GIF y confirma que la demostración se anima.
+3. Comprueba que la atribución coincide con el backend y que **Abrir fuente** abre su URL HTTPS.
+4. Abre una plantilla con `media: []` y confirma **Demostración no disponible**.
+5. Mantén el backend local activo, desconecta el acceso a Internet y vuelve a abrir un detalle con
+   GIF.
+6. Confirma el fallback visual y que descripción e instrucciones siguen visibles.
+7. Reactiva Internet, vuelve a abrir el detalle y comprueba la carga de nuevo.
+8. Repite en un emulador API 26 o 27 para validar `GifDecoder`, si está disponible.
+9. Repite en API 28 o superior para validar `AnimatedImageDecoder`.

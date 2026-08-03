@@ -5,6 +5,8 @@ import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.core.network.AUTHENTICATION_REQUIRED_HEADER
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseFilters
+import com.mar.gym.feature.exercises.model.ExerciseMediaRole
+import com.mar.gym.feature.exercises.model.ExerciseMediaType
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
@@ -111,7 +113,51 @@ class DefaultExerciseTemplateRepositoryTest {
         assertEquals("Descripción", result.value.description)
         assertEquals(listOf(MuscleGroup.Triceps), result.value.secondaryMuscleGroups)
         assertEquals(listOf(1, 2), result.value.instructions.map { it.position })
+        assertTrue(result.value.media.isEmpty())
         assertEquals("/api/v1/exercise-templates/$ID", server.takeRequest().path)
+    }
+
+    @Test
+    fun mapsGifAttributionAndNullableDimensions() = runBlocking {
+        server.enqueue(jsonResponse(detailJson(media = validGifMedia())))
+
+        val result = repository().getExerciseTemplate(ID) as ExerciseRepositoryResult.Success
+        val media = result.value.media.single()
+
+        assertEquals(ExerciseMediaType.AnimatedGif, media.type)
+        assertEquals(ExerciseMediaRole.Demonstration, media.role)
+        assertEquals("https://static.exercisedb.dev/media/example.gif", media.url.value)
+        assertEquals(null, media.width)
+        assertEquals(null, media.height)
+        assertEquals("Contenido visual: ExerciseDB / AscendAPI", media.attribution?.text)
+        assertEquals("https://exercisedb.dev/", media.attribution?.url?.value)
+    }
+
+    @Test
+    fun rejectsUnknownMediaEnumAsIncompatibleResponse() = runBlocking {
+        server.enqueue(
+            jsonResponse(detailJson(media = validGifMedia().replace("ANIMATED_GIF", "UNKNOWN")))
+        )
+
+        val result = repository().getExerciseTemplate(ID) as ExerciseRepositoryResult.Failure
+
+        assertTrue(result.error is NetworkFailure.InvalidResponse)
+    }
+
+    @Test
+    fun treatsHttpMediaAsUnavailableAndDoesNotExposeHttpAttribution() = runBlocking {
+        val httpMedia = validGifMedia()
+            .replace("https://static.exercisedb.dev", "http://static.exercisedb.dev")
+        server.enqueue(jsonResponse(detailJson(media = httpMedia)))
+        val unavailable = repository().getExerciseTemplate(ID) as ExerciseRepositoryResult.Success
+        assertTrue(unavailable.value.media.isEmpty())
+
+        val invalidAttribution = validGifMedia()
+            .replace("https://exercisedb.dev/", "http://exercisedb.dev/")
+        server.enqueue(jsonResponse(detailJson(media = invalidAttribution)))
+        val mapped = repository().getExerciseTemplate(ID) as ExerciseRepositoryResult.Success
+        assertEquals(null, mapped.value.media.single().attribution?.url)
+        assertEquals("Contenido visual: ExerciseDB / AscendAPI", mapped.value.media.single().attribution?.text)
     }
 
     @Test
@@ -230,7 +276,7 @@ class DefaultExerciseTemplateRepositoryTest {
         """.trimIndent()
     }
 
-    private fun detailJson(): String = """
+    private fun detailJson(media: String = "[]"): String = """
         {
           "id":"$ID",
           "slug":"press-banca",
@@ -244,8 +290,23 @@ class DefaultExerciseTemplateRepositoryTest {
           "instructions":[
             {"position":2,"text":"Empuja"},
             {"position":1,"text":"Colócate"}
-          ]
+          ],
+          "media":$media
         }
+    """.trimIndent()
+
+    private fun validGifMedia(): String = """
+        [{
+          "type":"ANIMATED_GIF",
+          "role":"DEMONSTRATION",
+          "url":"https://static.exercisedb.dev/media/example.gif",
+          "width":null,
+          "height":null,
+          "attribution":{
+            "text":"Contenido visual: ExerciseDB / AscendAPI",
+            "url":"https://exercisedb.dev/"
+          }
+        }]
     """.trimIndent()
 
     private companion object {

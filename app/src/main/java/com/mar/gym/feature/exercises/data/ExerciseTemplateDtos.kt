@@ -36,10 +36,27 @@ data class ExerciseTemplateDetailDto(
     val exerciseType: String,
     val movementPattern: String,
     val instructions: List<ExerciseInstructionDto>,
+    val media: List<ExerciseMediaDto>,
 )
 
 @Serializable
 data class ExerciseInstructionDto(
     val position: Int,
     val text: String,
+)
+
+@Serializable
+data class ExerciseMediaDto(
+    val type: String,
+    val role: String,
+    val url: String,
+    val width: Int?,
+    val height: Int?,
+    val attribution: ExerciseMediaAttributionDto?,
+)
+
+@Serializable
+data class ExerciseMediaAttributionDto(
+    val text: String,
+    val url: String,
 )

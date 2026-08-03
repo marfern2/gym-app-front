@@ -6,6 +6,10 @@ import com.mar.gym.core.network.executeNetworkRequest
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseFilters
 import com.mar.gym.feature.exercises.model.ExerciseInstruction
+import com.mar.gym.feature.exercises.model.ExerciseMedia
+import com.mar.gym.feature.exercises.model.ExerciseMediaAttribution
+import com.mar.gym.feature.exercises.model.ExerciseMediaRole
+import com.mar.gym.feature.exercises.model.ExerciseMediaType
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
 import com.mar.gym.feature.exercises.model.ExerciseTemplatePage
@@ -13,6 +17,7 @@ import com.mar.gym.feature.exercises.model.ExerciseTemplateSummary
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
+import com.mar.gym.feature.exercises.model.HttpsUrl
 import java.util.UUID
 
 class DefaultExerciseTemplateRepository(
@@ -118,6 +123,35 @@ class DefaultExerciseTemplateRepository(
             }
             ExerciseInstruction(instruction.position, instruction.text.trim())
         }.sortedBy(ExerciseInstruction::position)
+        val mappedMedia = buildList {
+            for (item in media) {
+                val type = ExerciseMediaType.fromApiValue(item.type)
+                    ?: return invalidResponse(correlationId)
+                val role = ExerciseMediaRole.fromApiValue(item.role)
+                    ?: return invalidResponse(correlationId)
+                if (item.width != null && item.width <= 0 || item.height != null && item.height <= 0) {
+                    return invalidResponse(correlationId)
+                }
+                val url = HttpsUrl.parse(item.url) ?: continue
+                val attribution = item.attribution?.let { source ->
+                    if (source.text.isBlank()) return invalidResponse(correlationId)
+                    ExerciseMediaAttribution(
+                        text = source.text,
+                        url = HttpsUrl.parse(source.url),
+                    )
+                }
+                add(
+                    ExerciseMedia(
+                        type = type,
+                        role = role,
+                        url = url,
+                        width = item.width,
+                        height = item.height,
+                        attribution = attribution,
+                    )
+                )
+            }
+        }
         if (
             secondary.distinct().size != secondary.size || primary in secondary ||
             mappedInstructions.map(ExerciseInstruction::position).distinct().size !=
@@ -141,6 +175,7 @@ class DefaultExerciseTemplateRepository(
                 movementPattern = MovementPattern.fromApiValue(movementPattern)
                     ?: return invalidResponse(correlationId),
                 instructions = mappedInstructions,
+                media = mappedMedia,
             )
         )
     }

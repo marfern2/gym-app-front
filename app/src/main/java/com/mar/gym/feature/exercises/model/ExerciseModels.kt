@@ -1,5 +1,7 @@
 package com.mar.gym.feature.exercises.model
 
+import java.net.URI
+
 data class ExerciseTemplateSummary(
     val id: String,
     val slug: String,
@@ -21,12 +23,67 @@ data class ExerciseTemplateDetail(
     val exerciseType: ExerciseType,
     val movementPattern: MovementPattern,
     val instructions: List<ExerciseInstruction>,
+    val media: List<ExerciseMedia> = emptyList(),
 )
 
 data class ExerciseInstruction(
     val position: Int,
     val text: String,
 )
+
+data class ExerciseMedia(
+    val type: ExerciseMediaType,
+    val role: ExerciseMediaRole,
+    val url: HttpsUrl,
+    val width: Int?,
+    val height: Int?,
+    val attribution: ExerciseMediaAttribution?,
+)
+
+data class ExerciseMediaAttribution(
+    val text: String,
+    val url: HttpsUrl?,
+)
+
+class HttpsUrl private constructor(val value: String) {
+    override fun equals(other: Any?): Boolean = other is HttpsUrl && value == other.value
+
+    override fun hashCode(): Int = value.hashCode()
+
+    override fun toString(): String = "HttpsUrl(redacted)"
+
+    companion object {
+        fun parse(value: String): HttpsUrl? {
+            if (value != value.trim() || value.any(Char::isWhitespace)) return null
+            val uri = runCatching { URI(value) }.getOrNull() ?: return null
+            if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank()) {
+                return null
+            }
+            return HttpsUrl(value)
+        }
+    }
+}
+
+enum class ExerciseMediaType(val apiValue: String) {
+    Image("IMAGE"),
+    AnimatedGif("ANIMATED_GIF"),
+    Video("VIDEO");
+
+    companion object {
+        fun fromApiValue(value: String): ExerciseMediaType? = entries.find { it.apiValue == value }
+    }
+}
+
+enum class ExerciseMediaRole(val apiValue: String) {
+    Thumbnail("THUMBNAIL"),
+    Demonstration("DEMONSTRATION"),
+    StartPosition("START_POSITION"),
+    EndPosition("END_POSITION");
+
+    companion object {
+        fun fromApiValue(value: String): ExerciseMediaRole? = entries.find { it.apiValue == value }
+    }
+}
 
 data class ExerciseTemplatePage(
     val content: List<ExerciseTemplateSummary>,

@@ -6,13 +6,19 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseFilters
 import com.mar.gym.feature.exercises.model.ExerciseInstruction
+import com.mar.gym.feature.exercises.model.ExerciseMedia
+import com.mar.gym.feature.exercises.model.ExerciseMediaAttribution
+import com.mar.gym.feature.exercises.model.ExerciseMediaRole
+import com.mar.gym.feature.exercises.model.ExerciseMediaType
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
@@ -20,6 +26,7 @@ import com.mar.gym.feature.exercises.model.ExerciseTemplateSummary
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
+import com.mar.gym.feature.exercises.model.HttpsUrl
 import com.mar.gym.ui.theme.GYmAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -143,19 +150,68 @@ class ExerciseScreensTest {
 
     @Test
     fun detailShowsFieldsAndOrderedInstructions() {
-        composeRule.setContent {
-            GYmAppTheme {
-                ExerciseDetailScreen(
-                    state = ExerciseDetailUiState.Content(detail()),
-                    onBack = {},
-                    onRetry = {},
-                )
-            }
-        }
+        setDetail(detail())
 
         composeRule.onNodeWithText("Press de banca").assertIsDisplayed()
-        composeRule.onNodeWithText("1. Colócate").assertIsDisplayed()
-        composeRule.onNodeWithText("2. Empuja").assertIsDisplayed()
+        composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2. Empuja").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun detailWithoutMediaKeepsInstructionsVisible() {
+        setDetail(detail())
+
+        composeRule.onNodeWithText("Demostración").assertIsDisplayed()
+        composeRule.onNodeWithText("Demostración no disponible").assertIsDisplayed()
+        composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun detailMediaShowsLoadingPlaceholderWithoutInternet() {
+        setDetail(
+            detail(media = listOf(media())),
+            mediaRenderer = { _, _, modifier ->
+                ExerciseMediaLoadingPlaceholder(modifier)
+            },
+        )
+
+        composeRule.onNodeWithText("Demostración").assertIsDisplayed()
+        composeRule.onNodeWithText("Cargando demostración…").assertIsDisplayed()
+    }
+
+    @Test
+    fun visualMediaErrorDoesNotHideInstructions() {
+        setDetail(
+            detail(media = listOf(media())),
+            mediaRenderer = { _, _, modifier ->
+                ExerciseMediaErrorPlaceholder(onRetry = {}, modifier = modifier)
+            },
+        )
+
+        composeRule.onNodeWithText("No se pudo cargar la demostración.").assertIsDisplayed()
+        composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2. Empuja").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun attributionIsVisibleAndOpensValidatedUrl() {
+        var openedUrl: HttpsUrl? = null
+        setDetail(
+            detail(media = listOf(media())),
+            mediaRenderer = { _, _, modifier -> Box(modifier) },
+            onOpenAttribution = {
+                openedUrl = it
+                true
+            },
+        )
+
+        composeRule.onNodeWithText("Contenido visual: proveedor de prueba")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Abrir fuente").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals("https://provider.example.test/", openedUrl?.value)
+        }
     }
 
     private fun setCatalog(
@@ -188,6 +244,24 @@ class ExerciseScreensTest {
         }
     }
 
+    private fun setDetail(
+        detail: ExerciseTemplateDetail,
+        mediaRenderer: ExerciseMediaRenderer = { _, _, modifier -> Box(modifier) },
+        onOpenAttribution: (HttpsUrl) -> Boolean = { false },
+    ) {
+        composeRule.setContent {
+            GYmAppTheme {
+                ExerciseDetailScreen(
+                    state = ExerciseDetailUiState.Content(detail),
+                    onBack = {},
+                    onRetry = {},
+                    mediaRenderer = mediaRenderer,
+                    onOpenAttribution = onOpenAttribution,
+                )
+            }
+        }
+    }
+
     private fun summary(): ExerciseTemplateSummary = ExerciseTemplateSummary(
         id = ID,
         slug = "press-banca",
@@ -198,7 +272,9 @@ class ExerciseScreensTest {
         movementPattern = MovementPattern.HorizontalPush,
     )
 
-    private fun detail(): ExerciseTemplateDetail = ExerciseTemplateDetail(
+    private fun detail(
+        media: List<ExerciseMedia> = emptyList(),
+    ): ExerciseTemplateDetail = ExerciseTemplateDetail(
         id = ID,
         slug = "press-banca",
         name = "Press de banca",
@@ -211,6 +287,19 @@ class ExerciseScreensTest {
         instructions = listOf(
             ExerciseInstruction(1, "Colócate"),
             ExerciseInstruction(2, "Empuja"),
+        ),
+        media = media,
+    )
+
+    private fun media(): ExerciseMedia = ExerciseMedia(
+        type = ExerciseMediaType.AnimatedGif,
+        role = ExerciseMediaRole.Demonstration,
+        url = requireNotNull(HttpsUrl.parse("https://media.example.test/demo.gif")),
+        width = null,
+        height = null,
+        attribution = ExerciseMediaAttribution(
+            text = "Contenido visual: proveedor de prueba",
+            url = HttpsUrl.parse("https://provider.example.test/"),
         ),
     )
 

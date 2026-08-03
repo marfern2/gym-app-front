@@ -77,6 +77,13 @@
     <string name="exercise_detail_instructions">Instrucciones</string>
     <string name="exercise_detail_no_description">No hay descripción disponible.</string>
     <string name="exercise_instruction_step">%1$d. %2$s</string>
+    <string name="exercise_media_title">Demostración</string>
+    <string name="exercise_media_loading">Cargando demostración…</string>
+    <string name="exercise_media_error">No se pudo cargar la demostración.</string>
+    <string name="exercise_media_unavailable">Demostración no disponible</string>
+    <string name="exercise_media_content_description">Demostración de %1$s</string>
+    <string name="exercise_media_open_attribution">Abrir fuente</string>
+    <string name="exercise_media_attribution_open_error">No se pudo abrir el enlace de atribución.</string>
 
     <string name="exercise_picker_title_single">Seleccionar ejercicio</string>
     <string name="exercise_picker_title_multiple">Seleccionar ejercicios</string>

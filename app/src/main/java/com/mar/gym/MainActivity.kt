@@ -23,6 +23,7 @@ import com.mar.gym.feature.exercises.ui.ExerciseDetailRoute
 import com.mar.gym.feature.exercises.ui.ExerciseDetailViewModel
 import com.mar.gym.feature.exercises.ui.ExerciseDetailViewModelFactory
 import com.mar.gym.feature.exercises.ui.ExercisePickerRoute
+import com.mar.gym.feature.exercises.ui.openHttpsUrl
 import com.mar.gym.feature.system.SystemViewModel
 import com.mar.gym.feature.system.SystemViewModelFactory
 import com.mar.gym.ui.theme.GYmAppTheme
@@ -74,6 +75,8 @@ class MainActivity : ComponentActivity() {
                         ExerciseDetailRoute(
                             exerciseTemplateId = id,
                             viewModel = detailViewModel,
+                            imageLoader = AppContainer.exerciseMediaImageLoader,
+                            onOpenAttribution = ::openHttpsUrl,
                             onBack = { destination = DESTINATION_CATALOG },
                         )
                     } ?: ExerciseCatalogRoute(

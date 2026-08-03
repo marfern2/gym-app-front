@@ -1,6 +1,10 @@
 package com.mar.gym
 
 import android.content.Context
+import android.os.Build
+import coil3.ImageLoader
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import com.mar.gym.core.network.AuthorizationInterceptor
 import com.mar.gym.core.network.NetworkClient
 import com.mar.gym.core.network.SessionAuthenticator
@@ -79,5 +83,18 @@ object AppContainer {
 
     val exerciseTemplateRepository: ExerciseTemplateRepository by lazy {
         DefaultExerciseTemplateRepository(exerciseTemplateApi)
+    }
+
+    val exerciseMediaImageLoader: ImageLoader by lazy {
+        check(::applicationContext.isInitialized) { "AppContainer must be initialized first" }
+        ImageLoader.Builder(applicationContext)
+            .components {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(AnimatedImageDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .build()
     }
 }
