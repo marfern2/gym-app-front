@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,6 +34,15 @@ import com.mar.gym.feature.routines.ui.RoutineListViewModel
 import com.mar.gym.feature.routines.ui.RoutineListViewModelFactory
 import com.mar.gym.feature.system.SystemViewModel
 import com.mar.gym.feature.system.SystemViewModelFactory
+import com.mar.gym.feature.workouts.ui.ActiveWorkoutRoute
+import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModel
+import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModelFactory
+import com.mar.gym.feature.workouts.ui.WorkoutDetailRoute
+import com.mar.gym.feature.workouts.ui.WorkoutDetailViewModel
+import com.mar.gym.feature.workouts.ui.WorkoutDetailViewModelFactory
+import com.mar.gym.feature.workouts.ui.WorkoutHistoryRoute
+import com.mar.gym.feature.workouts.ui.WorkoutHistoryViewModel
+import com.mar.gym.feature.workouts.ui.WorkoutHistoryViewModelFactory
 import com.mar.gym.ui.theme.GYmAppTheme
 
 class MainActivity : ComponentActivity() {
@@ -59,12 +69,18 @@ class MainActivity : ComponentActivity() {
                 var detailId by rememberSaveable { mutableStateOf<String?>(null) }
                 var routineId by rememberSaveable { mutableStateOf<String?>(null) }
                 var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+                var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+                var workoutDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+                var pendingRoutineWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
 
                 BackHandler(enabled = destination != DESTINATION_HOME) {
                     destination = when (destination) {
                         DESTINATION_DETAIL, DESTINATION_PICKER -> DESTINATION_CATALOG
                         DESTINATION_ROUTINE_EDITOR -> DESTINATION_ROUTINES
                         DESTINATION_ROUTINE_PICKER -> DESTINATION_ROUTINE_EDITOR
+                        DESTINATION_WORKOUT_PICKER -> DESTINATION_WORKOUT
+                        DESTINATION_WORKOUT_HISTORY -> DESTINATION_WORKOUT
+                        DESTINATION_WORKOUT_DETAIL -> DESTINATION_WORKOUT_HISTORY
                         else -> DESTINATION_HOME
                     }
                 }
@@ -138,6 +154,10 @@ class MainActivity : ComponentActivity() {
                                 routineId = id
                                 destination = DESTINATION_ROUTINE_EDITOR
                             },
+                            onStartRoutine = { id ->
+                                pendingRoutineWorkoutId = id
+                                destination = DESTINATION_WORKOUT
+                            },
                         )
                     }
                     DESTINATION_ROUTINE_PICKER -> {
@@ -157,11 +177,68 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+                    DESTINATION_WORKOUT -> {
+                        val viewModel = remember { activeWorkoutViewModel() }
+                        val routineToStart = pendingRoutineWorkoutId
+                        LaunchedEffect(routineToStart) {
+                            if (routineToStart != null) {
+                                pendingRoutineWorkoutId = null
+                                viewModel.startFromRoutine(routineToStart)
+                            }
+                        }
+                        ActiveWorkoutRoute(
+                            viewModel = viewModel,
+                            onBack = { destination = DESTINATION_HOME },
+                            onOpenHistory = {
+                                workoutHistoryViewModel().refresh()
+                                destination = DESTINATION_WORKOUT_HISTORY
+                            },
+                            onOpenPicker = { ids ->
+                                workoutPickerInitialIds = ids.toList()
+                                destination = DESTINATION_WORKOUT_PICKER
+                            },
+                            onOpenCompletedWorkout = { id ->
+                                workoutDetailId = id
+                                destination = DESTINATION_WORKOUT_DETAIL
+                            },
+                        )
+                    }
+                    DESTINATION_WORKOUT_PICKER -> {
+                        val pickerViewModel = remember(workoutPickerInitialIds) {
+                            workoutExercisePickerViewModel(workoutPickerInitialIds.toSet())
+                        }
+                        ExercisePickerRoute(
+                            viewModel = pickerViewModel,
+                            onResult = { outcome ->
+                                if (outcome is ExercisePickerOutcome.Confirmed) {
+                                    activeWorkoutViewModel().addSelectedExercises(
+                                        outcome.result.selectedExerciseTemplateIds - workoutPickerInitialIds.toSet()
+                                    )
+                                }
+                                destination = DESTINATION_WORKOUT
+                            },
+                        )
+                    }
+                    DESTINATION_WORKOUT_HISTORY -> WorkoutHistoryRoute(
+                        viewModel = remember { workoutHistoryViewModel() },
+                        onBack = { destination = DESTINATION_WORKOUT },
+                        onOpenWorkout = { id ->
+                            workoutDetailId = id
+                            destination = DESTINATION_WORKOUT_DETAIL
+                        },
+                    )
+                    DESTINATION_WORKOUT_DETAIL -> workoutDetailId?.let { id ->
+                        WorkoutDetailRoute(
+                            viewModel = remember(id) { workoutDetailViewModel(id) },
+                            onBack = { destination = DESTINATION_WORKOUT_HISTORY },
+                        )
+                    }
                     else -> AuthRoute(
                         authViewModel = authViewModel,
                         systemViewModel = systemViewModel,
                         onOpenExercises = { destination = DESTINATION_CATALOG },
                         onOpenRoutines = { destination = DESTINATION_ROUTINES },
+                        onOpenWorkouts = { destination = DESTINATION_WORKOUT },
                     )
                 }
             }
@@ -209,6 +286,36 @@ class MainActivity : ComponentActivity() {
         ),
     )["routine-picker-${routineId ?: "new"}-${initialIds.hashCode()}", ExerciseCatalogViewModel::class.java]
 
+    private fun activeWorkoutViewModel(): ActiveWorkoutViewModel = ViewModelProvider(
+        this,
+        ActiveWorkoutViewModelFactory(
+            AppContainer.workoutRepository,
+            AppContainer.exerciseTemplateRepository,
+            AppContainer.applicationClock,
+        ),
+    )[ActiveWorkoutViewModel::class.java]
+
+    private fun workoutExercisePickerViewModel(initialIds: Set<String>): ExerciseCatalogViewModel = ViewModelProvider(
+        this,
+        ExerciseCatalogViewModelFactory(
+            repository = AppContainer.exerciseTemplateRepository,
+            pickerConfig = ExercisePickerConfig(
+                ExerciseSelectionMode.Multiple,
+                initiallySelectedIds = initialIds,
+            ),
+        ),
+    )["workout-picker-${initialIds.hashCode()}", ExerciseCatalogViewModel::class.java]
+
+    private fun workoutHistoryViewModel(): WorkoutHistoryViewModel = ViewModelProvider(
+        this,
+        WorkoutHistoryViewModelFactory(AppContainer.workoutRepository),
+    )[WorkoutHistoryViewModel::class.java]
+
+    private fun workoutDetailViewModel(workoutId: String): WorkoutDetailViewModel = ViewModelProvider(
+        this,
+        WorkoutDetailViewModelFactory(workoutId, AppContainer.workoutRepository),
+    )["workout-detail-$workoutId", WorkoutDetailViewModel::class.java]
+
     private companion object {
         const val DESTINATION_HOME = "home"
         const val DESTINATION_CATALOG = "exercise_catalog"
@@ -217,5 +324,9 @@ class MainActivity : ComponentActivity() {
         const val DESTINATION_ROUTINES = "routines"
         const val DESTINATION_ROUTINE_EDITOR = "routine_editor"
         const val DESTINATION_ROUTINE_PICKER = "routine_exercise_picker"
+        const val DESTINATION_WORKOUT = "workout"
+        const val DESTINATION_WORKOUT_PICKER = "workout_exercise_picker"
+        const val DESTINATION_WORKOUT_HISTORY = "workout_history"
+        const val DESTINATION_WORKOUT_DETAIL = "workout_detail"
     }
 }

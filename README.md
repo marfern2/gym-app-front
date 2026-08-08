@@ -319,6 +319,30 @@ general del toolchain. Existe un único `ImageLoader` reutilizable en `AppContai
 y disco predeterminadas de Coil; no existe descarga propia, precarga, proxy ni almacenamiento
 offline.
 
+## Workouts activos e historial
+
+El cliente implementa el contrato actual de `/api/v1/workouts`: recupera el único workout
+`ACTIVE`, permite iniciarlo vacío o desde una rutina, reemplazar su contenido completo, completarlo,
+descartarlo y consultar el historial paginado y su detalle readonly. Las lecturas usan el cliente
+autenticado con refresh existente. Si el access token ya no es utilizable se renueva antes de
+enviar una mutación; las mutaciones se marcan `no-retry` y nunca se repiten automáticamente.
+
+Cada documento conserva el `ETag` validado contra `version`. `PUT`, `complete` y `discard` envían
+ese valor mediante `If-Match`; una respuesta correcta sustituye el borrador por el documento
+canónico y su nuevo `ETag`. Ante `WORKOUT_VERSION_CONFLICT` el borrador local se conserva y la UI
+advierte antes de recargar la versión del servidor.
+
+Los DTO de red están separados del borrador de UI. Los `target*` son snapshots readonly y se
+representan aparte de `reps`, `weight`, `durationSeconds`, `distanceMeters`, `rpe` y `completed`.
+Un target nunca se copia a un resultado. Los ejercicios y series existentes envían sus UUID; los
+nuevos omiten `id` y adquieren el UUID únicamente desde la respuesta del backend. Los ejercicios
+nuevos envían solo `exerciseTemplateId` y campos editables, nunca snapshots manipulables.
+
+El tiempo visible se deriva de `startedAt` mediante un `Clock` y se refresca localmente cada segundo.
+No se persiste `elapsed`, no existe timer en el repository y el refresco visual no realiza llamadas
+al backend. Volver a la pantalla vuelve a consultar `/workouts/active`, por lo que la duración se
+reconstruye correctamente después de cerrar y reabrir la aplicación.
+
 Las URLs de medio y atribución se validan antes de llegar a Compose y solo aceptan HTTPS. La
 representación textual del tipo validado está redactada. El enlace de atribución se abre mediante
 un intent `ACTION_VIEW` navegable únicamente si existe una Activity compatible; cualquier fallo se

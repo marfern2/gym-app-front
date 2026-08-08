@@ -26,6 +26,10 @@ import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.system.DefaultSystemRepository
 import com.mar.gym.feature.system.SystemApi
 import com.mar.gym.feature.system.SystemRepository
+import com.mar.gym.feature.workouts.data.DefaultWorkoutRepository
+import com.mar.gym.feature.workouts.data.WorkoutApi
+import com.mar.gym.feature.workouts.data.WorkoutRepository
+import com.mar.gym.feature.workouts.data.WorkoutMutationSession
 import java.time.Clock
 
 object AppContainer {
@@ -97,6 +101,23 @@ object AppContainer {
     }
 
     val routineRepository: RoutineRepository by lazy { DefaultRoutineRepository(routineApi) }
+
+    private val workoutApi: WorkoutApi by lazy {
+        NetworkClient.create(
+            service = WorkoutApi::class.java,
+            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
+            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
+        )
+    }
+
+    val workoutRepository: WorkoutRepository by lazy {
+        DefaultWorkoutRepository(
+            workoutApi,
+            WorkoutMutationSession(sessionStore, refreshCoordinator, clock),
+        )
+    }
+
+    val applicationClock: Clock get() = clock
 
     val exerciseMediaImageLoader: ImageLoader by lazy {
         check(::applicationContext.isInitialized) { "AppContainer must be initialized first" }

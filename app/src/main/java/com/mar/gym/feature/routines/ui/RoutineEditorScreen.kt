@@ -54,6 +54,7 @@ fun RoutineEditorRoute(
     onBack: () -> Unit,
     onOpenPicker: (Set<String>) -> Unit,
     onOpenRoutine: (String) -> Unit,
+    onStartRoutine: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel) {
@@ -80,6 +81,7 @@ fun RoutineEditorRoute(
         onArchive = viewModel::archive,
         onRestore = viewModel::restore,
         onDuplicate = viewModel::duplicate,
+        onStartRoutine = { state.data.draft.routineId?.let(onStartRoutine) },
     )
 }
 
@@ -104,6 +106,7 @@ fun RoutineEditorScreen(
     onArchive: () -> Unit,
     onRestore: () -> Unit,
     onDuplicate: () -> Unit,
+    onStartRoutine: () -> Unit = {},
 ) {
     var showExitConfirmation by remember { mutableStateOf(false) }
     var showArchiveConfirmation by remember { mutableStateOf(false) }
@@ -136,6 +139,7 @@ fun RoutineEditorScreen(
                     state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
                     onMoveExercise, onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                     onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
+                    onStartRoutine = onStartRoutine,
                 )
             }
             else -> EditorContent(
@@ -144,6 +148,7 @@ fun RoutineEditorScreen(
                 onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
                 Modifier.padding(padding),
                 onReload,
+                onStartRoutine,
             )
         }
     }
@@ -190,6 +195,7 @@ private fun EditorContent(
     onDuplicate: () -> Unit,
     modifier: Modifier = Modifier,
     onReload: () -> Unit = {},
+    onStartRoutine: () -> Unit = {},
 ) {
     val data = state.data
     val enabled = data.operation == null
@@ -258,6 +264,13 @@ private fun EditorContent(
         ) { Text(stringResource(R.string.routine_save)) }
         if (data.draft.routineId != null) {
             HorizontalDivider()
+            if (!data.draft.archived) {
+                Button(
+                    onClick = onStartRoutine,
+                    enabled = enabled && !data.hasUnsavedChanges,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.routine_start_workout)) }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (data.draft.archived) {
                     OutlinedButton(onClick = onRestore, enabled = enabled) { Text(stringResource(R.string.routine_restore)) }
