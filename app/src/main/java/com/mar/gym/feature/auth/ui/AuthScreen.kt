@@ -44,6 +44,7 @@ fun AuthRoute(
     authViewModel: AuthViewModel,
     systemViewModel: SystemViewModel,
     onOpenExercises: () -> Unit = {},
+    onOpenRoutines: () -> Unit = {},
     modifier: Modifier = Modifier,
     credentialProvider: GoogleCredentialProvider? = null,
 ) {
@@ -71,6 +72,7 @@ fun AuthRoute(
         onDeleteLocalSession = authViewModel::deleteLocalSession,
         onCheckConnection = systemViewModel::checkConnection,
         onOpenExercises = onOpenExercises,
+        onOpenRoutines = onOpenRoutines,
         modifier = modifier,
     )
 }
@@ -85,6 +87,7 @@ fun AuthScreen(
     onDeleteLocalSession: () -> Unit,
     onCheckConnection: () -> Unit,
     onOpenExercises: () -> Unit = {},
+    onOpenRoutines: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -139,6 +142,7 @@ fun AuthScreen(
                     state = authState,
                     onLogout = onLogout,
                     onOpenExercises = onOpenExercises,
+                    onOpenRoutines = onOpenRoutines,
                 )
 
                 AuthUiState.LoggingOut -> LoadingContent(
@@ -191,6 +195,7 @@ private fun AuthenticatedContent(
     state: AuthUiState.Authenticated,
     onLogout: () -> Unit,
     onOpenExercises: () -> Unit,
+    onOpenRoutines: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.auth_signed_in),
@@ -216,6 +221,15 @@ private fun AuthenticatedContent(
         textAlign = TextAlign.Center,
     )
     Spacer(Modifier.height(20.dp))
+    Button(
+        onClick = onOpenRoutines,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
+    ) {
+        Text(stringResource(R.string.auth_open_routines))
+    }
+    Spacer(Modifier.height(8.dp))
     Button(
         onClick = onOpenExercises,
         modifier = Modifier

@@ -1,0 +1,214 @@
+package com.mar.gym.feature.routines.ui
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.mar.gym.feature.exercises.model.Equipment
+import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.feature.routines.model.RoutineDraft
+import com.mar.gym.feature.routines.model.RoutineExerciseDraft
+import com.mar.gym.feature.routines.model.RoutineSetDraft
+import com.mar.gym.feature.routines.model.RoutineSort
+import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.ui.theme.GYmAppTheme
+import java.time.Instant
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+class RoutineScreensTest {
+    @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun listShowsContentAndExplicitEmptyStates() {
+        var state by mutableStateOf<RoutineListUiState>(
+            RoutineListUiState.Content(RoutineListData(items = listOf(summary())))
+        )
+        setList(state, stateProvider = { state })
+        composeRule.onNodeWithText("Rutina de fuerza").assertIsDisplayed()
+        composeRule.onNodeWithText("3 ejercicios").assertIsDisplayed()
+
+        composeRule.runOnIdle { state = RoutineListUiState.Empty(RoutineListData()) }
+        composeRule.onNodeWithText("Aún no tienes rutinas").assertIsDisplayed()
+
+        composeRule.runOnIdle { state = RoutineListUiState.Empty(RoutineListData(archived = true)) }
+        composeRule.onNodeWithText("No hay rutinas archivadas").assertIsDisplayed()
+    }
+
+    @Test
+    fun archiveRequiresConfirmationAndArchivedCardCanRestore() {
+        var archivedId: String? = null
+        var state by mutableStateOf<RoutineListUiState>(
+            RoutineListUiState.Content(RoutineListData(items = listOf(summary())))
+        )
+        var restoredId: String? = null
+        setList(
+            state,
+            onArchive = { archivedId = it },
+            onRestore = { restoredId = it },
+            stateProvider = { state },
+        )
+        composeRule.onNodeWithText("Archivar").performClick()
+        composeRule.onNodeWithText("La rutina dejará de aparecer entre las activas. Podrás restaurarla más tarde.").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Archivar")[1].performClick()
+        composeRule.runOnIdle { assertEquals(ID, archivedId) }
+
+        composeRule.runOnIdle {
+            state = RoutineListUiState.Content(
+                RoutineListData(items = listOf(summary(archived = true)), archived = true)
+            )
+        }
+        composeRule.onNodeWithText("Restaurar").performClick()
+        composeRule.runOnIdle { assertEquals(ID, restoredId) }
+    }
+
+    @Test
+    fun emptyEditorIntegratesPickerValidatesAndSaves() {
+        var pickerOpened = false
+        var saved = false
+        var state by mutableStateOf<RoutineEditorUiState>(RoutineEditorUiState.Editing(RoutineEditorData()))
+        setEditor(
+            state,
+            onOpenPicker = { pickerOpened = true },
+            onSave = { saved = true },
+            stateProvider = { state },
+        )
+        composeRule.onNodeWithText("La rutina no contiene ejercicios.").assertIsDisplayed()
+        composeRule.onNodeWithTag("add_exercises").performClick()
+        composeRule.onNodeWithTag("routine_name").performTextInput("Rutina")
+        composeRule.onNodeWithTag("save_routine").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(true, pickerOpened)
+            assertEquals(true, saved)
+        }
+
+        composeRule.runOnIdle {
+            state = RoutineEditorUiState.ValidationError(RoutineEditorData(
+                fieldErrors = mapOf("name" to "routine_error_name_length")
+            ))
+        }
+        composeRule.onNodeWithText("El nombre debe tener entre 2 y 100 caracteres.").assertIsDisplayed()
+    }
+
+    @Test
+    fun fieldsFollowExerciseTypeAndSetActionsAreAccessible() {
+        val durationExercise = exercise(ExerciseType.Duration)
+        var addedTo: String? = null
+        var removed: Pair<String, String>? = null
+        setEditor(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(name = "Temporizada", exercises = listOf(durationExercise))
+            )),
+            onAddSet = { addedTo = it },
+            onRemoveSet = { exerciseId, setId -> removed = exerciseId to setId },
+        )
+        composeRule.onNodeWithText("Duración").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Peso").assertDoesNotExist()
+        composeRule.onNodeWithText("Repeticiones mínimas").assertDoesNotExist()
+        composeRule.onNodeWithText("Añadir serie").performScrollTo().performClick()
+        composeRule.onNodeWithText("Eliminar serie").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals("exercise-local", addedTo)
+            assertEquals("exercise-local" to "set-local", removed)
+        }
+    }
+
+    @Test
+    fun conflictAndUnsavedExitWarningAreVisibleWithoutOverwriting() {
+        var reloads = 0
+        var exited = 0
+        val data = RoutineEditorData(
+            draft = RoutineDraft(name = "Cambio local"),
+            hasUnsavedChanges = true,
+        )
+        setEditor(
+            RoutineEditorUiState.Conflict(data),
+            onReload = { reloads++ },
+            onBack = { exited++ },
+        )
+        composeRule.onNodeWithText("La rutina ha cambiado").assertIsDisplayed()
+        composeRule.onNodeWithText("Si recargas, perderás los cambios locales sin guardar.").assertIsDisplayed()
+        composeRule.onNodeWithText("Recargar versión del servidor").performClick()
+        composeRule.onNodeWithText("Volver").performClick()
+        composeRule.onNodeWithText("Tienes cambios sin guardar. Si sales, se perderán.").assertIsDisplayed()
+        composeRule.onNodeWithText("Descartar y salir").performClick()
+        composeRule.runOnIdle { assertEquals(1, reloads); assertEquals(1, exited) }
+    }
+
+    private fun setList(
+        state: RoutineListUiState,
+        onArchive: (String) -> Unit = {},
+        onRestore: (String) -> Unit = {},
+        stateProvider: () -> RoutineListUiState = { state },
+    ) {
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineListScreen(
+                    stateProvider(), {}, {}, {}, {}, {}, {}, {}, {}, onArchive, onRestore, {},
+                )
+            }
+        }
+    }
+
+    private fun setEditor(
+        state: RoutineEditorUiState,
+        onBack: () -> Unit = {},
+        onOpenPicker: () -> Unit = {},
+        onSave: () -> Unit = {},
+        onAddSet: (String) -> Unit = {},
+        onRemoveSet: (String, String) -> Unit = { _, _ -> },
+        onReload: () -> Unit = {},
+        stateProvider: () -> RoutineEditorUiState = { state },
+    ) {
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineEditorScreen(
+                    state = stateProvider(),
+                    onBack = onBack,
+                    onOpenPicker = onOpenPicker,
+                    onNameChanged = {},
+                    onDescriptionChanged = {},
+                    onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> },
+                    onUpdateExercise = { _, _ -> },
+                    onAddSet = onAddSet,
+                    onRemoveSet = onRemoveSet,
+                    onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, _ -> },
+                    onSave = onSave,
+                    onReload = onReload,
+                    onRetry = {},
+                    onArchive = {},
+                    onRestore = {},
+                    onDuplicate = {},
+                )
+            }
+        }
+    }
+
+    private fun summary(archived: Boolean = false) = RoutineSummary(
+        ID, "Rutina de fuerza", null, 3, archived, Instant.EPOCH, Instant.EPOCH, 1,
+    )
+
+    private fun exercise(type: ExerciseType) = RoutineExerciseDraft(
+        localId = "exercise-local",
+        exerciseTemplateId = TEMPLATE_ID,
+        exerciseName = "Plancha",
+        exerciseType = type,
+        equipment = Equipment.Bodyweight,
+        sets = listOf(RoutineSetDraft("set-local", targetDurationSeconds = "30")),
+    )
+
+    private companion object {
+        const val ID = "a1111111-1111-4111-8111-111111111111"
+        const val TEMPLATE_ID = "a2222222-2222-4222-8222-222222222222"
+    }
+}

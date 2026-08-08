@@ -342,3 +342,75 @@ detalle.
 7. Reactiva Internet, vuelve a abrir el detalle y comprueba la carga de nuevo.
 8. Repite en un emulador API 26 o 27 para validar `GifDecoder`, si está disponible.
 9. Repite en API 28 o superior para validar `AnimatedImageDecoder`.
+
+## Cliente de rutinas personales
+
+La pantalla autenticada ofrece **Mis rutinas** y una navegación local temporal entre el listado,
+el editor y el selector de ejercicios. No se ha añadido bottom navigation ni se serializan objetos
+en rutas: el detalle recibe únicamente el UUID de la rutina.
+
+El contrato se confirmó contra `gym-api` y sus pruebas HTTP:
+
+```text
+POST /api/v1/routines
+GET  /api/v1/routines?archived=false&query=&page=0&size=20&sort=updatedAt,desc
+GET  /api/v1/routines/{routineId}
+PUT  /api/v1/routines/{routineId}                     If-Match: "<version>"
+POST /api/v1/routines/{routineId}/archive             If-Match: "<version>"
+POST /api/v1/routines/{routineId}/restore             If-Match: "<version>"
+POST /api/v1/routines/{routineId}/duplicate           If-Match: "<version>"
+```
+
+Crear devuelve `201`, `Location`, `ETag` y el detalle. Detalle, reemplazo, archivado y restauración
+devuelven `200`, `ETag` y el detalle; duplicar devuelve `201`, `Location`, `ETag` y el detalle de la
+copia. `If-Match` admite en el backend una versión numérica cruda o entre comillas. El cliente
+conserva y reenvía el valor de cabecera entre comillas, comprueba que coincide con `version` y
+rechaza como respuesta incompatible un ETag ausente, débil, mal formado o discordante.
+
+El listado pagina desde cero, usa 20 elementos por página (máximo backend 100), excluye archivadas
+por defecto y permite ordenar solo por `name`, `createdAt` o `updatedAt`, en ascendente o
+descendente. La búsqueda se normaliza y aplica un debounce de 400 ms. El DTO resumido contiene
+`id`, nombre, descripción, conteo de ejercicios, estado, timestamps y versión; el detalle añade
+ejercicios y series ordenados con el nombre, `ExerciseType` y equipo actuales del catálogo.
+
+Los cuerpos de creación y `PUT` contienen nombre, descripción y ejercicios con posiciones desde
+1. Cada ejercicio contiene `exerciseTemplateId`, posición, notas, `restSeconds` y series; cada
+serie contiene posición, `SetType` y objetivos opcionales. El cliente nunca envía `ExerciseType`.
+Los tipos de serie son `NORMAL`, `WARMUP`, `DROP` y `FAILURE`. Peso/asistencia/lastre se expresan en
+kilogramos, distancia en metros, duración y descanso en segundos, y RPE entre 1.0 y 10.0.
+
+El editor conserva números como texto hasta validar. Aplica los límites del backend: nombre 2–100,
+descripción 2000, 30 ejercicios, una plantilla una vez, notas 1000, descanso 0–3600, 20 series por
+ejercicio y 200 totales. Repeticiones admiten 1–1000; peso 0–10000 con 3 decimales; distancia
+0.001–1000000 con 3; duración 1–86400; RPE 1.0–10.0 con 1. Solo muestra y acepta las métricas
+compatibles con cada `ExerciseType`.
+
+Los UUID de `RoutineExercise` y `RoutineSet` recibidos no se incorporan al borrador. Cada carga
+genera IDs locales temporales que Compose usa para edición, foco, orden y asociación de errores.
+Al guardar se recalculan todas las posiciones y se construye el cuerpo completo esperado por el
+backend. El UUID raíz de `Routine` sí se conserva.
+
+Un `409 ROUTINE_VERSION_CONFLICT` no se reintenta ni sobrescribe. El editor conserva el borrador,
+muestra el conflicto y ofrece recargar; si hay cambios locales avisa de que se perderán. Las
+operaciones mutantes tampoco se repiten automáticamente. Los errores siguen usando Problem Details
+RFC 9457 y se conservan las rutas anidadas de `fieldErrors`.
+
+### Prueba manual de rutinas
+
+1. Inicia sesión, abre **Mis rutinas**, crea una rutina vacía y comprueba el estado guardado.
+2. Crea otra rutina y añade tres ejercicios mediante **Añadir ejercicios**.
+3. Añade series a ejercicios de tipos distintos y confirma que solo aparecen sus objetivos válidos.
+4. Guarda, vuelve al listado, reabre la rutina y comprueba nombre, notas, descanso, orden y series.
+5. Edita nombre y descripción, guarda y vuelve a abrir.
+6. Reordena ejercicios y series con **Mover arriba/abajo**, guarda y reabre.
+7. Confirma el diálogo de archivado, abre **Archivadas**, restaura y verifica la lista activa.
+8. Duplica desde una card o el editor y comprueba que se abre una rutina independiente y activa.
+9. Cierra completamente la aplicación, vuelve a abrirla y comprueba la persistencia remota.
+10. Abre la misma rutina en dos clientes; guarda en uno y luego en el otro con su ETag antiguo.
+    Comprueba que el segundo conserva sus cambios, muestra conflicto y solo recarga al solicitarlo.
+11. Detén el backend y comprueba error y reintento tanto en listado como en detalle.
+12. Usa un access token expirado y comprueba que el refresh compartido existente completa una sola
+    repetición protegida, sin registrar credenciales ni añadir un refresh específico de rutinas.
+
+Este incremento no implementa entrenamientos, inicio de rutina, contador, historial, programas,
+superseries, caché local ni navegación inferior definitiva.

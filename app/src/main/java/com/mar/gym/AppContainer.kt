@@ -20,6 +20,9 @@ import com.mar.gym.feature.auth.data.SessionStore
 import com.mar.gym.feature.exercises.data.DefaultExerciseTemplateRepository
 import com.mar.gym.feature.exercises.data.ExerciseTemplateApi
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.routines.data.DefaultRoutineRepository
+import com.mar.gym.feature.routines.data.RoutineApi
+import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.system.DefaultSystemRepository
 import com.mar.gym.feature.system.SystemApi
 import com.mar.gym.feature.system.SystemRepository
@@ -84,6 +87,16 @@ object AppContainer {
     val exerciseTemplateRepository: ExerciseTemplateRepository by lazy {
         DefaultExerciseTemplateRepository(exerciseTemplateApi)
     }
+
+    private val routineApi: RoutineApi by lazy {
+        NetworkClient.create(
+            service = RoutineApi::class.java,
+            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
+            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
+        )
+    }
+
+    val routineRepository: RoutineRepository by lazy { DefaultRoutineRepository(routineApi) }
 
     val exerciseMediaImageLoader: ImageLoader by lazy {
         check(::applicationContext.isInitialized) { "AppContainer must be initialized first" }
