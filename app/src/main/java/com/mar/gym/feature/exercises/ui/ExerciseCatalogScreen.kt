@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -53,9 +55,14 @@ import com.mar.gym.feature.exercises.model.ExercisePickerOutcome
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateSummary
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
+import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.EmptyState
+import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 
 @Composable
@@ -64,6 +71,7 @@ fun ExerciseCatalogRoute(
     onBack: () -> Unit,
     onOpenDetail: (String) -> Unit,
     onOpenPicker: () -> Unit,
+    onCreateCustom: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,6 +81,7 @@ fun ExerciseCatalogRoute(
         onBack = onBack,
         onOpenDetail = onOpenDetail,
         onOpenPicker = onOpenPicker,
+        onCreateCustom = onCreateCustom,
         onSearchTextChanged = viewModel::onSearchTextChanged,
         onApplyFilters = viewModel::applyFilters,
         onChangeSort = viewModel::changeSort,
@@ -99,6 +108,7 @@ fun ExercisePickerRoute(
         onBack = { onResult(viewModel.cancelSelection()) },
         onOpenDetail = {},
         onOpenPicker = {},
+        onCreateCustom = {},
         onSearchTextChanged = viewModel::onSearchTextChanged,
         onApplyFilters = viewModel::applyFilters,
         onChangeSort = viewModel::changeSort,
@@ -119,6 +129,7 @@ fun ExerciseCatalogScreen(
     onBack: () -> Unit,
     onOpenDetail: (String) -> Unit,
     onOpenPicker: () -> Unit,
+    onCreateCustom: () -> Unit,
     onSearchTextChanged: (String) -> Unit,
     onApplyFilters: (ExerciseFilters) -> Unit,
     onChangeSort: (ExerciseSort) -> Unit,
@@ -137,6 +148,7 @@ fun ExerciseCatalogScreen(
     if (filtersVisible) {
         ExerciseFiltersDialog(
             appliedFilters = data.filters,
+            allowArchived = !pickerMode,
             onDismiss = { filtersVisible = false },
             onApply = {
                 filtersVisible = false
@@ -145,42 +157,31 @@ fun ExerciseCatalogScreen(
         )
     }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    val title = if (pickerMode && data.selectionMode == ExerciseSelectionMode.Single) {
+        stringResource(R.string.exercise_picker_title_single)
+    } else if (pickerMode) {
+        stringResource(R.string.exercise_picker_title_multiple)
+    } else {
+        stringResource(R.string.exercise_catalog_title)
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = { AppTopBar(title = title, onBack = onBack) },
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.exercise_back))
-                }
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (pickerMode && data.selectionMode == ExerciseSelectionMode.Single) {
-                            stringResource(R.string.exercise_picker_title_single)
-                        } else if (pickerMode) {
-                            stringResource(R.string.exercise_picker_title_multiple)
-                        } else {
-                            stringResource(R.string.exercise_catalog_title)
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (!pickerMode) {
-                        Text(
-                            text = stringResource(R.string.exercise_catalog_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
+            if (!pickerMode) {
+                Text(
+                    text = stringResource(R.string.exercise_catalog_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                )
             }
 
             OutlinedTextField(
@@ -275,13 +276,24 @@ fun ExerciseCatalogScreen(
                     }
                 }
             } else {
-                TextButton(
-                    onClick = onOpenPicker,
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .heightIn(min = 48.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    Text(stringResource(R.string.exercise_open_picker))
+                    TextButton(
+                        onClick = onCreateCustom,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("exercise-create-custom"),
+                    ) {
+                        Text(stringResource(R.string.exercise_create_custom))
+                    }
+                    TextButton(
+                        onClick = onOpenPicker,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.exercise_open_picker))
+                    }
                 }
             }
 
@@ -314,32 +326,20 @@ private fun CatalogBody(
     if ((state is ExerciseCatalogUiState.Initial || state is ExerciseCatalogUiState.Loading) &&
         data.items.isEmpty()
     ) {
-        CenteredMessage(modifier) {
-            CircularProgressIndicator()
-            Spacer(Modifier.height(12.dp))
-            Text(stringResource(R.string.exercise_loading))
-        }
+        LoadingState(modifier, message = stringResource(R.string.exercise_loading))
         return
     }
     if (state is ExerciseCatalogUiState.Empty) {
-        CenteredMessage(modifier) {
-            Text(
-                text = stringResource(R.string.exercise_empty_title),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(stringResource(R.string.exercise_empty_message))
-        }
+        EmptyState(
+            modifier = modifier,
+            icon = Icons.AutoMirrored.Filled.List,
+            title = stringResource(R.string.exercise_empty_title),
+            message = stringResource(R.string.exercise_empty_message),
+        )
         return
     }
     if (state is ExerciseCatalogUiState.Error && data.items.isEmpty()) {
-        CenteredMessage(modifier) {
-            ErrorMessage(state.error)
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text(stringResource(R.string.retry))
-            }
-        }
+        CenteredError(modifier, state.error, onRetry)
         return
     }
 
@@ -392,15 +392,13 @@ private fun CatalogBody(
                         }
                     }
                     else -> if (data.hasNextPage) {
-                        Button(
+                        PrimaryButton(
+                            text = stringResource(R.string.exercise_load_more),
                             onClick = onLoadMore,
                             modifier = Modifier
-                                .fillMaxWidth()
                                 .padding(vertical = 12.dp)
-                                .heightIn(min = 48.dp),
-                        ) {
-                            Text(stringResource(R.string.exercise_load_more))
-                        }
+                                .fillMaxWidth(),
+                        )
                     }
                 }
             }
@@ -420,6 +418,7 @@ private fun ExerciseSummaryCard(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 72.dp)
+            .testTag("exercise-item-${exercise.id}")
             .clickable(onClick = onClick),
     ) {
         Row(
@@ -455,6 +454,21 @@ private fun ExerciseSummaryCard(
                     text = stringResource(exercise.exerciseType.labelResource()),
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Text(
+                    text = buildString {
+                        append(stringResource(exercise.source.labelResource()))
+                        if (exercise.archived) {
+                            append(" · ")
+                            append(stringResource(R.string.exercise_archived_badge))
+                        }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (exercise.archived) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
             }
         }
     }
@@ -481,9 +495,10 @@ private fun ErrorMessage(error: ExerciseUiError) {
 }
 
 @Composable
-private fun CenteredMessage(
+private fun CenteredError(
     modifier: Modifier,
-    content: @Composable ColumnScope.() -> Unit,
+    error: ExerciseUiError,
+    onRetry: () -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -491,13 +506,20 @@ private fun CenteredMessage(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        content = content,
-    )
+    ) {
+        ErrorMessage(error)
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(
+            text = stringResource(R.string.retry),
+            onClick = onRetry,
+        )
+    }
 }
 
 @Composable
 private fun ExerciseFiltersDialog(
     appliedFilters: ExerciseFilters,
+    allowArchived: Boolean,
     onDismiss: () -> Unit,
     onApply: (ExerciseFilters) -> Unit,
 ) {
@@ -511,12 +533,45 @@ private fun ExerciseFiltersDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterDropdown(
+                    title = stringResource(R.string.exercise_filter_source),
+                    value = draft.source,
+                    values = ExerciseTemplateSource.entries,
+                    anyLabel = stringResource(R.string.exercise_source_all),
+                    label = { stringResource(it.labelResource()) },
+                    onSelected = {
+                        draft = draft.copy(
+                            source = it,
+                            archived = draft.archived && it != ExerciseTemplateSource.Global,
+                        )
+                    },
+                )
+                FilterDropdown(
                     title = stringResource(R.string.exercise_filter_primary_muscle),
                     value = draft.primaryMuscleGroup,
                     values = MuscleGroup.entries,
                     label = { stringResource(it.labelResource()) },
                     onSelected = { draft = draft.copy(primaryMuscleGroup = it) },
                 )
+                if (allowArchived) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable(
+                                enabled = draft.source != ExerciseTemplateSource.Global,
+                                onClick = { draft = draft.copy(archived = !draft.archived) },
+                            )
+                            .testTag("exercise-filter-archived"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = draft.archived,
+                            enabled = draft.source != ExerciseTemplateSource.Global,
+                            onCheckedChange = { draft = draft.copy(archived = it) },
+                        )
+                        Text(stringResource(R.string.exercise_filter_archived))
+                    }
+                }
                 FilterDropdown(
                     title = stringResource(R.string.exercise_filter_equipment),
                     value = draft.equipment,
@@ -562,10 +617,12 @@ private fun <T> FilterDropdown(
     title: String,
     value: T?,
     values: List<T>,
+    anyLabel: String? = null,
     label: @Composable (T) -> String,
     onSelected: (T?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val emptyLabel = anyLabel ?: stringResource(R.string.exercise_filter_any)
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(text = title, style = MaterialTheme.typography.labelLarge)
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -575,14 +632,14 @@ private fun <T> FilterDropdown(
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
             ) {
-                Text(value?.let { label(it) } ?: stringResource(R.string.exercise_filter_any))
+                Text(value?.let { label(it) } ?: emptyLabel)
             }
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
             ) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.exercise_filter_any)) },
+                    text = { Text(emptyLabel) },
                     onClick = {
                         expanded = false
                         onSelected(null)
@@ -624,6 +681,7 @@ private fun ExerciseCatalogPreview() {
             onBack = {},
             onOpenDetail = {},
             onOpenPicker = {},
+            onCreateCustom = {},
             onSearchTextChanged = {},
             onApplyFilters = {},
             onChangeSort = {},

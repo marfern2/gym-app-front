@@ -2,6 +2,7 @@ package com.mar.gym.feature.routines.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -13,11 +14,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.feature.routines.model.RoutineDetail
+import com.mar.gym.feature.routines.model.RoutineDocument
 import com.mar.gym.feature.routines.model.RoutineDraft
+import com.mar.gym.feature.routines.model.RoutineEtag
+import com.mar.gym.feature.routines.model.RoutineExercise
 import com.mar.gym.feature.routines.model.RoutineExerciseDraft
+import com.mar.gym.feature.routines.model.RoutineSet
 import com.mar.gym.feature.routines.model.RoutineSetDraft
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -56,9 +63,10 @@ class RoutineScreensTest {
             onRestore = { restoredId = it },
             stateProvider = { state },
         )
-        composeRule.onNodeWithText("Archivar").performClick()
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Archivar rutina").performClick()
         composeRule.onNodeWithText("La rutina dejará de aparecer entre las activas. Podrás restaurarla más tarde.").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Archivar")[1].performClick()
+        composeRule.onNodeWithText("Archivar").performClick()
         composeRule.runOnIdle { assertEquals(ID, archivedId) }
 
         composeRule.runOnIdle {
@@ -66,7 +74,8 @@ class RoutineScreensTest {
                 RoutineListData(items = listOf(summary(archived = true)), archived = true)
             )
         }
-        composeRule.onNodeWithText("Restaurar").performClick()
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Restaurar rutina").performClick()
         composeRule.runOnIdle { assertEquals(ID, restoredId) }
     }
 
@@ -137,10 +146,30 @@ class RoutineScreensTest {
         composeRule.onNodeWithText("La rutina ha cambiado").assertIsDisplayed()
         composeRule.onNodeWithText("Si recargas, perderás los cambios locales sin guardar.").assertIsDisplayed()
         composeRule.onNodeWithText("Recargar versión del servidor").performClick()
-        composeRule.onNodeWithText("Volver").performClick()
+        composeRule.onNodeWithContentDescription("Volver").performClick()
         composeRule.onNodeWithText("Tienes cambios sin guardar. Si sales, se perderán.").assertIsDisplayed()
         composeRule.onNodeWithText("Descartar y salir").performClick()
         composeRule.runOnIdle { assertEquals(1, reloads); assertEquals(1, exited) }
+    }
+
+    @Test
+    fun viewerShowsDetailsAndStartAction() {
+        var started = false
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineViewerScreen(
+                    state = RoutineViewerUiState.Content(RoutineDocument(detail(), etag())),
+                    onBack = {}, onEdit = {}, onStartRoutine = { started = true },
+                    onRetry = {}, onArchive = {}, onRestore = {}, onDuplicate = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag("routine-viewer-name").assertIsDisplayed()
+        composeRule.onNodeWithText("Descripción de la rutina").assertIsDisplayed()
+        composeRule.onNodeWithText("1. Press de banca").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie 1 · 80 kg · 8–10 reps").assertIsDisplayed()
+        composeRule.onNodeWithText("Empezar rutina").performClick()
+        composeRule.runOnIdle { assertEquals(true, started) }
     }
 
     private fun setList(
@@ -152,7 +181,20 @@ class RoutineScreensTest {
         composeRule.setContent {
             GYmAppTheme {
                 RoutineListScreen(
-                    stateProvider(), {}, {}, {}, {}, {}, {}, {}, {}, onArchive, onRestore, {},
+                    state = stateProvider(),
+                    onBack = {},
+                    onCreate = {},
+                    onOpenRoutine = {},
+                    onEditRoutine = {},
+                    onStartRoutine = {},
+                    onSearchChanged = {},
+                    onArchivedChanged = {},
+                    onSortChanged = {},
+                    onRetry = {},
+                    onLoadMore = {},
+                    onArchive = onArchive,
+                    onRestore = onRestore,
+                    onDuplicate = {},
                 )
             }
         }
@@ -197,6 +239,19 @@ class RoutineScreensTest {
     private fun summary(archived: Boolean = false) = RoutineSummary(
         ID, "Rutina de fuerza", null, 3, archived, Instant.EPOCH, Instant.EPOCH, 1,
     )
+
+    private fun detail() = RoutineDetail(
+        ID, "Rutina de fuerza", "Descripción de la rutina", false, 1, Instant.EPOCH, Instant.EPOCH,
+        listOf(RoutineExercise(
+            TEMPLATE_ID, "Press de banca", ExerciseType.WeightReps, Equipment.Barbell, 1,
+            notes = null, restSeconds = 90,
+            sets = listOf(RoutineSet(
+                1, SetType.Normal, "8", "10", "80", "", "", "",
+            )),
+        )),
+    )
+
+    private fun etag() = checkNotNull(RoutineEtag.fromVersion(1))
 
     private fun exercise(type: ExerciseType) = RoutineExerciseDraft(
         localId = "exercise-local",

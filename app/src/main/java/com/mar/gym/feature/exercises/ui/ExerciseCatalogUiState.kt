@@ -47,12 +47,19 @@ sealed interface ExerciseCatalogUiState {
 data class ExerciseUiError(
     val kind: ExerciseUiErrorKind,
     val correlationId: String?,
+    val fieldErrors: Map<String, String> = emptyMap(),
 )
 
 enum class ExerciseUiErrorKind {
     Network,
     Timeout,
     Unauthorized,
+    NotFound,
+    Forbidden,
+    Validation,
+    Conflict,
+    NameConflict,
+    Archived,
     InvalidResponse,
     Server,
     Unknown,

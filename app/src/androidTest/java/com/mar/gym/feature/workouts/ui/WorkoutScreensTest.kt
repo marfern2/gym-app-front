@@ -2,7 +2,9 @@ package com.mar.gym.feature.workouts.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.workouts.model.WorkoutDraft
@@ -47,8 +49,10 @@ class WorkoutScreensTest {
         }
 
         composeRule.onNodeWithText("80 kg · 8–10 reps").assertIsDisplayed()
-        composeRule.onNodeWithText("Repeticiones realizadas").assertIsDisplayed()
-        composeRule.onNodeWithText("Peso realizado").assertIsDisplayed()
+        composeRule.onNodeWithText("KG").assertIsDisplayed()
+        composeRule.onNodeWithText("REPS").assertIsDisplayed()
+        composeRule.onNodeWithTag("targets_set").assertIsDisplayed()
+        composeRule.onNodeWithTag("complete_workout").performScrollTo().assertIsDisplayed()
     }
 
     @Test

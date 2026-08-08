@@ -8,6 +8,10 @@ import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseFilters
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
+import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
+import com.mar.gym.feature.exercises.model.ExerciseTemplateEtag
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
+import com.mar.gym.feature.exercises.model.CustomExerciseDraft
 import com.mar.gym.feature.exercises.model.ExerciseTemplatePage
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
@@ -147,6 +151,38 @@ class WorkoutViewModelTest {
     }
 
     @Test
+    fun `workout accepts active custom and rejects archived custom`() = runTest {
+        val active = viewModel(
+            FakeWorkoutRepository(),
+            FakeExerciseRepository(
+                template = FakeExerciseRepository.exerciseDetail(
+                    ExerciseTemplateSource.Custom,
+                    archived = false,
+                )
+            ),
+        )
+        advanceUntilIdle()
+        active.addSelectedExercises(setOf(TEMPLATE_ID))
+        advanceUntilIdle()
+        assertEquals(1, active.uiState.value.data.draft?.exercises?.size)
+
+        val archived = viewModel(
+            FakeWorkoutRepository(),
+            FakeExerciseRepository(
+                template = FakeExerciseRepository.exerciseDetail(
+                    ExerciseTemplateSource.Custom,
+                    archived = true,
+                )
+            ),
+        )
+        advanceUntilIdle()
+        archived.addSelectedExercises(setOf(TEMPLATE_ID))
+        advanceUntilIdle()
+        assertTrue(archived.uiState.value is ActiveWorkoutUiState.Error)
+        assertTrue(archived.uiState.value.data.draft?.exercises.orEmpty().isEmpty())
+    }
+
+    @Test
     fun `history exposes empty paging loading more and error loading more`() = runTest {
         val repository = FakeWorkoutRepository().apply {
             historyResults += WorkoutRepositoryResult.Success(historyPage(emptyList(), 0, last = true))
@@ -209,17 +245,36 @@ class WorkoutViewModelTest {
         override suspend fun getWorkoutHistory(page: Int, size: Int) = historyResults.removeFirst()
     }
 
-    private class FakeExerciseRepository : ExerciseTemplateRepository {
+    private class FakeExerciseRepository(
+        private val template: ExerciseTemplateDetail = exerciseDetail(),
+    ) : ExerciseTemplateRepository {
         override suspend fun getExerciseTemplates(
             query: String?, filters: ExerciseFilters, page: Int, size: Int, sort: ExerciseSort,
         ): ExerciseRepositoryResult<ExerciseTemplatePage> = ExerciseRepositoryResult.Failure(NetworkFailure.Network())
 
         override suspend fun getExerciseTemplate(exerciseTemplateId: String) = ExerciseRepositoryResult.Success(
-            ExerciseTemplateDetail(
-                exerciseTemplateId, "press", "Press", null, MuscleGroup.Chest, emptyList(),
-                Equipment.Barbell, ExerciseType.WeightReps, MovementPattern.HorizontalPush, emptyList(),
+            ExerciseTemplateDocument(
+                template.copy(id = exerciseTemplateId),
+                ExerciseTemplateEtag.fromVersion(template.version)!!,
             ),
         )
+        override suspend fun createCustomExercise(draft: CustomExerciseDraft) = networkExerciseFailure()
+        override suspend fun replaceCustomExercise(draft: CustomExerciseDraft, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        override suspend fun archiveCustomExercise(exerciseTemplateId: String, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        override suspend fun restoreCustomExercise(exerciseTemplateId: String, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        private fun networkExerciseFailure(): ExerciseRepositoryResult<ExerciseTemplateDocument> =
+            ExerciseRepositoryResult.Failure(NetworkFailure.Network())
+
+        companion object {
+            fun exerciseDetail(
+                source: ExerciseTemplateSource = ExerciseTemplateSource.Global,
+                archived: Boolean = false,
+            ) = ExerciseTemplateDetail(
+                TEMPLATE_ID, "press", "Press", null, MuscleGroup.Chest, emptyList(),
+                Equipment.Barbell, ExerciseType.WeightReps, MovementPattern.HorizontalPush,
+                emptyList(), source = source, archived = archived,
+            )
+        }
     }
 
     private companion object {

@@ -22,6 +22,9 @@ data class ExerciseTemplateSummaryDto(
     val equipment: String,
     val exerciseType: String,
     val movementPattern: String,
+    val source: String,
+    val archived: Boolean,
+    val version: Long,
 )
 
 @Serializable
@@ -37,6 +40,20 @@ data class ExerciseTemplateDetailDto(
     val movementPattern: String,
     val instructions: List<ExerciseInstructionDto>,
     val media: List<ExerciseMediaDto>,
+    val source: String,
+    val archived: Boolean,
+    val version: Long,
+)
+
+@Serializable
+data class CustomExerciseTemplateWriteDto(
+    val name: String,
+    val exerciseType: String,
+    val primaryMuscleGroup: String,
+    val secondaryMuscleGroups: List<String>,
+    val equipment: String,
+    val movementPattern: String,
+    val instructions: List<String>?,
 )
 
 @Serializable

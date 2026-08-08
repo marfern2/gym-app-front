@@ -10,7 +10,13 @@ data class ExerciseTemplateSummary(
     val equipment: Equipment,
     val exerciseType: ExerciseType,
     val movementPattern: MovementPattern,
+    val source: ExerciseTemplateSource = ExerciseTemplateSource.Global,
+    val archived: Boolean = false,
+    val version: Long = 0,
 )
+
+val ExerciseTemplateSummary.isSelectable: Boolean
+    get() = !archived
 
 data class ExerciseTemplateDetail(
     val id: String,
@@ -24,7 +30,77 @@ data class ExerciseTemplateDetail(
     val movementPattern: MovementPattern,
     val instructions: List<ExerciseInstruction>,
     val media: List<ExerciseMedia> = emptyList(),
+    val source: ExerciseTemplateSource = ExerciseTemplateSource.Global,
+    val archived: Boolean = false,
+    val version: Long = 0,
 )
+
+val ExerciseTemplateDetail.isSelectable: Boolean
+    get() = !archived
+
+enum class ExerciseTemplateSource(val apiValue: String) {
+    Global("GLOBAL"),
+    Custom("CUSTOM");
+
+    companion object {
+        fun fromApiValue(value: String): ExerciseTemplateSource? =
+            entries.find { it.apiValue == value }
+    }
+}
+
+class ExerciseTemplateEtag private constructor(
+    val headerValue: String,
+    val version: Long,
+) {
+    companion object {
+        fun parse(value: String?): ExerciseTemplateEtag? {
+            val raw = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            val number = if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+                raw.substring(1, raw.length - 1)
+            } else {
+                raw
+            }
+            if (number.isEmpty() || number.any { !it.isDigit() }) return null
+            return number.toLongOrNull()?.let { ExerciseTemplateEtag(raw, it) }
+        }
+
+        fun fromVersion(version: Long): ExerciseTemplateEtag? =
+            version.takeIf { it >= 0 }?.let { ExerciseTemplateEtag("\"$it\"", it) }
+    }
+}
+
+data class ExerciseTemplateDocument(
+    val detail: ExerciseTemplateDetail,
+    val etag: ExerciseTemplateEtag,
+)
+
+data class CustomExerciseDraft(
+    val exerciseTemplateId: String? = null,
+    val name: String = "",
+    val exerciseType: ExerciseType = ExerciseType.WeightReps,
+    val primaryMuscleGroup: MuscleGroup = MuscleGroup.Other,
+    val secondaryMuscleGroups: Set<MuscleGroup> = emptySet(),
+    val equipment: Equipment = Equipment.None,
+    val movementPattern: MovementPattern = MovementPattern.Other,
+    val instructions: List<String> = emptyList(),
+) {
+    companion object {
+        fun from(document: ExerciseTemplateDocument): CustomExerciseDraft {
+            val detail = document.detail
+            return CustomExerciseDraft(
+                exerciseTemplateId = detail.id,
+                name = detail.name,
+                exerciseType = detail.exerciseType,
+                primaryMuscleGroup = detail.primaryMuscleGroup,
+                secondaryMuscleGroups = detail.secondaryMuscleGroups.toSet(),
+                equipment = detail.equipment,
+                movementPattern = detail.movementPattern,
+                instructions = detail.instructions.sortedBy(ExerciseInstruction::position)
+                    .map(ExerciseInstruction::text),
+            )
+        }
+    }
+}
 
 data class ExerciseInstruction(
     val position: Int,
@@ -100,6 +176,8 @@ data class ExerciseFilters(
     val equipment: Equipment? = null,
     val exerciseType: ExerciseType? = null,
     val movementPattern: MovementPattern? = null,
+    val source: ExerciseTemplateSource? = null,
+    val archived: Boolean = false,
 ) {
     val activeCount: Int
         get() = listOfNotNull(
@@ -107,7 +185,8 @@ data class ExerciseFilters(
             equipment,
             exerciseType,
             movementPattern,
-        ).size
+            source,
+        ).size + if (archived) 1 else 0
 }
 
 enum class ExerciseSort(val apiValue: String) {

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -27,7 +26,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,6 +44,10 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.RoutineExerciseDraft
 import com.mar.gym.feature.routines.model.RoutineSetDraft
 import com.mar.gym.feature.routines.model.SetType
+import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 
 @Composable
@@ -116,9 +118,9 @@ fun RoutineEditorScreen(
     BackHandler(onBack = requestBack)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (state.data.draft.routineId == null) R.string.routine_editor_new_title else R.string.routine_editor_title)) },
-                navigationIcon = { TextButton(onClick = requestBack) { Text(stringResource(R.string.routine_back)) } },
+            AppTopBar(
+                title = stringResource(if (state.data.draft.routineId == null) R.string.routine_editor_new_title else R.string.routine_editor_title),
+                onBack = requestBack,
                 actions = {
                     TextButton(onClick = onSave, enabled = state.data.operation == null) {
                         Text(stringResource(R.string.routine_save))
@@ -128,13 +130,17 @@ fun RoutineEditorScreen(
         }
     ) { padding ->
         when (state) {
-            is RoutineEditorUiState.Loading -> Column(Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
-                CircularProgressIndicator()
-                Text(stringResource(R.string.routine_loading))
-            }
+            is RoutineEditorUiState.Loading -> LoadingState(
+                message = stringResource(R.string.routine_loading),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
             is RoutineEditorUiState.Error -> Column(Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
                 ErrorMessage(state.error)
-                Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+                PrimaryButton(
+                    text = stringResource(R.string.retry),
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 if (state.data.draft.routineId != null) EditorContent(
                     state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
                     onMoveExercise, onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
@@ -211,7 +217,10 @@ private fun EditorContent(
                 Text(stringResource(R.string.routine_conflict_title), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
                 Text(stringResource(R.string.routine_conflict_message))
                 if (data.hasUnsavedChanges) Text(stringResource(R.string.routine_conflict_dirty_warning), color = MaterialTheme.colorScheme.error)
-                Button(onClick = onReload) { Text(stringResource(R.string.routine_reload_server)) }
+                SecondaryButton(
+                    text = stringResource(R.string.routine_reload_server),
+                    onClick = onReload,
+                )
             }
             else -> data.operation?.let { StatusMessage(
                 if (it == RoutineEditorOperation.AddingExercises) R.string.routine_adding_exercises else R.string.routine_operation_in_progress,
@@ -252,24 +261,26 @@ private fun EditorContent(
                 onUpdateSet = { setId, transform -> onUpdateSet(exercise.localId, setId, transform) },
             )
         }
-        OutlinedButton(
+        SecondaryButton(
+            text = stringResource(R.string.routine_add_exercises),
             onClick = onOpenPicker,
             enabled = enabled && data.draft.exercises.size < 30,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("add_exercises"),
-        ) { Text(stringResource(R.string.routine_add_exercises)) }
-        Button(
+            modifier = Modifier.testTag("add_exercises"),
+        )
+        PrimaryButton(
+            text = stringResource(R.string.routine_save),
             onClick = onSave,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_routine"),
-        ) { Text(stringResource(R.string.routine_save)) }
+            modifier = Modifier.testTag("save_routine"),
+        )
         if (data.draft.routineId != null) {
             HorizontalDivider()
             if (!data.draft.archived) {
-                Button(
+                PrimaryButton(
+                    text = stringResource(R.string.routine_start_workout),
                     onClick = onStartRoutine,
                     enabled = enabled && !data.hasUnsavedChanges,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text(stringResource(R.string.routine_start_workout)) }
+                )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (data.draft.archived) {

@@ -13,6 +13,7 @@ import com.mar.gym.feature.exercises.model.ExercisePickerOutcome
 import com.mar.gym.feature.exercises.model.ExercisePickerResult
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
 import com.mar.gym.feature.exercises.model.ExerciseSort
+import com.mar.gym.feature.exercises.model.isSelectable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +49,7 @@ class ExerciseCatalogViewModel(
     }
 
     fun applyFilters(filters: ExerciseFilters) {
-        updateData { copy(filters = filters) }
+        updateData { copy(filters = if (pickerConfig == null) filters else filters.copy(archived = false)) }
         requestFirstPage()
     }
 
@@ -68,6 +69,8 @@ class ExerciseCatalogViewModel(
         }
     }
 
+    fun refresh() = requestFirstPage()
+
     fun loadMore() {
         val state = _uiState.value
         val data = state.data
@@ -84,6 +87,8 @@ class ExerciseCatalogViewModel(
 
     fun toggleSelection(exerciseTemplateId: String) {
         val mode = pickerConfig?.selectionMode ?: return
+        val item = _uiState.value.data.items.find { it.id == exerciseTemplateId }
+        if (item != null && !item.isSelectable) return
         updateData {
             val updated = when (mode) {
                 ExerciseSelectionMode.Single -> if (exerciseTemplateId in selectedIds) {
@@ -139,7 +144,9 @@ class ExerciseCatalogViewModel(
                         )
                     } else {
                         val updated = loadingData.copy(
-                            items = page.content.distinctBy { it.id },
+                            items = page.content
+                                .filter { pickerConfig == null || it.isSelectable }
+                                .distinctBy { it.id },
                             currentPage = page.page,
                             hasNextPage = !page.last,
                         )
@@ -181,7 +188,9 @@ class ExerciseCatalogViewModel(
                         )
                     } else {
                         val existingIds = requestData.items.mapTo(mutableSetOf()) { it.id }
-                        val uniqueNew = result.value.content.filter { existingIds.add(it.id) }
+                        val uniqueNew = result.value.content
+                            .filter { pickerConfig == null || it.isSelectable }
+                            .filter { existingIds.add(it.id) }
                         ExerciseCatalogUiState.Content(
                             requestData.copy(
                                 items = requestData.items + uniqueNew,
@@ -225,17 +234,36 @@ class ExerciseCatalogViewModel(
             is NetworkFailure.InvalidResponse -> ExerciseUiErrorKind.InvalidResponse
             is NetworkFailure.HttpProblem -> when {
                 statusCode == 401 -> ExerciseUiErrorKind.Unauthorized
+                statusCode == 403 -> ExerciseUiErrorKind.Forbidden
+                statusCode == 404 -> ExerciseUiErrorKind.NotFound
+                problem.errorCode == "EXERCISE_TEMPLATE_VERSION_CONFLICT" ->
+                    ExerciseUiErrorKind.Conflict
+                problem.errorCode == "EXERCISE_TEMPLATE_NAME_CONFLICT" ->
+                    ExerciseUiErrorKind.NameConflict
+                problem.errorCode == "EXERCISE_TEMPLATE_ARCHIVED" ->
+                    ExerciseUiErrorKind.Archived
+                problem.errorCode == "EXERCISE_TEMPLATE_READ_ONLY" ->
+                    ExerciseUiErrorKind.Forbidden
+                statusCode == 412 -> ExerciseUiErrorKind.Conflict
+                statusCode == 400 || statusCode == 422 -> ExerciseUiErrorKind.Validation
                 statusCode >= 500 -> ExerciseUiErrorKind.Server
                 else -> ExerciseUiErrorKind.Unknown
             }
             is NetworkFailure.HttpUnknown -> when {
                 statusCode == 401 -> ExerciseUiErrorKind.Unauthorized
+                statusCode == 403 -> ExerciseUiErrorKind.Forbidden
+                statusCode == 404 -> ExerciseUiErrorKind.NotFound
+                statusCode == 412 -> ExerciseUiErrorKind.Conflict
+                statusCode == 400 || statusCode == 422 -> ExerciseUiErrorKind.Validation
                 statusCode >= 500 -> ExerciseUiErrorKind.Server
                 else -> ExerciseUiErrorKind.Unknown
             }
             is NetworkFailure.Unexpected -> ExerciseUiErrorKind.Unknown
         }
-        return ExerciseUiError(kind, correlationId)
+        val fieldErrors = (this as? NetworkFailure.HttpProblem)?.problem?.fieldErrors
+            ?.let(::parseExerciseFieldErrors)
+            .orEmpty()
+        return ExerciseUiError(kind, correlationId, fieldErrors)
     }
 
     companion object {
@@ -245,6 +273,16 @@ class ExerciseCatalogViewModel(
         private val WHITESPACE = Regex("\\s+")
     }
 }
+
+internal fun parseExerciseFieldErrors(
+    element: kotlinx.serialization.json.JsonElement,
+): Map<String, String> =
+    (element as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { item ->
+        val value = item as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+        val field = (value["field"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val message = (value["message"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        if (field != null && message != null) field to message else null
+    }.toMap()
 
 class ExerciseCatalogViewModelFactory(
     private val repository: ExerciseTemplateRepository,

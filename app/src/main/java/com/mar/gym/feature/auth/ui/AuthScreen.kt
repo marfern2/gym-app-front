@@ -2,19 +2,19 @@ package com.mar.gym.feature.auth.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,25 +27,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mar.gym.R
-import com.mar.gym.feature.auth.model.AuthenticatedUser
 import com.mar.gym.feature.system.SystemUiState
 import com.mar.gym.feature.system.SystemViewModel
+import com.mar.gym.ui.components.BrandMark
+import com.mar.gym.ui.components.EmptyState
+import com.mar.gym.ui.components.LoadingProgress
+import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 
 @Composable
 fun AuthRoute(
     authViewModel: AuthViewModel,
     systemViewModel: SystemViewModel,
-    onOpenExercises: () -> Unit = {},
-    onOpenRoutines: () -> Unit = {},
-    onOpenWorkouts: () -> Unit = {},
     modifier: Modifier = Modifier,
     credentialProvider: GoogleCredentialProvider? = null,
 ) {
@@ -69,12 +67,8 @@ fun AuthRoute(
         systemState = systemState,
         onContinueWithGoogle = authViewModel::startGoogleSignIn,
         onRetry = authViewModel::retry,
-        onLogout = authViewModel::logout,
         onDeleteLocalSession = authViewModel::deleteLocalSession,
         onCheckConnection = systemViewModel::checkConnection,
-        onOpenExercises = onOpenExercises,
-        onOpenRoutines = onOpenRoutines,
-        onOpenWorkouts = onOpenWorkouts,
         modifier = modifier,
     )
 }
@@ -85,12 +79,8 @@ fun AuthScreen(
     systemState: SystemUiState,
     onContinueWithGoogle: () -> Unit,
     onRetry: () -> Unit,
-    onLogout: () -> Unit,
     onDeleteLocalSession: () -> Unit,
     onCheckConnection: () -> Unit,
-    onOpenExercises: () -> Unit = {},
-    onOpenRoutines: () -> Unit = {},
-    onOpenWorkouts: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -101,56 +91,72 @@ fun AuthScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
         ) {
+            Spacer(Modifier.height(48.dp))
+            BrandMark(
+                tint = MaterialTheme.colorScheme.primary,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                size = 84.dp,
+            )
+            Spacer(Modifier.height(24.dp))
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.displaySmall,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = stringResource(R.string.auth_explanation),
+                text = stringResource(R.string.auth_tagline),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(48.dp))
 
             when (authState) {
                 AuthUiState.RestoringSession -> LoadingContent(
-                    message = stringResource(R.string.auth_restoring_session)
+                    message = stringResource(R.string.auth_restoring_session),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
-                is AuthUiState.SignedOut -> SignedOutContent(authState, onContinueWithGoogle)
+                is AuthUiState.SignedOut -> SignedOutContent(
+                    state = authState,
+                    onContinueWithGoogle = onContinueWithGoogle,
+                )
+
                 AuthUiState.RequestingChallenge -> LoadingContent(
-                    message = stringResource(R.string.auth_requesting_challenge)
+                    message = stringResource(R.string.auth_requesting_challenge),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 AuthUiState.AwaitingGoogleCredential -> LoadingContent(
-                    message = stringResource(R.string.auth_awaiting_google)
+                    message = stringResource(R.string.auth_awaiting_google),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 AuthUiState.AuthenticatingWithBackend -> LoadingContent(
-                    message = stringResource(R.string.auth_authenticating_backend)
+                    message = stringResource(R.string.auth_authenticating_backend),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 AuthUiState.RefreshingSession -> LoadingContent(
-                    message = stringResource(R.string.auth_refreshing_session)
+                    message = stringResource(R.string.auth_refreshing_session),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 AuthUiState.LoadingProfile -> LoadingContent(
-                    message = stringResource(R.string.auth_loading_profile)
-                )
-
-                is AuthUiState.Authenticated -> AuthenticatedContent(
-                    state = authState,
-                    onLogout = onLogout,
-                    onOpenExercises = onOpenExercises,
-                    onOpenRoutines = onOpenRoutines,
-                    onOpenWorkouts = onOpenWorkouts,
+                    message = stringResource(R.string.auth_loading_profile),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 AuthUiState.LoggingOut -> LoadingContent(
-                    message = stringResource(R.string.auth_logging_out)
+                    message = stringResource(R.string.auth_logging_out),
+                    onContinueWithGoogle = onContinueWithGoogle,
+                )
+
+                is AuthUiState.Authenticated -> LoadingContent(
+                    message = stringResource(R.string.auth_loading_profile),
+                    onContinueWithGoogle = onContinueWithGoogle,
                 )
 
                 is AuthUiState.RecoverableSessionError -> ErrorContent(
@@ -160,7 +166,7 @@ fun AuthScreen(
                 )
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(40.dp))
             SystemDiagnostic(systemState, onCheckConnection)
         }
     }
@@ -171,102 +177,43 @@ private fun SignedOutContent(
     state: AuthUiState.SignedOut,
     onContinueWithGoogle: () -> Unit,
 ) {
-    state.message?.let { message ->
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        state.message?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+        GoogleButton(onClick = onContinueWithGoogle)
+    }
+}
+
+@Composable
+private fun LoadingContent(
+    message: String,
+    onContinueWithGoogle: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val description = stringResource(R.string.auth_progress_description)
+        LoadingProgress(contentDescription = description)
+        Spacer(Modifier.height(16.dp))
         Text(
             text = message,
-            color = MaterialTheme.colorScheme.secondary,
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(24.dp))
+        GoogleButton(onClick = {}, enabled = false)
     }
-    GoogleButton(onClick = onContinueWithGoogle)
-}
-
-@Composable
-private fun LoadingContent(message: String) {
-    val description = stringResource(R.string.auth_progress_description)
-    CircularProgressIndicator(
-        modifier = Modifier.semantics { contentDescription = description }
-    )
-    Spacer(Modifier.height(16.dp))
-    Text(text = message, textAlign = TextAlign.Center)
-    Spacer(Modifier.height(20.dp))
-    GoogleButton(onClick = {}, enabled = false)
-}
-
-@Composable
-private fun AuthenticatedContent(
-    state: AuthUiState.Authenticated,
-    onLogout: () -> Unit,
-    onOpenExercises: () -> Unit,
-    onOpenRoutines: () -> Unit,
-    onOpenWorkouts: () -> Unit,
-) {
-    Text(
-        text = stringResource(R.string.auth_signed_in),
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.primary,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(16.dp))
-    Text(
-        text = state.user.displayName,
-        style = MaterialTheme.typography.titleLarge,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = stringResource(R.string.auth_account_status, state.user.accountStatus),
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(4.dp))
-    Text(
-        text = stringResource(R.string.auth_user_id, state.user.id),
-        style = MaterialTheme.typography.bodySmall,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(20.dp))
-    Button(
-        onClick = onOpenWorkouts,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
-    ) {
-        Text(stringResource(R.string.auth_open_workouts))
-    }
-    Spacer(Modifier.height(8.dp))
-    Button(
-        onClick = onOpenRoutines,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
-    ) {
-        Text(stringResource(R.string.auth_open_routines))
-    }
-    Spacer(Modifier.height(8.dp))
-    Button(
-        onClick = onOpenExercises,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
-    ) {
-        Text(stringResource(R.string.auth_open_exercises))
-    }
-    Spacer(Modifier.height(8.dp))
-    OutlinedButton(
-        onClick = onLogout,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
-    ) {
-        Text(stringResource(R.string.auth_logout))
-    }
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = stringResource(R.string.auth_logout_note),
-        style = MaterialTheme.typography.bodySmall,
-        textAlign = TextAlign.Center,
-    )
 }
 
 @Composable
@@ -275,40 +222,41 @@ private fun ErrorContent(
     onRetry: () -> Unit,
     onDeleteLocalSession: () -> Unit,
 ) {
-    Text(
-        text = stringResource(R.string.auth_error_title),
-        style = MaterialTheme.typography.titleLarge,
-        color = MaterialTheme.colorScheme.error,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(12.dp))
-    Text(text = state.message, textAlign = TextAlign.Center)
-    state.correlationId?.let { correlationId ->
-        Spacer(Modifier.height(8.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
-            text = stringResource(R.string.correlation_id, correlationId),
-            style = MaterialTheme.typography.bodySmall,
+            text = stringResource(R.string.auth_error_title),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.error,
             textAlign = TextAlign.Center,
         )
-    }
-    Spacer(Modifier.height(20.dp))
-    Button(
-        onClick = onRetry,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
-    ) {
-        Text(stringResource(R.string.retry))
-    }
-    if (state.recoveryAction == AuthRecoveryAction.RetryRemoteLogout) {
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onDeleteLocalSession,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp),
-        ) {
-            Text(stringResource(R.string.auth_delete_local_session))
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = state.message,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+        state.correlationId?.let { correlationId ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.correlation_id, correlationId),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+        PrimaryButton(
+            text = stringResource(R.string.retry),
+            onClick = onRetry,
+        )
+        if (state.recoveryAction == AuthRecoveryAction.RetryRemoteLogout) {
+            Spacer(Modifier.height(8.dp))
+            SecondaryTextButton(
+                text = stringResource(R.string.auth_delete_local_session),
+                onClick = onDeleteLocalSession,
+            )
         }
     }
 }
@@ -318,14 +266,20 @@ private fun GoogleButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
-    Button(
+    PrimaryButton(
+        text = stringResource(R.string.auth_continue_google),
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp),
+    )
+}
+
+@Composable
+private fun SecondaryTextButton(text: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp),
     ) {
-        Text(stringResource(R.string.auth_continue_google))
+        Text(text)
     }
 }
 
@@ -337,8 +291,9 @@ private fun SystemDiagnostic(
     HorizontalDivider()
     Spacer(Modifier.height(16.dp))
     Text(
-        text = stringResource(R.string.auth_backend_diagnostic),
-        style = MaterialTheme.typography.titleSmall,
+        text = stringResource(R.string.auth_backend_diagnostic_collapsed),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(4.dp))
     Text(
@@ -349,6 +304,7 @@ private fun SystemDiagnostic(
             is SystemUiState.Error -> state.message
         },
         style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
     TextButton(onClick = onCheckConnection, enabled = state !is SystemUiState.Loading) {
@@ -365,29 +321,21 @@ private fun SignedOutPreview() {
             systemState = SystemUiState.Initial,
             onContinueWithGoogle = {},
             onRetry = {},
-            onLogout = {},
             onDeleteLocalSession = {},
             onCheckConnection = {},
         )
     }
 }
 
-@Preview(showBackground = true, name = "Autenticado")
+@Preview(showBackground = true, name = "Cargando")
 @Composable
-private fun AuthenticatedPreview() {
+private fun LoadingPreview() {
     GYmAppTheme {
         AuthScreen(
-            authState = AuthUiState.Authenticated(
-                AuthenticatedUser(
-                    id = "48b573bb-c9b8-40ee-a3d6-a3b830f54c2c",
-                    displayName = "Mar",
-                    accountStatus = "ACTIVE",
-                )
-            ),
-            systemState = SystemUiState.Success("2026-08-01T10:15:30Z", null),
+            authState = AuthUiState.RequestingChallenge,
+            systemState = SystemUiState.Initial,
             onContinueWithGoogle = {},
             onRetry = {},
-            onLogout = {},
             onDeleteLocalSession = {},
             onCheckConnection = {},
         )
@@ -407,7 +355,6 @@ private fun ErrorPreview() {
             systemState = SystemUiState.Initial,
             onContinueWithGoogle = {},
             onRetry = {},
-            onLogout = {},
             onDeleteLocalSession = {},
             onCheckConnection = {},
         )

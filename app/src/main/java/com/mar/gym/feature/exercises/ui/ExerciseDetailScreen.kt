@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,10 +41,16 @@ import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseInstruction
 import com.mar.gym.feature.exercises.model.ExerciseMedia
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
+import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
+import com.mar.gym.feature.exercises.model.ExerciseTemplateEtag
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.exercises.model.HttpsUrl
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
+import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 import coil3.ImageLoader
 
@@ -54,6 +61,7 @@ fun ExerciseDetailRoute(
     imageLoader: ImageLoader,
     onOpenAttribution: (HttpsUrl) -> Boolean,
     onBack: () -> Unit,
+    onEdit: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -64,6 +72,10 @@ fun ExerciseDetailRoute(
         state = state,
         onBack = onBack,
         onRetry = viewModel::retry,
+        onReload = viewModel::reload,
+        onEdit = onEdit,
+        onArchive = viewModel::archive,
+        onRestore = viewModel::restore,
         mediaRenderer = { media, description, mediaModifier ->
             CoilExerciseMedia(
                 media = media,
@@ -82,43 +94,52 @@ fun ExerciseDetailScreen(
     state: ExerciseDetailUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    onReload: () -> Unit = onRetry,
+    onEdit: (String) -> Unit = {},
+    onArchive: () -> Unit = {},
+    onRestore: () -> Unit = {},
     mediaRenderer: ExerciseMediaRenderer,
     onOpenAttribution: (HttpsUrl) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            AppTopBar(
+                title = stringResource(R.string.exercise_detail_title),
+                onBack = onBack,
+            )
+        },
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.exercise_back))
-                }
-                Text(
-                    text = stringResource(R.string.exercise_detail_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
             when (state) {
-                ExerciseDetailUiState.Loading -> DetailCenteredContent {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.exercise_detail_loading))
-                }
+                ExerciseDetailUiState.Loading -> LoadingState(
+                    message = stringResource(R.string.exercise_detail_loading),
+                )
                 is ExerciseDetailUiState.Content -> DetailContent(
-                    detail = state.detail,
+                    detail = state.document.detail,
+                    operation = state.operation,
                     mediaRenderer = mediaRenderer,
                     onOpenAttribution = onOpenAttribution,
+                    onEdit = onEdit,
+                    onArchive = onArchive,
+                    onRestore = onRestore,
+                )
+                is ExerciseDetailUiState.Conflict -> DetailContent(
+                    detail = state.document.detail,
+                    operation = null,
+                    mediaRenderer = mediaRenderer,
+                    onOpenAttribution = onOpenAttribution,
+                    onEdit = onEdit,
+                    onArchive = onArchive,
+                    onRestore = onRestore,
+                    conflict = true,
+                    onReload = onReload,
                 )
                 is ExerciseDetailUiState.Error -> DetailCenteredContent {
                     Text(
@@ -136,9 +157,10 @@ fun ExerciseDetailScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(stringResource(R.string.retry))
-                    }
+                    PrimaryButton(
+                        text = stringResource(R.string.retry),
+                        onClick = onRetry,
+                    )
                 }
                 is ExerciseDetailUiState.NotFound -> DetailCenteredContent {
                     Text(
@@ -163,8 +185,14 @@ fun ExerciseDetailScreen(
 @Composable
 private fun DetailContent(
     detail: ExerciseTemplateDetail,
+    operation: ExerciseDetailOperation?,
     mediaRenderer: ExerciseMediaRenderer,
     onOpenAttribution: (HttpsUrl) -> Boolean,
+    onEdit: (String) -> Unit,
+    onArchive: () -> Unit,
+    onRestore: () -> Unit,
+    conflict: Boolean = false,
+    onReload: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -178,6 +206,72 @@ private fun DetailContent(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
+        Text(
+            text = buildString {
+                append(stringResource(detail.source.labelResource()))
+                if (detail.archived) {
+                    append(" · ")
+                    append(stringResource(R.string.exercise_archived_badge))
+                }
+            },
+            style = MaterialTheme.typography.labelLarge,
+            color = if (detail.archived) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("exercise-detail-source"),
+        )
+        if (conflict) {
+            Card(modifier = Modifier.fillMaxWidth().testTag("exercise-detail-conflict")) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.exercise_conflict_message),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onReload) {
+                        Text(stringResource(R.string.exercise_reload_server))
+                    }
+                }
+            }
+        }
+        if (detail.source == ExerciseTemplateSource.Custom) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!detail.archived) {
+                    Button(
+                        onClick = { onEdit(detail.id) },
+                        enabled = operation == null,
+                        modifier = Modifier.testTag("exercise-edit"),
+                    ) {
+                        Text(stringResource(R.string.exercise_edit))
+                    }
+                    TextButton(
+                        onClick = onArchive,
+                        enabled = operation == null,
+                        modifier = Modifier.testTag("exercise-archive"),
+                    ) {
+                        Text(
+                            if (operation == ExerciseDetailOperation.Archiving) {
+                                stringResource(R.string.exercise_archiving)
+                            } else {
+                                stringResource(R.string.exercise_archive)
+                            }
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onRestore,
+                        enabled = operation == null,
+                        modifier = Modifier.testTag("exercise-restore"),
+                    ) {
+                        Text(
+                            if (operation == ExerciseDetailOperation.Restoring) {
+                                stringResource(R.string.exercise_restoring)
+                            } else {
+                                stringResource(R.string.exercise_restore)
+                            }
+                        )
+                    }
+                }
+            }
+        }
         ExerciseDemonstrationSection(
             exerciseName = detail.name,
             media = detail.media.selectDemonstrationMedia(),
@@ -331,7 +425,8 @@ private fun ExerciseDetailPreview() {
     GYmAppTheme {
         ExerciseDetailScreen(
             state = ExerciseDetailUiState.Content(
-                ExerciseTemplateDetail(
+                ExerciseTemplateDocument(
+                    detail = ExerciseTemplateDetail(
                     id = "77d6fc7b-4c59-46aa-b7e4-e58dc7301b11",
                     slug = "press-banca",
                     name = "Press de banca con barra",
@@ -341,10 +436,12 @@ private fun ExerciseDetailPreview() {
                     equipment = Equipment.Barbell,
                     exerciseType = ExerciseType.WeightReps,
                     movementPattern = MovementPattern.HorizontalPush,
-                    instructions = listOf(
+                        instructions = listOf(
                         ExerciseInstruction(1, "Ajusta el banco y apoya los pies."),
                         ExerciseInstruction(2, "Desciende la barra de forma controlada."),
+                        ),
                     ),
+                    etag = requireNotNull(ExerciseTemplateEtag.fromVersion(0)),
                 )
             ),
             onBack = {},

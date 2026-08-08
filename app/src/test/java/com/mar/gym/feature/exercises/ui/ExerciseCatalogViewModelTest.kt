@@ -7,6 +7,7 @@ import com.mar.gym.feature.exercises.model.ExercisePickerConfig
 import com.mar.gym.feature.exercises.model.ExercisePickerOutcome
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
 import com.mar.gym.feature.exercises.model.ExerciseSort
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.exercises.model.MuscleGroup
 import com.mar.gym.feature.system.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
@@ -126,6 +127,59 @@ class ExerciseCatalogViewModelTest {
         runCurrent()
         assertEquals(ExerciseSort.NameDescending, fixture.repository.listRequests.last().sort)
         assertEquals(0, fixture.repository.listRequests.last().page)
+    }
+
+    @Test
+    fun filtersCombinedGlobalCustomAndArchivedCatalogs() = runTest {
+        val fixture = fixture()
+        runCurrent()
+
+        fixture.viewModel.applyFilters(ExerciseFilters(source = ExerciseTemplateSource.Global))
+        runCurrent()
+        assertEquals(ExerciseTemplateSource.Global, fixture.repository.listRequests.last().filters.source)
+        assertFalse(fixture.repository.listRequests.last().filters.archived)
+
+        fixture.viewModel.applyFilters(
+            ExerciseFilters(source = ExerciseTemplateSource.Custom, archived = true)
+        )
+        runCurrent()
+        assertEquals(ExerciseTemplateSource.Custom, fixture.repository.listRequests.last().filters.source)
+        assertTrue(fixture.repository.listRequests.last().filters.archived)
+
+        fixture.viewModel.applyFilters(ExerciseFilters())
+        runCurrent()
+        assertEquals(null, fixture.repository.listRequests.last().filters.source)
+    }
+
+    @Test
+    fun pickerIncludesActiveCustomAndForcesArchivedFalse() = runTest {
+        val custom = summary(SECOND_EXERCISE_ID, "Press propio")
+            .copy(source = ExerciseTemplateSource.Custom, archived = false)
+        val fixture = fixture(
+            pickerConfig = ExercisePickerConfig(ExerciseSelectionMode.Multiple),
+        ) { request ->
+            assertFalse(request.filters.archived)
+            ExerciseRepositoryResult.Success(page(content = listOf(summary(), custom)))
+        }
+        runCurrent()
+
+        fixture.viewModel.applyFilters(
+            ExerciseFilters(source = ExerciseTemplateSource.Custom, archived = true)
+        )
+        runCurrent()
+        assertFalse(fixture.repository.listRequests.last().filters.archived)
+        assertTrue(fixture.viewModel.uiState.value.data.items.any { it.source == ExerciseTemplateSource.Custom })
+    }
+
+    @Test
+    fun pickerCannotSelectArchivedItemEvenIfBackendReturnsOne() = runTest {
+        val archived = summary().copy(source = ExerciseTemplateSource.Custom, archived = true)
+        val fixture = fixture(
+            pickerConfig = ExercisePickerConfig(ExerciseSelectionMode.Multiple),
+        ) { ExerciseRepositoryResult.Success(page(content = listOf(archived))) }
+        runCurrent()
+
+        assertTrue(fixture.viewModel.uiState.value.data.items.isEmpty())
     }
 
     @Test

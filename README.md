@@ -116,8 +116,8 @@ el backend autoriza.
    el usuario local.
 
 El ID token de Google no se usa como Bearer, no se persiste y no se conserva en estado de UI.
-Este incremento no añade navegación general, rutinas ni entrenamientos. La pantalla autenticada
-solo ofrece acceso temporal al catálogo de plantillas de ejercicio de solo lectura.
+La pantalla autenticada integra catálogo, rutinas y entrenamientos. El catálogo combina plantillas
+globales readonly con ejercicios personalizados del usuario autenticado.
 
 Los mensajes y representaciones textuales de objetos sensibles están redactados. OkHttp no tiene
 interceptor de logging y nunca se registran cuerpos, tokens ni `Authorization`.
@@ -246,7 +246,7 @@ siendo válido hasta su expiración.
 
 ## Catálogo de plantillas de ejercicio
 
-El catálogo consume exclusivamente los endpoints protegidos de solo lectura:
+El catálogo consume los endpoints protegidos de lectura y escritura custom:
 
 ```text
 GET /api/v1/exercise-templates
@@ -255,11 +255,17 @@ GET /api/v1/exercise-templates
     &equipment=<Equipment>
     &exerciseType=<ExerciseType>
     &movementPattern=<MovementPattern>
+    &source=<GLOBAL|CUSTOM>
+    &includeArchived=<true|false>
     &page=<0..n>
     &size=<1..100>
     &sort=<campo,dirección>
 
 GET /api/v1/exercise-templates/{exerciseTemplateId}
+POST /api/v1/exercise-templates/custom
+PUT  /api/v1/exercise-templates/{exerciseTemplateId}          If-Match: "<version>"
+POST /api/v1/exercise-templates/{exerciseTemplateId}/archive  If-Match: "<version>"
+POST /api/v1/exercise-templates/{exerciseTemplateId}/restore  If-Match: "<version>"
 ```
 
 La aplicación solicita páginas de 20 elementos. La búsqueda aplica un debounce de 400 ms y
@@ -271,15 +277,19 @@ texto libre se convierte en un nombre de propiedad del backend.
 La paginación incremental conserva los resultados existentes durante la carga y si falla una
 página posterior. No solicita una página ya en curso, deja de cargar al recibir `last=true`,
 descarta respuestas de consultas antiguas y elimina duplicados por UUID sin cambiar el orden del
-servidor. El detalle siempre se obtiene del endpoint individual y no carga instrucciones desde el
-listado.
+servidor. El detalle siempre se obtiene del endpoint individual, captura su `ETag` y comprueba que
+coincide con `version`; no carga instrucciones desde el listado.
+
+`GLOBAL` es siempre readonly. `CUSTOM` permite crear, editar, archivar y restaurar. Las mutaciones
+usan `If-Match`, están marcadas `no-retry` y solo publican la respuesta canónica del servidor. Un
+conflicto conserva el borrador local y exige una recarga explícita. El catálogo excluye archivados
+por defecto y permite consultarlos mediante los filtros de origen y archivado.
 
 El selector reutiliza el mismo navegador del catálogo y admite selección única o múltiple, IDs
 iniciales, búsqueda y filtros sin perder la selección. Confirmar devuelve solo un conjunto de UUIDs
-al llamador; cancelar no devuelve selección. En este incremento el resultado es transitorio: no
-crea rutinas, entrenamientos ni realiza escrituras en el backend. Catálogo, detalle y selector se
-conectan mediante destinos locales mínimos en `MainActivity`, sin bottom navigation, deep links ni
-una arquitectura de navegación general.
+al llamador; cancelar no devuelve selección. Los selectores de rutinas y workouts fuerzan
+`archived=false`, filtran defensivamente cualquier archivado y permiten tanto globales como custom
+activos.
 
 No se añadieron dependencias para este catálogo: `StateFlow`, coroutines, Retrofit y Compose ya
 estaban disponibles en el módulo. Las peticiones usan el marcador protegido y el interceptor y
@@ -290,15 +300,15 @@ refresh controlado tras un `401`.
 
 1. Arranca PostgreSQL y el backend Spring Boot en el puerto `8080`.
 2. Inicia sesión y pulsa **Ver ejercicios**.
-3. Confirma que aparecen las plantillas seed del backend.
+3. Confirma que aparecen las plantillas globales y filtra por **Mis ejercicios**.
 4. Busca `press` y repite con mayúsculas y minúsculas.
 5. Filtra por equipamiento **Barra** y por músculo principal **Pecho**.
 6. Combina ambos filtros, aplícalos y después usa **Restablecer**.
 7. Cambia entre **Nombre A–Z**, **Nombre Z–A** y los órdenes por músculo, equipamiento y tipo.
-8. Abre una plantilla y comprueba descripción, atributos e instrucciones ordenadas.
-9. Vuelve, abre **Seleccionar ejercicios** y selecciona varios elementos.
+8. Crea un ejercicio personalizado, abre su detalle, edítalo y comprueba el cambio canónico.
+9. Archívalo, abre el filtro de archivados, restáuralo y vuelve a abrirlo.
 10. Busca otro texto y comprueba que el contador y la selección anterior se conservan.
-11. Comprueba **Confirmar** y **Cancelar**; ninguna acción debe crear datos en el backend.
+11. Comprueba que los selectores de rutina/workout muestran custom activos y nunca archivados.
 12. Detén el backend y comprueba el error recuperable y el reintento sin perder una página previa.
 13. Con una sesión cuyo access token haya expirado, abre el catálogo y confirma en la
     observabilidad segura del backend que el refresh automático permite repetir una sola vez la

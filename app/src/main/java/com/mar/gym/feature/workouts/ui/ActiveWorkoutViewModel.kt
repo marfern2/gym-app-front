@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.exercises.model.isSelectable
 import com.mar.gym.feature.routines.model.LocalIdSource
 import com.mar.gym.feature.routines.model.RandomLocalIdSource
 import com.mar.gym.feature.workouts.data.WorkoutRepository
@@ -126,7 +127,17 @@ class ActiveWorkoutViewModel(
                 if (draft.exercises.size >= WorkoutDraft.MAX_EXERCISES) break
                 if (draft.exercises.any { it.exerciseTemplateId == templateId }) continue
                 when (val result = exerciseRepository.getExerciseTemplate(templateId)) {
-                    is ExerciseRepositoryResult.Success -> draft = draft.addExercise(result.value, ids)
+                    is ExerciseRepositoryResult.Success -> {
+                        val detail = result.value.detail
+                        if (!detail.isSelectable) {
+                            _uiState.value = ActiveWorkoutUiState.Error(
+                                current.copy(draft = draft, addingExercises = false),
+                                WorkoutUiError(WorkoutUiErrorKind.InvalidResponse),
+                            )
+                            return@launch
+                        }
+                        draft = draft.addExercise(detail, ids)
+                    }
                     is ExerciseRepositoryResult.Failure -> {
                         _uiState.value = ActiveWorkoutUiState.Error(
                             current.copy(draft = draft, addingExercises = false),

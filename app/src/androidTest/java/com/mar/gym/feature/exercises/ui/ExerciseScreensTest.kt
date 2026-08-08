@@ -5,9 +5,11 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -22,6 +24,9 @@ import com.mar.gym.feature.exercises.model.ExerciseMediaType
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
+import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
+import com.mar.gym.feature.exercises.model.ExerciseTemplateEtag
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.exercises.model.ExerciseTemplateSummary
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
@@ -167,6 +172,66 @@ class ExerciseScreensTest {
     }
 
     @Test
+    fun globalDetailHasNoModificationActions() {
+        setDetail(detail(source = ExerciseTemplateSource.Global))
+        composeRule.onNodeWithTag("exercise-edit").assertDoesNotExist()
+        composeRule.onNodeWithTag("exercise-archive").assertDoesNotExist()
+    }
+
+    @Test
+    fun activeCustomDetailHasEditAndArchiveActions() {
+        setDetail(detail(source = ExerciseTemplateSource.Custom))
+        composeRule.onNodeWithTag("exercise-edit").assertIsDisplayed()
+        composeRule.onNodeWithTag("exercise-archive").assertIsDisplayed()
+    }
+
+    @Test
+    fun archivedCustomShowsRestoreOnly() {
+        setDetail(detail(source = ExerciseTemplateSource.Custom, archived = true))
+
+        composeRule.onNodeWithTag("exercise-edit").assertDoesNotExist()
+        composeRule.onNodeWithTag("exercise-archive").assertDoesNotExist()
+        composeRule.onNodeWithTag("exercise-restore").assertIsDisplayed()
+    }
+
+    @Test
+    fun customEditorUsesStableSemanticsAndEmitsNameAndSave() {
+        var editorState by mutableStateOf(
+            CustomExerciseEditorUiState.Editing(CustomExerciseEditorData())
+        )
+        var saves = 0
+        composeRule.setContent {
+            GYmAppTheme {
+                CustomExerciseEditorScreen(
+                    state = editorState,
+                    onBack = {},
+                    onNameChanged = { name ->
+                        editorState = CustomExerciseEditorUiState.Editing(
+                            editorState.data.copy(draft = editorState.data.draft.copy(name = name))
+                        )
+                    },
+                    onExerciseTypeChanged = {},
+                    onPrimaryMuscleChanged = {},
+                    onSecondaryMuscleToggled = {},
+                    onEquipmentChanged = {},
+                    onMovementPatternChanged = {},
+                    onInstructionsChanged = {},
+                    onSave = { saves += 1 },
+                    onReload = {},
+                    onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("exercise-editor-name").performTextReplacement("Ejercicio propio")
+        composeRule.onNodeWithTag("exercise-editor-save").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals("Ejercicio propio", editorState.data.draft.name)
+            assertEquals(1, saves)
+        }
+    }
+
+    @Test
     fun detailMediaShowsLoadingPlaceholderWithoutInternet() {
         setDetail(
             detail(media = listOf(media())),
@@ -230,6 +295,7 @@ class ExerciseScreensTest {
                     onBack = {},
                     onOpenDetail = {},
                     onOpenPicker = {},
+                    onCreateCustom = {},
                     onSearchTextChanged = onSearch,
                     onApplyFilters = {},
                     onChangeSort = {},
@@ -252,7 +318,12 @@ class ExerciseScreensTest {
         composeRule.setContent {
             GYmAppTheme {
                 ExerciseDetailScreen(
-                    state = ExerciseDetailUiState.Content(detail),
+                    state = ExerciseDetailUiState.Content(
+                        ExerciseTemplateDocument(
+                            detail,
+                            requireNotNull(ExerciseTemplateEtag.fromVersion(detail.version)),
+                        )
+                    ),
                     onBack = {},
                     onRetry = {},
                     mediaRenderer = mediaRenderer,
@@ -274,6 +345,8 @@ class ExerciseScreensTest {
 
     private fun detail(
         media: List<ExerciseMedia> = emptyList(),
+        source: ExerciseTemplateSource = ExerciseTemplateSource.Global,
+        archived: Boolean = false,
     ): ExerciseTemplateDetail = ExerciseTemplateDetail(
         id = ID,
         slug = "press-banca",
@@ -289,6 +362,8 @@ class ExerciseScreensTest {
             ExerciseInstruction(2, "Empuja"),
         ),
         media = media,
+        source = source,
+        archived = archived,
     )
 
     private fun media(): ExerciseMedia = ExerciseMedia(

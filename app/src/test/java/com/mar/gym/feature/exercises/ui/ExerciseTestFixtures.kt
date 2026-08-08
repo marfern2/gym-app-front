@@ -4,10 +4,13 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.exercises.model.Equipment
+import com.mar.gym.feature.exercises.model.CustomExerciseDraft
 import com.mar.gym.feature.exercises.model.ExerciseFilters
 import com.mar.gym.feature.exercises.model.ExerciseInstruction
 import com.mar.gym.feature.exercises.model.ExerciseSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
+import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
+import com.mar.gym.feature.exercises.model.ExerciseTemplateEtag
 import com.mar.gym.feature.exercises.model.ExerciseTemplatePage
 import com.mar.gym.feature.exercises.model.ExerciseTemplateSummary
 import com.mar.gym.feature.exercises.model.ExerciseType
@@ -26,12 +29,32 @@ internal class FakeExerciseTemplateRepository(
     var listHandler: suspend (ListRequest) -> ExerciseRepositoryResult<ExerciseTemplatePage> = {
         ExerciseRepositoryResult.Success(page())
     },
-    var detailHandler: suspend (String) -> ExerciseRepositoryResult<ExerciseTemplateDetail> = {
-        ExerciseRepositoryResult.Success(detail())
+    var detailHandler: suspend (String) -> ExerciseRepositoryResult<ExerciseTemplateDocument> = {
+        ExerciseRepositoryResult.Success(document())
+    },
+    var createHandler: suspend (CustomExerciseDraft) -> ExerciseRepositoryResult<ExerciseTemplateDocument> = {
+        ExerciseRepositoryResult.Success(document(detail(source = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Custom)))
+    },
+    var replaceHandler: suspend (CustomExerciseDraft, ExerciseTemplateEtag) -> ExerciseRepositoryResult<ExerciseTemplateDocument> = { _, _ ->
+        ExerciseRepositoryResult.Success(document(detail(source = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Custom)))
+    },
+    var archiveHandler: suspend (String, ExerciseTemplateEtag) -> ExerciseRepositoryResult<ExerciseTemplateDocument> = { _, etag ->
+        ExerciseRepositoryResult.Success(
+            document(detail(source = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Custom, archived = true, version = etag.version + 1))
+        )
+    },
+    var restoreHandler: suspend (String, ExerciseTemplateEtag) -> ExerciseRepositoryResult<ExerciseTemplateDocument> = { _, etag ->
+        ExerciseRepositoryResult.Success(
+            document(detail(source = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Custom, version = etag.version + 1))
+        )
     },
 ) : ExerciseTemplateRepository {
     val listRequests = mutableListOf<ListRequest>()
     val detailRequests = mutableListOf<String>()
+    val createRequests = mutableListOf<CustomExerciseDraft>()
+    val replaceRequests = mutableListOf<Pair<CustomExerciseDraft, ExerciseTemplateEtag>>()
+    val archiveRequests = mutableListOf<Pair<String, ExerciseTemplateEtag>>()
+    val restoreRequests = mutableListOf<Pair<String, ExerciseTemplateEtag>>()
 
     override suspend fun getExerciseTemplates(
         query: String?,
@@ -47,9 +70,40 @@ internal class FakeExerciseTemplateRepository(
 
     override suspend fun getExerciseTemplate(
         exerciseTemplateId: String,
-    ): ExerciseRepositoryResult<ExerciseTemplateDetail> {
+    ): ExerciseRepositoryResult<ExerciseTemplateDocument> {
         detailRequests += exerciseTemplateId
         return detailHandler(exerciseTemplateId)
+    }
+
+    override suspend fun createCustomExercise(
+        draft: CustomExerciseDraft,
+    ): ExerciseRepositoryResult<ExerciseTemplateDocument> {
+        createRequests += draft
+        return createHandler(draft)
+    }
+
+    override suspend fun replaceCustomExercise(
+        draft: CustomExerciseDraft,
+        etag: ExerciseTemplateEtag,
+    ): ExerciseRepositoryResult<ExerciseTemplateDocument> {
+        replaceRequests += draft to etag
+        return replaceHandler(draft, etag)
+    }
+
+    override suspend fun archiveCustomExercise(
+        exerciseTemplateId: String,
+        etag: ExerciseTemplateEtag,
+    ): ExerciseRepositoryResult<ExerciseTemplateDocument> {
+        archiveRequests += exerciseTemplateId to etag
+        return archiveHandler(exerciseTemplateId, etag)
+    }
+
+    override suspend fun restoreCustomExercise(
+        exerciseTemplateId: String,
+        etag: ExerciseTemplateEtag,
+    ): ExerciseRepositoryResult<ExerciseTemplateDocument> {
+        restoreRequests += exerciseTemplateId to etag
+        return restoreHandler(exerciseTemplateId, etag)
     }
 }
 
@@ -83,7 +137,11 @@ internal fun page(
     last = last,
 )
 
-internal fun detail(): ExerciseTemplateDetail = ExerciseTemplateDetail(
+internal fun detail(
+    source: com.mar.gym.feature.exercises.model.ExerciseTemplateSource = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Global,
+    archived: Boolean = false,
+    version: Long = 0,
+): ExerciseTemplateDetail = ExerciseTemplateDetail(
     id = EXERCISE_ID,
     slug = "press-banca",
     name = "Press de banca",
@@ -97,6 +155,16 @@ internal fun detail(): ExerciseTemplateDetail = ExerciseTemplateDetail(
         ExerciseInstruction(2, "Empuja"),
         ExerciseInstruction(1, "Colócate"),
     ),
+    source = source,
+    archived = archived,
+    version = version,
+)
+
+internal fun document(
+    detail: ExerciseTemplateDetail = detail(),
+): ExerciseTemplateDocument = ExerciseTemplateDocument(
+    detail = detail,
+    etag = requireNotNull(ExerciseTemplateEtag.fromVersion(detail.version)),
 )
 
 internal fun networkFailure(): ExerciseRepositoryResult.Failure =

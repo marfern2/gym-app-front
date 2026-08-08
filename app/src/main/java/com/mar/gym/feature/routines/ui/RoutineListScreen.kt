@@ -1,5 +1,7 @@
 package com.mar.gym.feature.routines.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -20,15 +27,16 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,11 +48,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.mar.gym.R
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.EmptyState
+import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -56,18 +69,17 @@ fun RoutineListRoute(
     onBack: () -> Unit,
     onCreate: () -> Unit,
     onOpenRoutine: (String) -> Unit,
+    onEditRoutine: (String) -> Unit = {},
+    onStartRoutine: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
-    LaunchedEffect(viewModel) {
-        viewModel.effects.collect { effect ->
-            if (effect is RoutineListEffect.OpenRoutine) onOpenRoutine(effect.routineId)
-        }
-    }
     RoutineListScreen(
         state = state,
         onBack = onBack,
         onCreate = onCreate,
         onOpenRoutine = onOpenRoutine,
+        onEditRoutine = onEditRoutine,
+        onStartRoutine = onStartRoutine,
         onSearchChanged = viewModel::onSearchChanged,
         onArchivedChanged = viewModel::showArchived,
         onSortChanged = viewModel::changeSort,
@@ -86,6 +98,8 @@ fun RoutineListScreen(
     onBack: () -> Unit,
     onCreate: () -> Unit,
     onOpenRoutine: (String) -> Unit,
+    onEditRoutine: (String) -> Unit = {},
+    onStartRoutine: (String) -> Unit = {},
     onSearchChanged: (String) -> Unit,
     onArchivedChanged: (Boolean) -> Unit,
     onSortChanged: (RoutineSort) -> Unit,
@@ -98,10 +112,12 @@ fun RoutineListScreen(
     var archiveCandidate by remember { mutableStateOf<String?>(null) }
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.routine_list_title)) },
-                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.routine_back)) } },
-                actions = { TextButton(onClick = onCreate) { Text(stringResource(R.string.routine_create)) } },
+            AppTopBar(
+                title = stringResource(R.string.routine_list_title),
+                onBack = onBack,
+                actions = {
+                    TextButton(onClick = onCreate) { Text(stringResource(R.string.routine_create)) }
+                },
             )
         }
     ) { padding ->
@@ -136,7 +152,10 @@ fun RoutineListScreen(
                 }
             }
             when (state) {
-                is RoutineListUiState.Loading -> CenterMessage(R.string.routine_loading, progress = true)
+                is RoutineListUiState.Loading -> LoadingState(
+                    message = stringResource(R.string.routine_loading),
+                    modifier = Modifier.fillMaxSize(),
+                )
                 is RoutineListUiState.Empty -> EmptyRoutines(state.data.archived, onCreate)
                 is RoutineListUiState.Error -> ErrorPane(state.error, onRetry)
                 is RoutineListUiState.Content,
@@ -150,9 +169,11 @@ fun RoutineListScreen(
                             routine = routine,
                             busy = state.data.operationRoutineId == routine.id,
                             onOpen = { onOpenRoutine(routine.id) },
+                            onStart = { onStartRoutine(routine.id) },
+                            onDuplicate = { onDuplicate(routine.id) },
+                            onEdit = { onEditRoutine(routine.id) },
                             onArchive = { archiveCandidate = routine.id },
                             onRestore = { onRestore(routine.id) },
-                            onDuplicate = { onDuplicate(routine.id) },
                         )
                     }
                     item {
@@ -163,9 +184,11 @@ fun RoutineListScreen(
                                 Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                             }
                             else -> if (state.data.hasNextPage) {
-                                Button(onClick = onLoadMore, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                    Text(stringResource(R.string.routine_load_more))
-                                }
+                                PrimaryButton(
+                                    text = stringResource(R.string.routine_load_more),
+                                    onClick = onLoadMore,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }
@@ -189,35 +212,178 @@ fun RoutineListScreen(
 }
 
 @Composable
-private fun RoutineCard(
+internal fun RoutineCard(
     routine: RoutineSummary,
     busy: Boolean,
     onOpen: () -> Unit,
+    onStart: (() -> Unit)? = null,
+    onDuplicate: () -> Unit,
+    onEdit: () -> Unit,
     onArchive: () -> Unit,
     onRestore: () -> Unit,
-    onDuplicate: () -> Unit,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     val openDescription = stringResource(R.string.routine_open, routine.name)
-    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().semantics { contentDescription = openDescription }) {
-        Column(Modifier.padding(16.dp)) {
-            Text(routine.name, style = MaterialTheme.typography.titleMedium)
-            routine.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            Text(pluralStringResource(R.plurals.routine_exercise_count, routine.exerciseCount, routine.exerciseCount))
-            val formatter = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
-            Text(stringResource(
-                R.string.routine_updated_at,
-                formatter.format(routine.updatedAt.atZone(ZoneId.systemDefault())),
-            ), style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (routine.archived) {
-                    TextButton(onClick = onRestore, enabled = !busy) { Text(stringResource(R.string.routine_restore)) }
-                } else {
-                    TextButton(onClick = onArchive, enabled = !busy) { Text(stringResource(R.string.routine_archive)) }
+    Card(
+        onClick = onOpen,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = openDescription },
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = routine.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (routine.archived) {
+                            Text(
+                                text = stringResource(R.string.routine_archived_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = MaterialTheme.shapes.small,
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        text = pluralStringResource(
+                            R.plurals.routine_exercise_count,
+                            routine.exerciseCount,
+                            routine.exerciseCount,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val formatter = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
+                    Text(
+                        text = stringResource(
+                            R.string.routine_updated_at,
+                            formatter.format(routine.updatedAt.atZone(ZoneId.systemDefault())),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                TextButton(onClick = onDuplicate, enabled = !busy) { Text(stringResource(R.string.routine_duplicate)) }
-                if (busy) CircularProgressIndicator(Modifier.padding(8.dp))
+                IconButton(
+                    onClick = { showMenu = true },
+                    enabled = !busy,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.routine_menu, routine.name),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (busy) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(
+                        text = stringResource(R.string.routine_operation_in_progress),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (onStart != null && !routine.archived) {
+                PrimaryButton(
+                    text = stringResource(R.string.routine_viewer_start),
+                    onClick = onStart,
+                    enabled = !busy,
+                )
             }
         }
+    }
+    if (showMenu) {
+        RoutineActionsSheet(
+            routineName = routine.name,
+            archived = routine.archived,
+            busy = busy,
+            onDismiss = { showMenu = false },
+            onDuplicate = { showMenu = false; onDuplicate() },
+            onEdit = { showMenu = false; onEdit() },
+            onArchive = { showMenu = false; onArchive() },
+            onRestore = { showMenu = false; onRestore() },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RoutineActionsSheet(
+    routineName: String,
+    archived: Boolean,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onDuplicate: () -> Unit,
+    onEdit: () -> Unit,
+    onArchive: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text(
+                text = routineName,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            SheetAction(
+                text = stringResource(R.string.routine_menu_duplicate),
+                enabled = !busy,
+                onClick = onDuplicate,
+            )
+            SheetAction(
+                text = stringResource(R.string.routine_menu_edit),
+                enabled = !busy,
+                onClick = onEdit,
+            )
+            if (archived) {
+                SheetAction(
+                    text = stringResource(R.string.routine_menu_restore),
+                    enabled = !busy,
+                    onClick = onRestore,
+                )
+            } else {
+                SheetAction(
+                    text = stringResource(R.string.routine_menu_archive),
+                    enabled = !busy,
+                    onClick = onArchive,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SheetAction(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -240,23 +406,30 @@ private fun RoutineSortMenu(current: RoutineSort, onSortChanged: (RoutineSort) -
 
 @Composable
 private fun EmptyRoutines(archived: Boolean, onCreate: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(stringResource(if (archived) R.string.routine_empty_archived_title else R.string.routine_empty_active_title), style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(if (archived) R.string.routine_empty_archived_message else R.string.routine_empty_active_message))
-        if (!archived) {
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = onCreate) { Text(stringResource(R.string.routine_create)) }
-        }
-    }
+    EmptyState(
+        icon = Icons.Filled.List,
+        title = stringResource(
+            if (archived) R.string.routine_empty_archived_title else R.string.routine_empty_active_title
+        ),
+        message = stringResource(
+            if (archived) R.string.routine_empty_archived_message else R.string.routine_empty_active_message
+        ),
+        actionLabel = if (archived) null else stringResource(R.string.routine_create),
+        onAction = onCreate,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
 private fun ErrorPane(error: RoutineUiError, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(stringResource(R.string.routine_error_title), style = MaterialTheme.typography.titleLarge)
-        ErrorMessage(error)
-        Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
-    }
+    EmptyState(
+        icon = Icons.Filled.Info,
+        title = stringResource(R.string.routine_error_title),
+        message = stringResource(error.kind.messageResource()),
+        actionLabel = stringResource(R.string.retry),
+        onAction = onRetry,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable

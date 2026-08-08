@@ -1,38 +1,47 @@
 package com.mar.gym.feature.workouts.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.mar.gym.R
+import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.workouts.model.WorkoutDetail
 import com.mar.gym.feature.workouts.model.WorkoutExercise
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import com.mar.gym.feature.workouts.model.WorkoutSet
+import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.EmptyState
+import com.mar.gym.ui.components.LoadingProgress
+import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -47,7 +56,6 @@ fun WorkoutHistoryRoute(
     WorkoutHistoryScreen(state, onBack, onOpenWorkout, viewModel::loadMore, viewModel::retry)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkoutHistoryScreen(
     state: WorkoutHistoryUiState,
@@ -56,64 +64,80 @@ fun WorkoutHistoryScreen(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(stringResource(R.string.workout_history_title)) },
-            navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.routine_back)) } },
-        )
-    }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when (state) {
-                is WorkoutHistoryUiState.Loading -> {
-                    CircularProgressIndicator()
-                    Text(stringResource(R.string.workout_history_loading))
-                }
-                is WorkoutHistoryUiState.Empty -> {
-                    Text(stringResource(R.string.workout_history_empty_title), style = MaterialTheme.typography.headlineSmall)
-                    Text(stringResource(R.string.workout_history_empty_message))
-                }
-                is WorkoutHistoryUiState.Error -> {
-                    WorkoutErrorBlock(state.error)
-                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
-                }
-                else -> {
-                    state.data.items.forEach { item -> HistoryItem(item) { onOpenWorkout(item.id) } }
-                    when (state) {
-                        is WorkoutHistoryUiState.LoadingMore -> {
-                            CircularProgressIndicator()
-                            Text(stringResource(R.string.workout_history_loading_more))
-                        }
-                        is WorkoutHistoryUiState.ErrorLoadingMore -> {
-                            Text(stringResource(R.string.workout_history_error_more), color = MaterialTheme.colorScheme.error)
-                            Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
-                        }
-                        is WorkoutHistoryUiState.Content -> if (state.data.hasNextPage) {
-                            Button(
-                                onClick = onLoadMore,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            ) { Text(stringResource(R.string.workout_history_load_more)) }
-                        }
-                        else -> Unit
-                    }
-                }
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = stringResource(R.string.workout_history_title),
+                onBack = onBack,
+            )
+        },
+    ) { padding ->
+        when (state) {
+            is WorkoutHistoryUiState.Loading -> LoadingState(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                message = stringResource(R.string.workout_history_loading),
+            )
+            is WorkoutHistoryUiState.Empty -> EmptyState(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                icon = Icons.AutoMirrored.Filled.List,
+                title = stringResource(R.string.workout_history_empty_title),
+                message = stringResource(R.string.workout_history_empty_message),
+            )
+            is WorkoutHistoryUiState.Error -> Column(
+                Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                WorkoutErrorBlock(state.error)
+                Spacer(Modifier.height(20.dp))
+                PrimaryButton(
+                    text = stringResource(R.string.retry),
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun HistoryItem(item: WorkoutHistoryItem, onOpen: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(item.title, style = MaterialTheme.typography.titleMedium)
-            Text(formatDate(item.completedAt.atZone(ZoneId.systemDefault()).format(HISTORY_DATE)))
-            Text(stringResource(R.string.workout_history_duration, formatDuration(item.durationSeconds)))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(pluralStringResource(R.plurals.workout_history_exercise_count, item.exerciseCount, item.exerciseCount))
-                Text(pluralStringResource(R.plurals.workout_history_completed_sets, item.completedSetCount, item.completedSetCount))
+            else -> Column(
+                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                state.data.items.forEach { item ->
+                    WorkoutHistoryCard(item = item, onOpen = { onOpenWorkout(item.id) })
+                }
+                when (state) {
+                    is WorkoutHistoryUiState.LoadingMore -> Row(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LoadingProgress()
+                        Text(
+                            stringResource(R.string.workout_history_loading_more),
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                    is WorkoutHistoryUiState.ErrorLoadingMore -> Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            stringResource(R.string.workout_history_error_more),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        SecondaryButton(
+                            text = stringResource(R.string.retry),
+                            onClick = onRetry,
+                        )
+                    }
+                    is WorkoutHistoryUiState.Content -> if (state.data.hasNextPage) {
+                        PrimaryButton(
+                            text = stringResource(R.string.workout_history_load_more),
+                            onClick = onLoadMore,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    else -> Unit
+                }
             }
         }
     }
@@ -125,56 +149,93 @@ fun WorkoutDetailRoute(viewModel: WorkoutDetailViewModel, onBack: () -> Unit) {
     WorkoutDetailScreen(state, onBack, viewModel::load)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkoutDetailScreen(
     state: WorkoutDetailUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(stringResource(R.string.workout_history_detail_title)) },
-            navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.routine_back)) } },
-        )
-    }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when (state) {
-                WorkoutDetailUiState.Loading -> {
-                    CircularProgressIndicator()
-                    Text(stringResource(R.string.workout_detail_loading))
-                }
-                is WorkoutDetailUiState.Error -> {
-                    WorkoutErrorBlock(state.error)
-                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
-                }
-                is WorkoutDetailUiState.Content -> HistoricalWorkout(state.workout)
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = stringResource(R.string.workout_history_detail_title),
+                onBack = onBack,
+            )
+        },
+    ) { padding ->
+        when (state) {
+            WorkoutDetailUiState.Loading -> LoadingState(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                message = stringResource(R.string.workout_detail_loading),
+            )
+            is WorkoutDetailUiState.Error -> Column(
+                Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                WorkoutErrorBlock(state.error)
+                Spacer(Modifier.height(20.dp))
+                PrimaryButton(
+                    text = stringResource(R.string.retry),
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
+            is WorkoutDetailUiState.Content -> HistoricalWorkout(
+                state.workout,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
         }
     }
 }
 
 @Composable
-private fun HistoricalWorkout(workout: WorkoutDetail) {
-    Text(workout.title, style = MaterialTheme.typography.headlineSmall)
-    Text(formatDate(workout.completedAt?.atZone(ZoneId.systemDefault())?.format(HISTORY_DATE).orEmpty()))
-    Text(stringResource(R.string.workout_history_duration, formatDuration(workout.durationSeconds)))
-    workout.notes?.let { Text(it) }
-    if (workout.exercises.isEmpty()) Text(stringResource(R.string.workout_no_exercises))
-    workout.exercises.forEach { HistoricalExercise(it) }
+private fun HistoricalWorkout(workout: WorkoutDetail, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = formatDate(workout.completedAt?.atZone(ZoneId.systemDefault())?.format(HISTORY_DATE).orEmpty()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(workout.title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = stringResource(R.string.workout_history_duration, formatDuration(workout.durationSeconds)),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                workout.notes?.let {
+                    Spacer(Modifier.height(2.dp))
+                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        if (workout.exercises.isEmpty()) Text(stringResource(R.string.workout_no_exercises))
+        workout.exercises.forEach { exercise -> HistoricalExercise(exercise) }
+    }
 }
 
 @Composable
 private fun HistoricalExercise(exercise: WorkoutExercise) {
     OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(exercise.exerciseNameSnapshot, style = MaterialTheme.typography.titleMedium)
-            Text(exercise.exerciseTypeSnapshot.apiValue)
-            exercise.notes?.let { Text(it) }
-            Text(stringResource(R.string.workout_rest_seconds, exercise.restSeconds))
+            Text(
+                text = stringResource(exercise.exerciseTypeSnapshot.labelResource()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            exercise.notes?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            Text(
+                text = stringResource(R.string.workout_rest_seconds, exercise.restSeconds),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             exercise.sets.forEachIndexed { index, set -> HistoricalSet(index + 1, set) }
         }
     }
@@ -182,11 +243,36 @@ private fun HistoricalExercise(exercise: WorkoutExercise) {
 
 @Composable
 private fun HistoricalSet(number: Int, set: WorkoutSet) {
-    Text(stringResource(R.string.routine_set_number, number), style = MaterialTheme.typography.titleSmall)
-    Text(stringResource(R.string.workout_target_prefix, historicalTargetSummary(set)))
-    Text(stringResource(R.string.workout_result_prefix, historicalResultSummary(set)))
-    Text(stringResource(if (set.completed) R.string.workout_set_completed_yes else R.string.workout_set_completed_no))
-    HorizontalDivider()
+    Column(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.routine_set_number, number), style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.weight(1f))
+            if (set.completed) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = stringResource(R.string.workout_set_completed_yes),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.workout_set_completed_no),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.workout_target_prefix, historicalTargetSummary(set)),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(R.string.workout_result_prefix, historicalResultSummary(set)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
+    }
 }
 
 internal fun historicalTargetSummary(set: WorkoutSet): String = buildList {
@@ -212,8 +298,22 @@ internal fun historicalResultSummary(set: WorkoutSet): String = buildList {
 
 @Composable
 private fun WorkoutErrorBlock(error: WorkoutUiError) {
-    Text(stringResource(R.string.workout_error_title), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
-    Text(stringResource(error.messageResource()))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = stringResource(R.string.workout_error_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(error.messageResource()))
+        error.correlationId?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.correlation_id, it),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
 }
 
 private fun formatDate(value: String): String = value

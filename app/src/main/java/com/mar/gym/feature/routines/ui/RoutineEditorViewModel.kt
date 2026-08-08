@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.exercises.model.isSelectable
 import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.routines.data.RoutineRepositoryResult
 import com.mar.gym.feature.routines.model.LocalIdSource
@@ -70,7 +71,17 @@ class RoutineEditorViewModel(
                 if (draft.exercises.size >= RoutineDraft.MAX_EXERCISES) break
                 if (draft.exercises.any { it.exerciseTemplateId == templateId }) continue
                 when (val result = exerciseRepository.getExerciseTemplate(templateId)) {
-                    is ExerciseRepositoryResult.Success -> draft = draft.addExercise(result.value, ids)
+                    is ExerciseRepositoryResult.Success -> {
+                        val detail = result.value.detail
+                        if (!detail.isSelectable) {
+                            _uiState.value = RoutineEditorUiState.Error(
+                                _uiState.value.data.copy(operation = null),
+                                RoutineUiError(RoutineUiErrorKind.InvalidResponse),
+                            )
+                            return@launch
+                        }
+                        draft = draft.addExercise(detail, ids)
+                    }
                     is ExerciseRepositoryResult.Failure -> {
                         _uiState.value = RoutineEditorUiState.Error(
                             _uiState.value.data.copy(operation = null),

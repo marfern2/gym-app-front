@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.mar.gym.R
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseSort
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
@@ -83,10 +84,22 @@ fun ExerciseSort.labelResource(): Int = when (this) {
 }
 
 @StringRes
+fun ExerciseTemplateSource.labelResource(): Int = when (this) {
+    ExerciseTemplateSource.Global -> R.string.exercise_source_global
+    ExerciseTemplateSource.Custom -> R.string.exercise_source_custom
+}
+
+@StringRes
 fun ExerciseUiErrorKind.messageResource(): Int = when (this) {
     ExerciseUiErrorKind.Network -> R.string.exercise_error_network
     ExerciseUiErrorKind.Timeout -> R.string.exercise_error_timeout
     ExerciseUiErrorKind.Unauthorized -> R.string.exercise_error_unauthorized
+    ExerciseUiErrorKind.NotFound -> R.string.exercise_error_not_found
+    ExerciseUiErrorKind.Forbidden -> R.string.exercise_error_forbidden
+    ExerciseUiErrorKind.Validation -> R.string.exercise_error_validation
+    ExerciseUiErrorKind.Conflict -> R.string.exercise_error_conflict
+    ExerciseUiErrorKind.NameConflict -> R.string.exercise_error_name_conflict
+    ExerciseUiErrorKind.Archived -> R.string.exercise_error_archived
     ExerciseUiErrorKind.InvalidResponse -> R.string.exercise_error_invalid_response
     ExerciseUiErrorKind.Server -> R.string.exercise_error_server
     ExerciseUiErrorKind.Unknown -> R.string.exercise_error_unknown

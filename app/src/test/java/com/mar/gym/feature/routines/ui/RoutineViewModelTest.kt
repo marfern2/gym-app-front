@@ -9,6 +9,10 @@ import com.mar.gym.feature.exercises.model.ExerciseFilters
 import com.mar.gym.feature.exercises.model.ExerciseInstruction
 import com.mar.gym.feature.exercises.model.ExerciseSort as ExerciseCatalogSort
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
+import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
+import com.mar.gym.feature.exercises.model.ExerciseTemplateEtag
+import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
+import com.mar.gym.feature.exercises.model.CustomExerciseDraft
 import com.mar.gym.feature.exercises.model.ExerciseTemplatePage
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
@@ -155,6 +159,42 @@ class RoutineViewModelTest {
     }
 
     @Test
+    fun routineAcceptsActiveCustomAndRejectsArchivedCustom() = runTest {
+        val activeCustom = FakeExerciseRepository(
+            template = FakeExerciseRepository.exerciseDetail(
+                ExerciseTemplateSource.Custom,
+                archived = false,
+            )
+        )
+        val activeEditor = RoutineEditorViewModel(
+            null,
+            FakeRoutineRepository(),
+            activeCustom,
+            SequentialIds(),
+        )
+        activeEditor.addSelectedExercises(setOf(TEMPLATE_ID))
+        runCurrent()
+        assertEquals(1, activeEditor.uiState.value.data.draft.exercises.size)
+
+        val archivedCustom = FakeExerciseRepository(
+            template = FakeExerciseRepository.exerciseDetail(
+                ExerciseTemplateSource.Custom,
+                archived = true,
+            )
+        )
+        val archivedEditor = RoutineEditorViewModel(
+            null,
+            FakeRoutineRepository(),
+            archivedCustom,
+            SequentialIds(),
+        )
+        archivedEditor.addSelectedExercises(setOf(TEMPLATE_ID))
+        runCurrent()
+        assertTrue(archivedEditor.uiState.value is RoutineEditorUiState.Error)
+        assertTrue(archivedEditor.uiState.value.data.draft.exercises.isEmpty())
+    }
+
+    @Test
     fun maps404409AndNestedFieldErrors() {
         val nested = Json.parseToJsonElement(
             """[{"field":"exercises[0].sets[0].targetRpe","message":"invalid"}]"""
@@ -188,15 +228,34 @@ class RoutineViewModelTest {
         override fun nextId() = "local-${++next}"
     }
 
-    private class FakeExerciseRepository : ExerciseTemplateRepository {
+    private class FakeExerciseRepository(
+        private val template: ExerciseTemplateDetail = exerciseDetail(),
+    ) : ExerciseTemplateRepository {
         override suspend fun getExerciseTemplates(query: String?, filters: ExerciseFilters, page: Int, size: Int, sort: ExerciseCatalogSort) =
             ExerciseRepositoryResult.Success(ExerciseTemplatePage(emptyList(), page, size, 0, 0, page == 0, true))
         override suspend fun getExerciseTemplate(exerciseTemplateId: String) = ExerciseRepositoryResult.Success(
-            ExerciseTemplateDetail(
-                exerciseTemplateId, "press", "Press", null, MuscleGroup.Chest, emptyList(), Equipment.Barbell,
-                ExerciseType.WeightReps, MovementPattern.HorizontalPush, listOf(ExerciseInstruction(1, "Preparar")),
+            ExerciseTemplateDocument(
+                template.copy(id = exerciseTemplateId),
+                ExerciseTemplateEtag.fromVersion(template.version)!!,
             )
         )
+        override suspend fun createCustomExercise(draft: CustomExerciseDraft) = networkExerciseFailure()
+        override suspend fun replaceCustomExercise(draft: CustomExerciseDraft, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        override suspend fun archiveCustomExercise(exerciseTemplateId: String, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        override suspend fun restoreCustomExercise(exerciseTemplateId: String, etag: ExerciseTemplateEtag) = networkExerciseFailure()
+        private fun networkExerciseFailure(): ExerciseRepositoryResult<ExerciseTemplateDocument> =
+            ExerciseRepositoryResult.Failure(NetworkFailure.Network())
+
+        companion object {
+            fun exerciseDetail(
+                source: ExerciseTemplateSource = ExerciseTemplateSource.Global,
+                archived: Boolean = false,
+            ) = ExerciseTemplateDetail(
+                TEMPLATE_ID, "press", "Press", null, MuscleGroup.Chest, emptyList(), Equipment.Barbell,
+                ExerciseType.WeightReps, MovementPattern.HorizontalPush,
+                listOf(ExerciseInstruction(1, "Preparar")), source = source, archived = archived,
+            )
+        }
     }
 
     private data class ListRequest(val archived: Boolean, val query: String?, val page: Int)

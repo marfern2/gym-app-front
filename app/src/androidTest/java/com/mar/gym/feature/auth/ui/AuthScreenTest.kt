@@ -44,7 +44,7 @@ class AuthScreenTest {
     }
 
     @Test
-    fun authenticatedStateShowsProfileWithoutTokens() {
+    fun authenticatedStateShowsLoadingWithoutTokens() {
         setScreen(
             AuthUiState.Authenticated(
                 AuthenticatedUser(
@@ -55,9 +55,7 @@ class AuthScreenTest {
             )
         )
 
-        composeRule.onNodeWithText("Sesión iniciada").assertIsDisplayed()
-        composeRule.onNodeWithText("Test User").assertIsDisplayed()
-        composeRule.onNodeWithText("Estado de la cuenta: ACTIVE").assertIsDisplayed()
+        composeRule.onNodeWithText("Cargando el perfil autenticado…").assertIsDisplayed()
         composeRule.onAllNodesWithText("local-access-token").assertCountEquals(0)
         composeRule.onAllNodesWithText("local-refresh-token").assertCountEquals(0)
         composeRule.onAllNodesWithText("google-id-token").assertCountEquals(0)
@@ -116,7 +114,6 @@ class AuthScreenTest {
                     systemState = SystemUiState.Initial,
                     onContinueWithGoogle = onContinueWithGoogle,
                     onRetry = onRetry,
-                    onLogout = {},
                     onDeleteLocalSession = onDeleteLocalSession,
                     onCheckConnection = {},
                 )
