@@ -9,6 +9,8 @@ import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.exercises.model.isSelectable
 import com.mar.gym.feature.routines.model.LocalIdSource
 import com.mar.gym.feature.routines.model.RandomLocalIdSource
+import com.mar.gym.feature.progress.data.AnalyticsRepository
+import com.mar.gym.feature.progress.data.AnalyticsResult
 import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
 import com.mar.gym.feature.workouts.model.WorkoutDocument
@@ -30,6 +32,7 @@ import kotlinx.coroutines.launch
 class ActiveWorkoutViewModel(
     private val repository: WorkoutRepository,
     private val exerciseRepository: ExerciseTemplateRepository,
+    private val analyticsRepository: AnalyticsRepository,
     val clock: Clock = Clock.systemUTC(),
     private val ids: LocalIdSource = RandomLocalIdSource,
 ) : ViewModel() {
@@ -39,6 +42,7 @@ class ActiveWorkoutViewModel(
     val effects: SharedFlow<ActiveWorkoutEffect> = _effects.asSharedFlow()
     private var baseline: WorkoutDraft? = null
     private var loadJob: Job? = null
+    private var previousJob: Job? = null
     private var retryAction: (() -> Unit)? = null
 
     init { loadActive() }
@@ -148,6 +152,7 @@ class ActiveWorkoutViewModel(
                 }
             }
             publishDraft(draft)
+            loadPreviousPerformance(draft)
         }
     }
 
@@ -233,6 +238,7 @@ class ActiveWorkoutViewModel(
 
     fun reloadDiscardingLocalChanges() = loadActive()
     fun retry() = retryAction?.invoke()
+    fun retryPreviousPerformance() = _uiState.value.data.draft?.let(::loadPreviousPerformance)
 
     private fun edit(transform: WorkoutDraft.() -> WorkoutDraft) {
         val state = _uiState.value
@@ -253,6 +259,52 @@ class ActiveWorkoutViewModel(
         )
     }
 
+    private fun loadPreviousPerformance(draft: WorkoutDraft) {
+        previousJob?.cancel()
+        val ids = draft.exercises.map { it.exerciseTemplateId }.distinct()
+        if (ids.isEmpty()) {
+            updateData {
+                copy(
+                    previousPerformance = emptyList(),
+                    previousPerformanceLoading = false,
+                    previousPerformanceError = null,
+                )
+            }
+            return
+        }
+        updateData { copy(previousPerformanceLoading = true, previousPerformanceError = null) }
+        previousJob = viewModelScope.launch {
+            when (val result = analyticsRepository.previousPerformance(ids)) {
+                is AnalyticsResult.Success -> updateData {
+                    copy(
+                        previousPerformance = result.value,
+                        previousPerformanceLoading = false,
+                        previousPerformanceError = null,
+                    )
+                }
+                is AnalyticsResult.Failure -> updateData {
+                    copy(
+                        previousPerformanceLoading = false,
+                        previousPerformanceError = result.error.toWorkoutUiError(),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateData(transform: ActiveWorkoutData.() -> ActiveWorkoutData) {
+        _uiState.value = when (val state = _uiState.value) {
+            is ActiveWorkoutUiState.Loading -> ActiveWorkoutUiState.Loading(state.data.transform())
+            is ActiveWorkoutUiState.NoActiveWorkout -> state
+            is ActiveWorkoutUiState.Active -> ActiveWorkoutUiState.Active(state.data.transform())
+            is ActiveWorkoutUiState.Saving -> ActiveWorkoutUiState.Saving(state.data.transform())
+            is ActiveWorkoutUiState.Completing -> ActiveWorkoutUiState.Completing(state.data.transform())
+            is ActiveWorkoutUiState.Discarding -> ActiveWorkoutUiState.Discarding(state.data.transform())
+            is ActiveWorkoutUiState.Conflict -> ActiveWorkoutUiState.Conflict(state.data.transform())
+            is ActiveWorkoutUiState.Error -> ActiveWorkoutUiState.Error(state.data.transform(), state.error)
+        }
+    }
+
     private fun publishCanonical(document: WorkoutDocument) {
         if (document.detail.status != WorkoutStatus.Active) {
             _uiState.value = ActiveWorkoutUiState.Error(
@@ -271,6 +323,7 @@ class ActiveWorkoutViewModel(
                 startedAt = document.detail.startedAt,
             ),
         )
+        loadPreviousPerformance(draft)
     }
 
     private fun publishFailure(
@@ -316,11 +369,12 @@ private val SET_PATH = Regex("^\\.sets\\[(\\d+)]")
 class ActiveWorkoutViewModelFactory(
     private val repository: WorkoutRepository,
     private val exerciseRepository: ExerciseTemplateRepository,
+    private val analyticsRepository: AnalyticsRepository,
     private val clock: Clock,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ActiveWorkoutViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return ActiveWorkoutViewModel(repository, exerciseRepository, clock) as T
+        return ActiveWorkoutViewModel(repository, exerciseRepository, analyticsRepository, clock) as T
     }
 }

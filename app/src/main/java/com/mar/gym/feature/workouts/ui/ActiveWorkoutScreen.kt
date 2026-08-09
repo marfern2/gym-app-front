@@ -63,6 +63,8 @@ import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
+import com.mar.gym.feature.workouts.model.formatPreviousPerformance
+import com.mar.gym.feature.workouts.model.previousSetFor
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.MetricCell
@@ -114,6 +116,7 @@ fun ActiveWorkoutRoute(
         onDiscard = viewModel::discard,
         onReload = viewModel::reloadDiscardingLocalChanges,
         onRetry = viewModel::retry,
+        onRetryPrevious = viewModel::retryPreviousPerformance,
     )
 }
 
@@ -139,6 +142,7 @@ fun ActiveWorkoutScreen(
     onDiscard: () -> Unit,
     onReload: () -> Unit,
     onRetry: () -> Unit,
+    onRetryPrevious: () -> Unit = {},
 ) {
     var confirmComplete by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
@@ -182,6 +186,7 @@ fun ActiveWorkoutScreen(
                         onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
+                        onRetryPrevious,
                     )
                 }
             }
@@ -217,6 +222,7 @@ fun ActiveWorkoutScreen(
                         onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
+                        onRetryPrevious,
                     )
                 }
             }
@@ -264,6 +270,7 @@ private fun WorkoutEditorContent(
     onSave: () -> Unit,
     onComplete: () -> Unit,
     onDiscard: () -> Unit,
+    onRetryPrevious: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -288,6 +295,19 @@ private fun WorkoutEditorContent(
         modifier = Modifier.testTag("workout_title"),
         style = MaterialTheme.typography.titleLarge,
     )
+    if (data.previousPerformanceLoading) {
+        Text("Cargando rendimiento anterior…", style = MaterialTheme.typography.bodySmall)
+    }
+    if (data.previousPerformanceError != null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "No se pudo cargar ANTERIOR.",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRetryPrevious) { Text(stringResource(R.string.retry)) }
+        }
+    }
     WorkoutTextField(
         value = draft.notes,
         onValueChange = onUpdateNotes,
@@ -307,6 +327,12 @@ private fun WorkoutEditorContent(
             onRemoveSet = { onRemoveSet(exercise.localId, it) },
             onMoveSet = { setId, offset -> onMoveSet(exercise.localId, setId, offset) },
             onUpdateSet = { setId, transform -> onUpdateSet(exercise.localId, setId, transform) },
+            previousValue = { setId ->
+                formatPreviousPerformance(
+                    exercise.exerciseTypeSnapshot,
+                    previousSetFor(draft, data.previousPerformance, exercise.localId, setId),
+                )
+            },
         )
     }
     PrimaryButton(
@@ -359,6 +385,7 @@ private fun WorkoutExerciseEditor(
     onRemoveSet: (String) -> Unit,
     onMoveSet: (String, Int) -> Unit,
     onUpdateSet: (String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
+    previousValue: (String) -> String,
 ) {
     val prefix = "exercise.${exercise.localId}"
     OutlinedCard(Modifier.fillMaxWidth().testTag("workout_exercise_${exercise.localId}")) {
@@ -397,6 +424,7 @@ private fun WorkoutExerciseEditor(
                     onMoveSet = onMoveSet,
                     onRemoveSet = onRemoveSet,
                     onUpdateSet = onUpdateSet,
+                    previousValue = previousValue,
                 )
             }
             TextButton(onClick = onAddSet, enabled = enabled && exercise.sets.size < 20) {
@@ -479,6 +507,7 @@ private fun WorkoutSetTable(
     onMoveSet: (String, Int) -> Unit,
     onRemoveSet: (String) -> Unit,
     onUpdateSet: (String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
+    previousValue: (String) -> String,
 ) {
     val columns = exercise.metricColumns()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -487,6 +516,7 @@ private fun WorkoutSetTable(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TableHeaderCell(stringResource(R.string.workout_series_header))
+            TableHeaderCell(stringResource(R.string.workout_previous_header), modifier = Modifier.weight(1.15f))
             columns.forEach { column ->
                 TableHeaderCell(column.header, modifier = Modifier.weight(1f))
             }
@@ -504,6 +534,7 @@ private fun WorkoutSetTable(
                 onRemove = { onRemoveSet(set.localId) },
                 onMove = { onMoveSet(set.localId, it) },
                 onUpdate = { transform -> onUpdateSet(set.localId, transform) },
+                previous = previousValue(set.localId),
             )
         }
     }
@@ -521,6 +552,7 @@ private fun WorkoutSetRow(
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
     onUpdate: ((WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
+    previous: String,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
@@ -536,6 +568,12 @@ private fun WorkoutSetRow(
                 onRemove = onRemove,
                 modifier = Modifier.width(40.dp),
             )
+            Box(
+                modifier = Modifier.weight(1.15f).padding(horizontal = 2.dp).testTag("previous_${set.localId}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(previous, style = MaterialTheme.typography.bodySmall)
+            }
             columns.forEach { column ->
                 MetricCell(
                     value = column.value(set),

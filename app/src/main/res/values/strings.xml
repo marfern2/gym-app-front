@@ -460,4 +460,5 @@
     <string name="workout_set_type_warmup">calentamiento</string>
     <string name="workout_set_type_failure">fallida</string>
     <string name="workout_set_type_drop">drop</string>
+    <string name="workout_previous_header">ANTERIOR</string>
 </resources>

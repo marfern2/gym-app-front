@@ -17,6 +17,16 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
 import com.mar.gym.feature.routines.model.SetType
+import com.mar.gym.feature.progress.data.AnalyticsRepository
+import com.mar.gym.feature.progress.data.AnalyticsResult
+import com.mar.gym.feature.progress.model.AnalyticsPeriod
+import com.mar.gym.feature.progress.model.ExerciseHistoryPage
+import com.mar.gym.feature.progress.model.MuscleDistribution
+import com.mar.gym.feature.progress.model.PersonalRecords
+import com.mar.gym.feature.progress.model.PreviousPerformanceItem
+import com.mar.gym.feature.progress.model.ProgressSummary
+import com.mar.gym.feature.progress.model.TrainingCalendar
+import java.time.YearMonth
 import com.mar.gym.feature.system.MainDispatcherRule
 import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
@@ -208,9 +218,21 @@ class WorkoutViewModelTest {
         repository: FakeWorkoutRepository,
         exercises: ExerciseTemplateRepository = FakeExerciseRepository(),
     ) = ActiveWorkoutViewModel(
-        repository, exercises,
+        repository, exercises, FakeAnalyticsRepository(),
         Clock.fixed(Instant.parse("2026-08-08T10:20:00Z"), ZoneOffset.UTC),
     )
+
+    private class FakeAnalyticsRepository : AnalyticsRepository {
+        override suspend fun previousPerformance(exerciseTemplateIds: List<String>) = AnalyticsResult.Success(
+            exerciseTemplateIds.map { PreviousPerformanceItem(it, null) }
+        )
+        override suspend fun calendar(month: YearMonth, timezone: String): AnalyticsResult<TrainingCalendar> = failure()
+        override suspend fun summary(period: AnalyticsPeriod, timezone: String): AnalyticsResult<ProgressSummary> = failure()
+        override suspend fun muscleDistribution(period: AnalyticsPeriod, timezone: String): AnalyticsResult<MuscleDistribution> = failure()
+        override suspend fun exerciseHistory(exerciseTemplateId: String, page: Int, size: Int): AnalyticsResult<ExerciseHistoryPage> = failure()
+        override suspend fun personalRecords(exerciseTemplateId: String): AnalyticsResult<PersonalRecords> = failure()
+        private fun <T> failure(): AnalyticsResult<T> = AnalyticsResult.Failure(NetworkFailure.Network())
+    }
 
     private class FakeWorkoutRepository : WorkoutRepository {
         var activeResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document())

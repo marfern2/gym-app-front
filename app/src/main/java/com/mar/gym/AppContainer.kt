@@ -20,6 +20,15 @@ import com.mar.gym.feature.auth.data.SessionStore
 import com.mar.gym.feature.exercises.data.DefaultExerciseTemplateRepository
 import com.mar.gym.feature.exercises.data.ExerciseTemplateApi
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.measurements.data.DefaultMeasurementRepository
+import com.mar.gym.feature.measurements.data.MeasurementApi
+import com.mar.gym.feature.measurements.data.MeasurementRepository
+import com.mar.gym.feature.profile.data.DefaultProfileRepository
+import com.mar.gym.feature.profile.data.ProfileApi
+import com.mar.gym.feature.profile.data.ProfileRepository
+import com.mar.gym.feature.progress.data.AnalyticsApi
+import com.mar.gym.feature.progress.data.AnalyticsRepository
+import com.mar.gym.feature.progress.data.DefaultAnalyticsRepository
 import com.mar.gym.feature.routines.data.DefaultRoutineRepository
 import com.mar.gym.feature.routines.data.RoutineApi
 import com.mar.gym.feature.routines.data.RoutineRepository
@@ -116,6 +125,21 @@ object AppContainer {
             WorkoutMutationSession(sessionStore, refreshCoordinator, clock),
         )
     }
+
+    private val analyticsApi: AnalyticsApi by lazy { protectedApi(AnalyticsApi::class.java) }
+    val analyticsRepository: AnalyticsRepository by lazy { DefaultAnalyticsRepository(analyticsApi) }
+
+    private val profileApi: ProfileApi by lazy { protectedApi(ProfileApi::class.java) }
+    val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
+
+    private val measurementApi: MeasurementApi by lazy { protectedApi(MeasurementApi::class.java) }
+    val measurementRepository: MeasurementRepository by lazy { DefaultMeasurementRepository(measurementApi) }
+
+    private fun <T> protectedApi(service: Class<T>): T = NetworkClient.create(
+        service = service,
+        interceptors = listOf(AuthorizationInterceptor(sessionStore)),
+        authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
+    )
 
     val applicationClock: Clock get() = clock
 

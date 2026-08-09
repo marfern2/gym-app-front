@@ -3,6 +3,7 @@ package com.mar.gym.feature.workouts.ui
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
+import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import java.time.Instant
 
 data class ActiveWorkoutData(
@@ -12,6 +13,9 @@ data class ActiveWorkoutData(
     val hasUnsavedChanges: Boolean = false,
     val fieldErrors: Map<String, String> = emptyMap(),
     val addingExercises: Boolean = false,
+    val previousPerformance: List<PreviousPerformanceItem> = emptyList(),
+    val previousPerformanceLoading: Boolean = false,
+    val previousPerformanceError: WorkoutUiError? = null,
 )
 
 sealed interface ActiveWorkoutUiState {

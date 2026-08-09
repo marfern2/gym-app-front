@@ -448,3 +448,26 @@ RFC 9457 y se conservan las rutas anidadas de `fieldErrors`.
 
 Este incremento no implementa entrenamientos, inicio de rutina, contador, historial, programas,
 superseries, caché local ni navegación inferior definitiva.
+
+## Analytics personales, perfil privado y medidas corporales
+
+La pestaña Perfil consume directamente los endpoints protegidos de analytics. El calendario pide
+un único mes a `/api/v1/analytics/calendar`; summary y distribución usan los periodos backend
+`WEEK`, `MONTH` y `YEAR`. Todas estas consultas envían el identificador IANA real de
+`ZoneId.systemDefault()` y Android no recalcula agregados ni descarga workouts para obtenerlos.
+
+El detalle de cada ejercicio ofrece historial paginado y los PR explícitos del backend. El workout
+activo solicita previous performance en un solo lote de IDs distintos al cargar o incorporar
+ejercicios. La columna `ANTERIOR` se alinea estrictamente por `workoutExercisePosition` y
+`setPosition`; un hueco permanece vacío y nunca se sustituye con targets ni con una serie vecina.
+
+El perfil editable usa `/api/v1/users/me/profile`, conserva su ETag y mantiene el borrador local
+ante `PROFILE_VERSION_CONFLICT` o `USERNAME_UNAVAILABLE`. No muestra email, avatar ni campos que
+el contrato privado no expone.
+
+Las medidas corporales permiten crear, filtrar y paginar el historial, editar con `If-Match`,
+eliminar y consultar latest. El cliente envía tipo, valor canónico y el `Instant` seleccionado por
+el usuario, pero nunca envía `unit`: representa las unidades `KG`, `PERCENT` y `CM` devueltas por
+el backend. La fecha y hora se eligen en la zona del dispositivo y se convierten a ISO-8601 UTC.
+
+No se añadió Room, caché persistente ni ninguna dependencia para este incremento.

@@ -62,6 +62,7 @@ fun ExerciseDetailRoute(
     onOpenAttribution: (HttpsUrl) -> Boolean,
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
+    onOpenProgress: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -74,6 +75,7 @@ fun ExerciseDetailRoute(
         onRetry = viewModel::retry,
         onReload = viewModel::reload,
         onEdit = onEdit,
+        onOpenProgress = onOpenProgress,
         onArchive = viewModel::archive,
         onRestore = viewModel::restore,
         mediaRenderer = { media, description, mediaModifier ->
@@ -96,6 +98,7 @@ fun ExerciseDetailScreen(
     onRetry: () -> Unit,
     onReload: () -> Unit = onRetry,
     onEdit: (String) -> Unit = {},
+    onOpenProgress: (String) -> Unit = {},
     onArchive: () -> Unit = {},
     onRestore: () -> Unit = {},
     mediaRenderer: ExerciseMediaRenderer,
@@ -127,6 +130,7 @@ fun ExerciseDetailScreen(
                     mediaRenderer = mediaRenderer,
                     onOpenAttribution = onOpenAttribution,
                     onEdit = onEdit,
+                    onOpenProgress = onOpenProgress,
                     onArchive = onArchive,
                     onRestore = onRestore,
                 )
@@ -136,6 +140,7 @@ fun ExerciseDetailScreen(
                     mediaRenderer = mediaRenderer,
                     onOpenAttribution = onOpenAttribution,
                     onEdit = onEdit,
+                    onOpenProgress = onOpenProgress,
                     onArchive = onArchive,
                     onRestore = onRestore,
                     conflict = true,
@@ -189,6 +194,7 @@ private fun DetailContent(
     mediaRenderer: ExerciseMediaRenderer,
     onOpenAttribution: (HttpsUrl) -> Boolean,
     onEdit: (String) -> Unit,
+    onOpenProgress: (String) -> Unit,
     onArchive: () -> Unit,
     onRestore: () -> Unit,
     conflict: Boolean = false,
@@ -272,6 +278,11 @@ private fun DetailContent(
                 }
             }
         }
+        PrimaryButton(
+            text = "Ver progreso y récords",
+            onClick = { onOpenProgress(detail.id) },
+            modifier = Modifier.fillMaxWidth().testTag("exercise-progress"),
+        )
         ExerciseDemonstrationSection(
             exerciseName = detail.name,
             media = detail.media.selectDemonstrationMedia(),
@@ -446,6 +457,7 @@ private fun ExerciseDetailPreview() {
             ),
             onBack = {},
             onRetry = {},
+            onOpenProgress = {},
             mediaRenderer = { _, _, _ -> },
             onOpenAttribution = { false },
         )

@@ -47,7 +47,16 @@ import com.mar.gym.feature.exercises.ui.ExerciseDetailViewModelFactory
 import com.mar.gym.feature.exercises.ui.ExercisePickerRoute
 import com.mar.gym.feature.exercises.ui.openHttpsUrl
 import com.mar.gym.feature.home.ui.HomeScreen
-import com.mar.gym.feature.profile.ui.ProfileScreen
+import com.mar.gym.feature.measurements.ui.MeasurementRoute
+import com.mar.gym.feature.measurements.ui.MeasurementViewModel
+import com.mar.gym.feature.measurements.ui.MeasurementViewModelFactory
+import com.mar.gym.feature.profile.ui.ProfileRoute
+import com.mar.gym.feature.profile.ui.ProfileViewModel
+import com.mar.gym.feature.profile.ui.ProfileViewModelFactory
+import com.mar.gym.feature.progress.data.DeviceTimeZoneProvider
+import com.mar.gym.feature.progress.ui.ExerciseProgressRoute
+import com.mar.gym.feature.progress.ui.ExerciseProgressViewModel
+import com.mar.gym.feature.progress.ui.ExerciseProgressViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineEditorRoute
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModel
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModelFactory
@@ -125,6 +134,7 @@ class MainActivity : ComponentActivity() {
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutDetailId by rememberSaveable { mutableStateOf<String?>(null) }
         var pendingRoutineWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
+        var catalogOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
 
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
         val historyState by workoutHistoryViewModel().uiState.collectAsStateWithLifecycle()
@@ -143,7 +153,12 @@ class MainActivity : ComponentActivity() {
         BackHandler(enabled = deep != null || tab != TAB_HOME) {
             when {
                 deep != null -> deep = when (deep) {
+                    DEEP_CATALOG -> {
+                        tab = catalogOrigin
+                        null
+                    }
                     DEEP_DETAIL, DEEP_PICKER -> DEEP_CATALOG
+                    DEEP_EXERCISE_PROGRESS -> DEEP_DETAIL
                     DEEP_CUSTOM_EDITOR -> if (exerciseEditorId == null) DEEP_CATALOG else DEEP_DETAIL
                     DEEP_ROUTINE_VIEWER -> {
                         routineListViewModel().refresh()
@@ -172,6 +187,11 @@ class MainActivity : ComponentActivity() {
                     DEEP_ROUTINE_PICKER -> DEEP_ROUTINE_EDITOR
                     DEEP_WORKOUT_PICKER -> DEEP_WORKOUT
                     DEEP_WORKOUT_DETAIL -> DEEP_WORKOUT_HISTORY
+                    DEEP_MEASUREMENTS -> {
+                        profileViewModel().refresh()
+                        tab = TAB_PROFILE
+                        null
+                    }
                     else -> {
                         tab = TAB_TRAINING
                         null
@@ -252,7 +272,10 @@ class MainActivity : ComponentActivity() {
                                 workoutHistoryViewModel().refresh()
                                 deep = DEEP_WORKOUT_HISTORY
                             },
-                            onOpenCatalog = { deep = DEEP_CATALOG },
+                            onOpenCatalog = {
+                                catalogOrigin = TAB_TRAINING
+                                deep = DEEP_CATALOG
+                            },
                             onOpenAllRoutines = { deep = DEEP_ROUTINES },
                             onCreateRoutine = {
                                 routineId = null
@@ -261,8 +284,13 @@ class MainActivity : ComponentActivity() {
                             },
                             onRetryRoutines = { routineListViewModel().retry() },
                         )
-                        TAB_PROFILE -> ProfileScreen(
-                            user = user,
+                        TAB_PROFILE -> ProfileRoute(
+                            viewModel = profileViewModel(),
+                            onOpenMeasurements = { deep = DEEP_MEASUREMENTS },
+                            onOpenExercises = {
+                                catalogOrigin = TAB_PROFILE
+                                deep = DEEP_CATALOG
+                            },
                             onLogout = { authViewModel.logout() },
                         )
                     }
@@ -274,7 +302,7 @@ class MainActivity : ComponentActivity() {
                     viewModel = remember { exerciseCatalogViewModel() },
                     onBack = {
                         deep = null
-                        tab = TAB_TRAINING
+                        tab = catalogOrigin
                     },
                     onOpenDetail = { id ->
                         detailId = id
@@ -300,12 +328,16 @@ class MainActivity : ComponentActivity() {
                             exerciseEditorId = id
                             deep = DEEP_CUSTOM_EDITOR
                         },
+                        onOpenProgress = { id ->
+                            detailId = id
+                            deep = DEEP_EXERCISE_PROGRESS
+                        },
                     )
                 } ?: ExerciseCatalogRoute(
                     viewModel = remember { exerciseCatalogViewModel() },
                     onBack = {
                         deep = null
-                        tab = TAB_TRAINING
+                        tab = catalogOrigin
                     },
                     onOpenDetail = { id ->
                         detailId = id
@@ -532,6 +564,20 @@ class MainActivity : ComponentActivity() {
                         onBack = { deep = DEEP_WORKOUT_HISTORY },
                     )
                 }
+                DEEP_EXERCISE_PROGRESS -> detailId?.let { id ->
+                    ExerciseProgressRoute(
+                        viewModel = remember(id) { exerciseProgressViewModel(id) },
+                        onBack = { deep = DEEP_DETAIL },
+                    )
+                }
+                DEEP_MEASUREMENTS -> MeasurementRoute(
+                    viewModel = remember { measurementViewModel() },
+                    onBack = {
+                        profileViewModel().refresh()
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                )
             }
         }
     }
@@ -608,6 +654,7 @@ class MainActivity : ComponentActivity() {
         ActiveWorkoutViewModelFactory(
             AppContainer.workoutRepository,
             AppContainer.exerciseTemplateRepository,
+            AppContainer.analyticsRepository,
             AppContainer.applicationClock,
         ),
     )[ActiveWorkoutViewModel::class.java]
@@ -633,6 +680,27 @@ class MainActivity : ComponentActivity() {
         WorkoutDetailViewModelFactory(workoutId, AppContainer.workoutRepository),
     )["workout-detail-$workoutId", WorkoutDetailViewModel::class.java]
 
+    private fun profileViewModel(): ProfileViewModel = ViewModelProvider(
+        this,
+        ProfileViewModelFactory(
+            AppContainer.profileRepository,
+            AppContainer.analyticsRepository,
+            AppContainer.measurementRepository,
+            DeviceTimeZoneProvider,
+            AppContainer.applicationClock,
+        ),
+    )[ProfileViewModel::class.java]
+
+    private fun exerciseProgressViewModel(exerciseTemplateId: String): ExerciseProgressViewModel = ViewModelProvider(
+        this,
+        ExerciseProgressViewModelFactory(exerciseTemplateId, AppContainer.analyticsRepository),
+    )["exercise-progress-$exerciseTemplateId", ExerciseProgressViewModel::class.java]
+
+    private fun measurementViewModel(): MeasurementViewModel = ViewModelProvider(
+        this,
+        MeasurementViewModelFactory(AppContainer.measurementRepository, AppContainer.applicationClock),
+    )[MeasurementViewModel::class.java]
+
     private companion object {
         const val TAB_HOME = "home"
         const val TAB_TRAINING = "training"
@@ -654,5 +722,7 @@ class MainActivity : ComponentActivity() {
         const val DEEP_WORKOUT_PICKER = "workout_exercise_picker"
         const val DEEP_WORKOUT_HISTORY = "workout_history"
         const val DEEP_WORKOUT_DETAIL = "workout_detail"
+        const val DEEP_EXERCISE_PROGRESS = "exercise_progress"
+        const val DEEP_MEASUREMENTS = "measurements"
     }
 }

@@ -17,6 +17,16 @@ sealed interface NetworkResponse<out T> {
     ) : NetworkResponse<Nothing>
 }
 
+sealed interface EntityNetworkResponse<out T> {
+    data class Success<T>(
+        val value: T,
+        val etag: String?,
+        val correlationId: String?,
+    ) : EntityNetworkResponse<T>
+
+    data class Failure(val error: NetworkFailure) : EntityNetworkResponse<Nothing>
+}
+
 suspend fun <T : Any> executeNetworkRequest(
     request: suspend () -> Response<T>,
 ): NetworkResponse<T> = try {
@@ -82,6 +92,30 @@ suspend fun executeNetworkUnitRequest(
     NetworkResponse.Failure(NetworkFailure.Network())
 } catch (_: Exception) {
     NetworkResponse.Failure(NetworkFailure.Unexpected())
+}
+
+suspend fun <T : Any> executeNetworkEntityRequest(
+    request: suspend () -> Response<T>,
+): EntityNetworkResponse<T> = try {
+    val response = request()
+    val correlationId = response.headers()[CORRELATION_ID_HEADER]
+    if (response.isSuccessful) {
+        response.body()?.let {
+            EntityNetworkResponse.Success(it, response.headers()["ETag"], correlationId)
+        } ?: EntityNetworkResponse.Failure(NetworkFailure.InvalidResponse(correlationId))
+    } else {
+        EntityNetworkResponse.Failure(response.toFailure(correlationId).error)
+    }
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (_: InterruptedIOException) {
+    EntityNetworkResponse.Failure(NetworkFailure.Timeout())
+} catch (_: SerializationException) {
+    EntityNetworkResponse.Failure(NetworkFailure.InvalidResponse())
+} catch (_: IOException) {
+    EntityNetworkResponse.Failure(NetworkFailure.Network())
+} catch (_: Exception) {
+    EntityNetworkResponse.Failure(NetworkFailure.Unexpected())
 }
 
 private fun Response<*>.toFailure(correlationId: String?): NetworkResponse.Failure {
