@@ -348,6 +348,11 @@ Un target nunca se copia a un resultado. Los ejercicios y series existentes env�
 nuevos omiten `id` y adquieren el UUID únicamente desde la respuesta del backend. Los ejercicios
 nuevos envían solo `exerciseTemplateId` y campos editables, nunca snapshots manipulables.
 
+`WorkoutExercise.supersetGroup` se lee como snapshot del workout y se envía en el `PUT` de un
+workout `ACTIVE`. El ordinal no se usa como identidad: el borrador mantiene una clave temporal de
+grupo y la normaliza por orden de aparición al guardar. La respuesta canónica sustituye esas claves,
+conserva los UUID estables de `WorkoutExercise` devueltos por el backend y actualiza el `ETag`.
+
 El tiempo visible se deriva de `startedAt` mediante un `Clock` y se refresca localmente cada segundo.
 No se persiste `elapsed`, no existe timer en el repository y el refresco visual no realiza llamadas
 al backend. Volver a la pantalla vuelve a consultar `/workouts/active`, por lo que la duración se
@@ -424,6 +429,13 @@ genera IDs locales temporales que Compose usa para edición, foco, orden y asoci
 Al guardar se recalculan todas las posiciones y se construye el cuerpo completo esperado por el
 backend. El UUID raíz de `Routine` sí se conserva.
 
+Las superseries usan otra identidad temporal local distinta de esos IDs y de `supersetGroup`.
+Android normaliza los grupos a ordinales `1..N` al crear o reemplazar y vuelve a construir el draft
+desde la respuesta canónica, porque el backend puede renumerarlos y los hijos de rutina no son
+estables. Crear, ampliar, sacar miembros y disolver mantiene un mínimo de dos miembros contiguos;
+eliminar disuelve automáticamente un singleton. Un movimiento individual que rompería la
+contigüidad se bloquea sin reconfigurar ni disolver silenciosamente el grupo.
+
 Un `409 ROUTINE_VERSION_CONFLICT` no se reintenta ni sobrescribe. El editor conserva el borrador,
 muestra el conflicto y ofrece recargar; si hay cambios locales avisa de que se perderán. Las
 operaciones mutantes tampoco se repiten automáticamente. Los errores siguen usando Problem Details
@@ -446,8 +458,9 @@ RFC 9457 y se conservan las rutas anidadas de `fieldErrors`.
 12. Usa un access token expirado y comprueba que el refresh compartido existente completa una sola
     repetición protegida, sin registrar credenciales ni añadir un refresh específico de rutinas.
 
-Este incremento no implementa entrenamientos, inicio de rutina, contador, historial, programas,
-superseries, caché local ni navegación inferior definitiva.
+La UI de superseries es deliberadamente funcional y técnica; el diseño visual definitivo sigue
+pendiente. No se implementan circuitos, temporizadores específicos de superserie, programas,
+caché local ni navegación inferior definitiva.
 
 ## Analytics personales, perfil privado y medidas corporales
 

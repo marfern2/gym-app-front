@@ -35,6 +35,7 @@ data class RoutineExercise(
     val notes: String?,
     val restSeconds: Int,
     val sets: List<RoutineSet>,
+    val supersetGroup: Int? = null,
 )
 
 data class RoutineSet(

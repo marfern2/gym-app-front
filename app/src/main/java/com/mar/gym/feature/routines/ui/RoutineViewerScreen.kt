@@ -237,6 +237,14 @@ private fun ViewerExerciseCard(
                 text = stringResource(R.string.routine_exercise_viewer_row, index + 1, exercise.exerciseName),
                 style = MaterialTheme.typography.titleMedium,
             )
+            exercise.supersetGroup?.let { group ->
+                Text(
+                    text = stringResource(R.string.superset_badge, group),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("routine_viewer_superset_${exercise.exerciseTemplateId}"),
+                )
+            }
             Text(
                 text = stringResource(
                     R.string.exercise_row_summary,

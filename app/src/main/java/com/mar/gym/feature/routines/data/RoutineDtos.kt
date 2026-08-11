@@ -45,6 +45,7 @@ data class RoutineExerciseDto(
     val exerciseType: String?,
     val equipment: String?,
     val position: Int,
+    val supersetGroup: Int? = null,
     val notes: String?,
     val restSeconds: Int,
     val sets: List<RoutineSetDto>,
@@ -74,6 +75,7 @@ data class RoutineWriteDto(
 data class RoutineExerciseWriteDto(
     val exerciseTemplateId: String,
     val position: Int,
+    val supersetGroup: Int?,
     val notes: String?,
     val restSeconds: Int,
     val sets: List<RoutineSetWriteDto>,

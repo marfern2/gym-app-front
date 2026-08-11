@@ -1,5 +1,7 @@
 package com.mar.gym.feature.routines.model
 
+import com.mar.gym.core.model.hasValidLocalSupersetGroups
+import com.mar.gym.core.model.normalizedSupersetOrdinals
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
 import com.mar.gym.feature.exercises.model.ExerciseType
@@ -21,13 +23,67 @@ data class RoutineDraft(
 ) {
     val totalSets: Int get() = exercises.sumOf { it.sets.size }
 
-    fun moveExercise(localId: String, offset: Int): RoutineDraft = copy(
-        exercises = exercises.move(localId, offset) { it.localId }
-    )
+    fun moveExercise(localId: String, offset: Int): RoutineDraft {
+        val moved = exercises.move(localId, offset) { it.localId }
+        return if (hasValidLocalSupersetGroups(moved.map { it.supersetLocalId })) {
+            copy(exercises = moved)
+        } else this
+    }
 
     fun removeExercise(localId: String): RoutineDraft = copy(
-        exercises = exercises.filterNot { it.localId == localId }
+        exercises = exercises.filterNot { it.localId == localId }.dissolveSingletonSupersets()
     )
+
+    fun groupWithAdjacent(localId: String, offset: Int, ids: LocalIdSource): RoutineDraft {
+        val index = exercises.indexOfFirst { it.localId == localId }
+        val adjacentIndex = index + offset
+        if (index < 0 || offset !in setOf(-1, 1) || adjacentIndex !in exercises.indices) return this
+        val currentGroup = exercises[index].supersetLocalId
+        val adjacentGroup = exercises[adjacentIndex].supersetLocalId
+        if (currentGroup != null && adjacentGroup != null) return this
+        val targetGroup = currentGroup ?: adjacentGroup ?: ids.nextId()
+        val grouped = exercises.mapIndexed { itemIndex, exercise ->
+            if (itemIndex == index || itemIndex == adjacentIndex) {
+                exercise.copy(supersetLocalId = targetGroup)
+            } else exercise
+        }
+        return if (hasValidLocalSupersetGroups(grouped.map { it.supersetLocalId })) {
+            copy(exercises = grouped)
+        } else this
+    }
+
+    fun removeFromSuperset(localId: String, ids: LocalIdSource): RoutineDraft {
+        val index = exercises.indexOfFirst { it.localId == localId }
+        val group = exercises.getOrNull(index)?.supersetLocalId ?: return this
+        val updated = exercises.toMutableList().apply {
+            this[index] = this[index].copy(supersetLocalId = null)
+        }
+        val runs = updated.indices.filter { updated[it].supersetLocalId == group }
+            .splitIntoContiguousRuns()
+        runs.forEachIndexed { runIndex, run ->
+            val replacement = when {
+                run.size < 2 -> null
+                runIndex == 0 -> group
+                else -> ids.nextId()
+            }
+            run.forEach { itemIndex ->
+                updated[itemIndex] = updated[itemIndex].copy(supersetLocalId = replacement)
+            }
+        }
+        return copy(exercises = updated)
+    }
+
+    fun dissolveSuperset(localId: String): RoutineDraft {
+        val group = exercises.firstOrNull { it.localId == localId }?.supersetLocalId ?: return this
+        return copy(exercises = exercises.map { exercise ->
+            if (exercise.supersetLocalId == group) exercise.copy(supersetLocalId = null) else exercise
+        })
+    }
+
+    fun supersetOrdinal(localId: String): Int? {
+        val index = exercises.indexOfFirst { it.localId == localId }
+        return normalizedSupersetOrdinals(exercises.map { it.supersetLocalId }).getOrNull(index)
+    }
 
     fun addExercise(template: ExerciseTemplateDetail, ids: LocalIdSource): RoutineDraft {
         if (exercises.any { it.exerciseTemplateId == template.id } || exercises.size >= MAX_EXERCISES) {
@@ -47,6 +103,7 @@ data class RoutineDraft(
         const val MAX_TOTAL_SETS = 200
 
         fun from(document: RoutineDocument, ids: LocalIdSource): RoutineDraft = with(document.detail) {
+            val localGroups = mutableMapOf<Int, String>()
             RoutineDraft(
                 routineId = id,
                 name = name,
@@ -59,6 +116,9 @@ data class RoutineDraft(
                         exerciseName = exercise.exerciseName,
                         exerciseType = exercise.exerciseType,
                         equipment = exercise.equipment,
+                        supersetLocalId = exercise.supersetGroup?.let { group ->
+                            localGroups.getOrPut(group) { ids.nextId() }
+                        },
                         notes = exercise.notes.orEmpty(),
                         restSeconds = exercise.restSeconds.toString(),
                         sets = exercise.sets.map { set -> set.toDraft(ids.nextId()) },
@@ -78,6 +138,7 @@ data class RoutineExerciseDraft(
     val notes: String = "",
     val restSeconds: String = "0",
     val sets: List<RoutineSetDraft> = emptyList(),
+    val supersetLocalId: String? = null,
 ) {
     fun addSet(ids: LocalIdSource): RoutineExerciseDraft =
         if (sets.size >= MAX_SETS) this else copy(
@@ -120,6 +181,9 @@ fun RoutineDraft.validate(): DraftValidation {
         errors["exercises"] = "routine_error_duplicate_exercise"
     }
     if (totalSets > RoutineDraft.MAX_TOTAL_SETS) errors["exercises"] = "routine_error_total_sets_limit"
+    if (!hasValidLocalSupersetGroups(exercises.map { it.supersetLocalId })) {
+        errors["exercises"] = "routine_error_invalid_superset"
+    }
     exercises.forEach { exercise ->
         val prefix = "exercise.${exercise.localId}"
         if (exercise.notes.length > 1_000) errors["$prefix.notes"] = "routine_error_notes_length"
@@ -206,4 +270,23 @@ private fun <T> List<T>.move(id: String, offset: Int, idOf: (T) -> String): List
     val to = from + offset
     if (from < 0 || to !in indices) return this
     return toMutableList().apply { add(to, removeAt(from)) }
+}
+
+private fun List<RoutineExerciseDraft>.dissolveSingletonSupersets(): List<RoutineExerciseDraft> {
+    val counts = mapNotNull { it.supersetLocalId }.groupingBy { it }.eachCount()
+    return map { exercise ->
+        if (exercise.supersetLocalId?.let { counts[it] } == 1) {
+            exercise.copy(supersetLocalId = null)
+        } else exercise
+    }
+}
+
+private fun List<Int>.splitIntoContiguousRuns(): List<List<Int>> {
+    val runs = mutableListOf<MutableList<Int>>()
+    forEach { index ->
+        val last = runs.lastOrNull()
+        if (last == null || index != last.last() + 1) runs += mutableListOf(index)
+        else last += index
+    }
+    return runs
 }

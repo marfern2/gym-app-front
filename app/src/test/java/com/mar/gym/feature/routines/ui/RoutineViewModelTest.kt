@@ -148,6 +148,32 @@ class RoutineViewModelTest {
     }
 
     @Test
+    fun superserieEditsStayLocalAndSurviveEtagConflict() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            replaceHandler = { _, _ -> conflictFailure() }
+        }
+        val viewModel = RoutineEditorViewModel(ROUTINE_ID, repository, FakeExerciseRepository(), SequentialIds())
+        runCurrent()
+        viewModel.addSelectedExercises(linkedSetOf(TEMPLATE_ID, SECOND_TEMPLATE_ID))
+        runCurrent()
+        val first = viewModel.uiState.value.data.draft.exercises.first()
+        viewModel.groupWithAdjacent(first.localId, 1)
+
+        val localGroup = viewModel.uiState.value.data.draft.exercises.first().supersetLocalId
+        assertTrue(localGroup != null)
+        assertEquals(0, repository.replaceRequests)
+        viewModel.save()
+        runCurrent()
+
+        assertTrue(viewModel.uiState.value is RoutineEditorUiState.Conflict)
+        assertEquals(
+            listOf(localGroup, localGroup),
+            viewModel.uiState.value.data.draft.exercises.map { it.supersetLocalId },
+        )
+        assertEquals(1, repository.replaceRequests)
+    }
+
+    @Test
     fun editorIntegratesPickerAddsOnlyUniqueTemplateAndSupportsReorder() = runTest {
         val viewModel = RoutineEditorViewModel(null, FakeRoutineRepository(), FakeExerciseRepository(), SequentialIds())
         viewModel.updateName("Rutina")
@@ -299,6 +325,7 @@ class RoutineViewModelTest {
         const val ROUTINE_ID = "91111111-1111-4111-8111-111111111111"
         const val COPY_ID = "92222222-2222-4222-8222-222222222222"
         const val TEMPLATE_ID = "93333333-3333-4333-8333-333333333333"
+        const val SECOND_TEMPLATE_ID = "94444444-4444-4444-8444-444444444444"
 
         private fun summary(archived: Boolean = false) = RoutineSummary(
             ROUTINE_ID, "Rutina", null, 0, archived, Instant.EPOCH, Instant.EPOCH, 2,

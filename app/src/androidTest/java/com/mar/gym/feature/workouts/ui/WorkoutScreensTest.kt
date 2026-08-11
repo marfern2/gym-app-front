@@ -1,17 +1,23 @@
 package com.mar.gym.feature.workouts.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.workouts.model.WorkoutDraft
+import com.mar.gym.feature.workouts.model.WorkoutDetail
+import com.mar.gym.feature.workouts.model.WorkoutExercise
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
+import com.mar.gym.feature.workouts.model.WorkoutStatus
 import com.mar.gym.feature.progress.model.PreviousExercisePerformance
 import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import com.mar.gym.feature.progress.model.PreviousPerformanceSet
@@ -20,6 +26,7 @@ import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -96,6 +103,66 @@ class WorkoutScreensTest {
     }
 
     @Test
+    fun activeEditorShowsGroupingAndAccessibleEditActions() {
+        val exercises = listOf(
+            workoutExerciseDraft("first", TEMPLATE, "Press"),
+            workoutExerciseDraft("second", SECOND_TEMPLATE, "Remo"),
+        ).map { it.copy(supersetLocalId = "temporary-group") }
+        val draft = WorkoutDraft("workout", "Fuerza", exercises = exercises)
+        var dissolved: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenHistory = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onComplete = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                    onDissolveSuperset = { dissolved = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("workout_superset_first").assertIsDisplayed()
+        composeRule.onNodeWithTag("workout_superset_dissolve_first").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("first", dissolved) }
+    }
+
+    @Test
+    fun completedDetailShowsReadonlySnapshotGrouping() {
+        val now = Instant.parse("2026-08-08T10:00:00Z")
+        val detail = WorkoutDetail(
+            id = "workout",
+            sourceRoutineId = null,
+            sourceRoutineName = null,
+            title = "Completado",
+            notes = null,
+            status = WorkoutStatus.Completed,
+            startedAt = now,
+            completedAt = now.plusSeconds(60),
+            durationSeconds = 60,
+            createdAt = now,
+            updatedAt = now.plusSeconds(60),
+            version = 1,
+            exercises = listOf(
+                workoutExercise("first-server", TEMPLATE, "Press", 1),
+                workoutExercise("second-server", SECOND_TEMPLATE, "Remo", 2),
+            ),
+        )
+        composeRule.setContent {
+            GYmAppTheme {
+                WorkoutDetailScreen(WorkoutDetailUiState.Content(detail), onBack = {}, onRetry = {})
+            }
+        }
+
+        composeRule.onNodeWithTag("workout_history_superset_first-server").assertIsDisplayed()
+        composeRule.onNodeWithTag("workout_history_superset_second-server").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Superserie 1").assertCountEquals(2)
+        composeRule.onNodeWithTag("workout_superset_dissolve_first-server").assertDoesNotExist()
+    }
+
+    @Test
     fun historyRendersRequiredSummaryAndEmptyState() {
         val item = WorkoutHistoryItem(
             "id", "Sesión terminada", Instant.parse("2026-08-08T10:00:00Z"),
@@ -116,7 +183,25 @@ class WorkoutScreensTest {
         composeRule.onNodeWithText("3 series completadas").assertIsDisplayed()
     }
 
+    private fun workoutExerciseDraft(id: String, template: String, name: String) = WorkoutExerciseDraft(
+        id, id, template, name, ExerciseType.WeightReps, Equipment.Barbell,
+    )
+
+    private fun workoutExercise(id: String, template: String, name: String, position: Int) = WorkoutExercise(
+        id = id,
+        sourceExerciseTemplateId = template,
+        exerciseNameSnapshot = name,
+        exerciseTypeSnapshot = ExerciseType.WeightReps,
+        equipmentSnapshot = Equipment.Barbell,
+        position = position,
+        notes = null,
+        restSeconds = 90,
+        sets = emptyList(),
+        supersetGroup = 1,
+    )
+
     private companion object {
         const val TEMPLATE = "00000000-0000-4000-8000-000000000001"
+        const val SECOND_TEMPLATE = "00000000-0000-4000-8000-000000000002"
     }
 }

@@ -42,6 +42,7 @@ data class WorkoutExercise(
     val notes: String?,
     val restSeconds: Int,
     val sets: List<WorkoutSet>,
+    val supersetGroup: Int? = null,
 )
 
 data class WorkoutSetTargets(

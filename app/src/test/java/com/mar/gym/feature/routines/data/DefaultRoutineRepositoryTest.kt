@@ -53,6 +53,7 @@ class DefaultRoutineRepositoryTest {
         assertEquals(7, result.value.etag.version)
         val exercise = result.value.detail.exercises.single()
         assertEquals(ExerciseType.WeightReps, exercise.exerciseType)
+        assertEquals(null, exercise.supersetGroup)
         assertEquals("22.5", exercise.sets.single().targetWeight)
         assertEquals("8.5", exercise.sets.single().targetRpe)
     }
@@ -78,7 +79,33 @@ class DefaultRoutineRepositoryTest {
         val body = request.body.readUtf8()
         assertTrue(body.contains("\"targetWeight\":22.5"))
         assertTrue(body.contains("\"position\":1"))
+        assertTrue(body.contains("\"supersetGroup\":null"))
         assertTrue(!body.contains("local-exercise") && !body.contains("local-set"))
+    }
+
+    @Test
+    fun mapsValidGroupsWritesNormalizedOrdinalsAndAdoptsCanonicalRenumbering() = runBlocking {
+        server.enqueue(json(groupedDetailJson(version = 7), etag = "\"7\""))
+        val loaded = repository().detail(ROUTINE_ID) as RoutineRepositoryResult.Success
+        assertEquals(listOf(1, 1), loaded.value.detail.exercises.map { it.supersetGroup })
+        server.takeRequest()
+
+        server.enqueue(json(groupedDetailJson(version = 8), etag = "\"8\""))
+        val draft = groupedDraft()
+        val saved = repository().replace(draft, RoutineEtag.fromVersion(7)!!) as RoutineRepositoryResult.Success
+        val body = server.takeRequest().body.readUtf8()
+        assertEquals(2, "\"supersetGroup\":1".toRegex().findAll(body).count())
+        assertTrue(!body.contains("temporary-group"))
+        assertEquals(listOf(1, 1), saved.value.detail.exercises.map { it.supersetGroup })
+        assertEquals(8, saved.value.etag.version)
+    }
+
+    @Test
+    fun rejectsSingletonSupersetInCanonicalResponse() = runBlocking {
+        server.enqueue(json(detailJson().replace("\"supersetGroup\":null", "\"supersetGroup\":1"), "\"7\""))
+        val result = repository().detail(ROUTINE_ID)
+        assertTrue(result is RoutineRepositoryResult.Failure)
+        assertTrue((result as RoutineRepositoryResult.Failure).error is NetworkFailure.InvalidResponse)
     }
 
     @Test
@@ -158,8 +185,17 @@ class DefaultRoutineRepositoryTest {
     private fun detailJson(version: Int = 7) = """{
       "id":"$ROUTINE_ID","name":"Fuerza","description":"Base","archived":false,"version":$version,
       "createdAt":"2026-08-01T10:00:00Z","updatedAt":"2026-08-02T10:00:00Z",
-      "exercises":[{"id":"$EXERCISE_ID","exerciseTemplateId":"$TEMPLATE_ID","exerciseName":"Press","exerciseType":"WEIGHT_REPS","equipment":"BARBELL","position":1,"notes":null,"restSeconds":90,
+      "exercises":[{"id":"$EXERCISE_ID","exerciseTemplateId":"$TEMPLATE_ID","exerciseName":"Press","exerciseType":"WEIGHT_REPS","equipment":"BARBELL","position":1,"supersetGroup":null,"notes":null,"restSeconds":90,
         "sets":[{"id":"$SET_ID","position":1,"setType":"NORMAL","targetRepsMin":8,"targetRepsMax":10,"targetWeight":22.5,"targetDurationSeconds":null,"targetDistanceMeters":null,"targetRpe":8.5}]}]
+    }"""
+
+    private fun groupedDetailJson(version: Int) = """{
+      "id":"$ROUTINE_ID","name":"Fuerza","description":"Base","archived":false,"version":$version,
+      "createdAt":"2026-08-01T10:00:00Z","updatedAt":"2026-08-02T10:00:00Z",
+      "exercises":[
+        {"id":"$EXERCISE_ID","exerciseTemplateId":"$TEMPLATE_ID","exerciseName":"Press","exerciseType":"WEIGHT_REPS","equipment":"BARBELL","position":1,"supersetGroup":1,"notes":null,"restSeconds":90,"sets":[]},
+        {"id":"$SECOND_EXERCISE_ID","exerciseTemplateId":"$SECOND_TEMPLATE_ID","exerciseName":"Remo","exerciseType":"WEIGHT_REPS","equipment":"BARBELL","position":2,"supersetGroup":1,"notes":null,"restSeconds":90,"sets":[]}
+      ]
     }"""
 
     private fun draft(routineId: String?) = RoutineDraft(
@@ -172,10 +208,27 @@ class DefaultRoutineRepositoryTest {
         )),
     )
 
+    private fun groupedDraft() = RoutineDraft(
+        routineId = ROUTINE_ID,
+        name = "Fuerza",
+        exercises = listOf(
+            RoutineExerciseDraft(
+                "local-first", TEMPLATE_ID, "Press", ExerciseType.WeightReps, Equipment.Barbell,
+                supersetLocalId = "temporary-group",
+            ),
+            RoutineExerciseDraft(
+                "local-second", SECOND_TEMPLATE_ID, "Remo", ExerciseType.WeightReps, Equipment.Barbell,
+                supersetLocalId = "temporary-group",
+            ),
+        ),
+    )
+
     private companion object {
         const val ROUTINE_ID = "81111111-1111-4111-8111-111111111111"
         const val EXERCISE_ID = "82222222-2222-4222-8222-222222222222"
         const val TEMPLATE_ID = "83333333-3333-4333-8333-333333333333"
         const val SET_ID = "84444444-4444-4444-8444-444444444444"
+        const val SECOND_EXERCISE_ID = "85555555-5555-4555-8555-555555555555"
+        const val SECOND_TEMPLATE_ID = "86666666-6666-4666-8666-666666666666"
     }
 }

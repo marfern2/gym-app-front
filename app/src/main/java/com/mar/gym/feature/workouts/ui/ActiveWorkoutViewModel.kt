@@ -96,6 +96,9 @@ class ActiveWorkoutViewModel(
     fun updateNotes(value: String) = edit { copy(notes = value) }
     fun removeExercise(localId: String) = edit { removeExercise(localId) }
     fun moveExercise(localId: String, offset: Int) = edit { moveExercise(localId, offset) }
+    fun groupWithAdjacent(localId: String, offset: Int) = edit { groupWithAdjacent(localId, offset, ids) }
+    fun removeFromSuperset(localId: String) = edit { removeFromSuperset(localId, ids) }
+    fun dissolveSuperset(localId: String) = edit { dissolveSuperset(localId) }
 
     fun updateExercise(localId: String, transform: (WorkoutExerciseDraft) -> WorkoutExerciseDraft) = edit {
         copy(exercises = exercises.map { if (it.localId == localId) transform(it) else it })
@@ -196,7 +199,7 @@ class ActiveWorkoutViewModel(
                         return@launch
                     }
                     is WorkoutRepositoryResult.Success -> {
-                        canonicalDraft = WorkoutDraft.from(saved.value)
+                        canonicalDraft = WorkoutDraft.from(saved.value, ids)
                         currentEtag = saved.value.etag
                         baseline = canonicalDraft
                     }
@@ -313,7 +316,7 @@ class ActiveWorkoutViewModel(
             )
             return
         }
-        val draft = WorkoutDraft.from(document)
+        val draft = WorkoutDraft.from(document, ids)
         baseline = draft
         retryAction = null
         _uiState.value = ActiveWorkoutUiState.Active(

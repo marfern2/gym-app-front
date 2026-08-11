@@ -28,6 +28,74 @@ class RoutineDraftTest {
     }
 
     @Test
+    fun createsMultipleSupersetsAddsMembersAndNormalizesDisplayOrdinals() {
+        val base = RoutineDraft(
+            name = "Rutina",
+            exercises = listOf(
+                exercise("a", "ta"), exercise("b", "tb"),
+                exercise("c", "tc"), exercise("d", "td"),
+            ),
+        )
+
+        val first = base.groupWithAdjacent("a", 1, ids)
+        val twoGroups = first.groupWithAdjacent("c", 1, ids)
+        assertEquals(listOf(1, 1, 2, 2), twoGroups.exercises.map { twoGroups.supersetOrdinal(it.localId) })
+
+        val extended = first.groupWithAdjacent("c", -1, ids)
+        assertEquals(1, extended.exercises.map { it.supersetLocalId }.filterNotNull().distinct().size)
+        assertEquals(listOf(1, 1, 1, null), extended.exercises.map { extended.supersetOrdinal(it.localId) })
+    }
+
+    @Test
+    fun removesMembersDissolvesSingletonsAndCanDissolveWholeGroup() {
+        val grouped = draftWithGroup("a", "b", "c")
+
+        val edgeRemoved = grouped.removeFromSuperset("a", ids)
+        assertEquals(null, edgeRemoved.exercises[0].supersetLocalId)
+        assertEquals(edgeRemoved.exercises[1].supersetLocalId, edgeRemoved.exercises[2].supersetLocalId)
+
+        val middleRemoved = grouped.removeFromSuperset("b", ids)
+        assertTrue(middleRemoved.exercises.all { it.supersetLocalId == null })
+        assertTrue(grouped.dissolveSuperset("b").exercises.all { it.supersetLocalId == null })
+    }
+
+    @Test
+    fun deletionAndReorderingKeepGroupsValidWithoutSilentDissolution() {
+        val pair = draftWithGroup("a", "b")
+        assertEquals(null, pair.removeExercise("a").exercises.single().supersetLocalId)
+
+        val triple = draftWithGroup("a", "b", "c")
+        val afterDelete = triple.removeExercise("b")
+        assertEquals(listOf("a", "c"), afterDelete.exercises.map { it.localId })
+        assertEquals(1, afterDelete.exercises.mapNotNull { it.supersetLocalId }.distinct().size)
+
+        val reorderedInside = triple.moveExercise("a", 1)
+        assertEquals(listOf("b", "a", "c"), reorderedInside.exercises.map { it.localId })
+        val withOutside = triple.copy(exercises = triple.exercises + exercise("d", "td"))
+        assertEquals(withOutside, withOutside.moveExercise("c", 1))
+        assertTrue(withOutside.exercises.all { it.supersetLocalId != null || it.localId == "d" })
+    }
+
+    @Test
+    fun validationRejectsSingletonAndNonContiguousLocalGroups() {
+        val singleton = RoutineDraft(
+            name = "Rutina",
+            exercises = listOf(exercise("a", "ta").copy(supersetLocalId = "g")),
+        )
+        val nonContiguous = RoutineDraft(
+            name = "Rutina",
+            exercises = listOf(
+                exercise("a", "ta").copy(supersetLocalId = "g"),
+                exercise("b", "tb"),
+                exercise("c", "tc").copy(supersetLocalId = "g"),
+            ),
+        )
+
+        assertEquals("routine_error_invalid_superset", singleton.validate().fieldErrors["exercises"])
+        assertEquals("routine_error_invalid_superset", nonContiguous.validate().fieldErrors["exercises"])
+    }
+
+    @Test
     fun validatesRoutineAndExerciseLimits() {
         val tooManyExercises = (1..31).map { exercise("local-$it", "template-$it") }
         val result = RoutineDraft(name = "R", description = "x".repeat(2001), exercises = tooManyExercises).validate()
@@ -100,5 +168,12 @@ class RoutineDraftTest {
         exerciseName = "Ejercicio",
         exerciseType = ExerciseType.WeightReps,
         equipment = Equipment.Barbell,
+    )
+
+    private fun draftWithGroup(vararg localIds: String): RoutineDraft = RoutineDraft(
+        name = "Rutina",
+        exercises = localIds.map { id ->
+            exercise(id, "template-$id").copy(supersetLocalId = "temporary-group")
+        },
     )
 }

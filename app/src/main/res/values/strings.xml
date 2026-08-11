@@ -82,6 +82,13 @@
     <string name="routine_move_up">Mover arriba</string>
     <string name="routine_move_down">Mover abajo</string>
     <string name="routine_remove_exercise">Eliminar ejercicio</string>
+    <string name="superset_badge">Superserie %1$d</string>
+    <string name="superset_group_previous">Agrupar con anterior</string>
+    <string name="superset_group_next">Agrupar con siguiente</string>
+    <string name="superset_remove_member">Sacar de superserie</string>
+    <string name="superset_dissolve">Disolver superserie</string>
+    <string name="superset_reorder_help">Los movimientos que romperían la contigüidad de una superserie están bloqueados.</string>
+    <string name="routine_error_invalid_superset">Cada superserie debe contener al menos dos ejercicios contiguos.</string>
     <string name="routine_sets_title">Series previstas</string>
     <string name="routine_add_set">Añadir serie</string>
     <string name="routine_remove_set">Eliminar serie</string>
@@ -177,6 +184,7 @@
     <string name="workout_error_incompatible_metric">El resultado no es compatible con este tipo de ejercicio.</string>
     <string name="workout_error_completed_metrics">Una serie completada necesita todos los resultados obligatorios para su tipo.</string>
     <string name="workout_error_number_range">Introduce un número dentro del rango y precisión permitidos.</string>
+    <string name="workout_error_invalid_superset">Cada superserie debe contener al menos dos ejercicios contiguos.</string>
     <string name="workout_error_title">No se pudo completar la operación</string>
     <string name="workout_error_network">No hay conexión con el servidor.</string>
     <string name="workout_error_timeout">El servidor tardó demasiado en responder.</string>

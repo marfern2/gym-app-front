@@ -3,6 +3,8 @@ package com.mar.gym.feature.workouts.data
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.core.network.ProblemDetails
+import com.mar.gym.core.model.hasValidCanonicalSupersetGroups
+import com.mar.gym.core.model.normalizedSupersetOrdinals
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
@@ -110,7 +112,9 @@ class DefaultWorkoutRepository(
             if (exercise.position != index + 1) return null
             exercise.toDomain() ?: return null
         }
-        if (mapped.map { it.id }.distinct().size != mapped.size || mapped.sumOf { it.sets.size } > 200) return null
+        if (mapped.map { it.id }.distinct().size != mapped.size || mapped.sumOf { it.sets.size } > 200 ||
+            !hasValidCanonicalSupersetGroups(mapped.map { it.supersetGroup })
+        ) return null
         return WorkoutDetail(
             id = id,
             sourceRoutineId = sourceRoutineId,
@@ -145,6 +149,7 @@ class DefaultWorkoutRepository(
             exerciseTypeSnapshot = exerciseType,
             equipmentSnapshot = Equipment.fromApiValue(equipmentSnapshot) ?: return null,
             position = position,
+            supersetGroup = supersetGroup,
             notes = notes,
             restSeconds = restSeconds,
             sets = mappedSets,
@@ -192,32 +197,36 @@ class DefaultWorkoutRepository(
         return WorkoutHistoryPage(items, page, size, totalElements, totalPages, first, last)
     }
 
-    private fun WorkoutDraft.toWriteDto() = WorkoutWriteDto(
-        title = title,
-        notes = notes.takeIf(String::isNotBlank),
-        exercises = exercises.mapIndexed { exerciseIndex, exercise ->
-            WorkoutExerciseWriteDto(
-                id = exercise.serverId,
-                exerciseTemplateId = exercise.exerciseTemplateId,
-                position = exerciseIndex + 1,
-                notes = exercise.notes.takeIf(String::isNotBlank),
-                restSeconds = exercise.restSeconds.toInt(),
-                sets = exercise.sets.mapIndexed { setIndex, set ->
-                    WorkoutSetWriteDto(
-                        id = set.serverId,
-                        position = setIndex + 1,
-                        setType = set.setType.apiValue,
-                        completed = set.completed,
-                        reps = set.reps.toIntOrNull(),
-                        weight = set.weight.toDoubleOrNull(),
-                        durationSeconds = set.durationSeconds.toIntOrNull(),
-                        distanceMeters = set.distanceMeters.toDoubleOrNull(),
-                        rpe = set.rpe.toDoubleOrNull(),
-                    )
-                },
-            )
-        },
-    )
+    private fun WorkoutDraft.toWriteDto(): WorkoutWriteDto {
+        val supersetOrdinals = normalizedSupersetOrdinals(exercises.map { it.supersetLocalId })
+        return WorkoutWriteDto(
+            title = title,
+            notes = notes.takeIf(String::isNotBlank),
+            exercises = exercises.mapIndexed { exerciseIndex, exercise ->
+                WorkoutExerciseWriteDto(
+                    id = exercise.serverId,
+                    exerciseTemplateId = exercise.exerciseTemplateId,
+                    position = exerciseIndex + 1,
+                    supersetGroup = supersetOrdinals[exerciseIndex],
+                    notes = exercise.notes.takeIf(String::isNotBlank),
+                    restSeconds = exercise.restSeconds.toInt(),
+                    sets = exercise.sets.mapIndexed { setIndex, set ->
+                        WorkoutSetWriteDto(
+                            id = set.serverId,
+                            position = setIndex + 1,
+                            setType = set.setType.apiValue,
+                            completed = set.completed,
+                            reps = set.reps.toIntOrNull(),
+                            weight = set.weight.toDoubleOrNull(),
+                            durationSeconds = set.durationSeconds.toIntOrNull(),
+                            distanceMeters = set.distanceMeters.toDoubleOrNull(),
+                            rpe = set.rpe.toDoubleOrNull(),
+                        )
+                    },
+                )
+            },
+        )
+    }
 
     private suspend fun <T> execute(request: suspend () -> Response<T>): RawResponse<T> = try {
         val response = request()

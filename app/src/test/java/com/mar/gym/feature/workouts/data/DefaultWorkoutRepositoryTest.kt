@@ -40,6 +40,7 @@ class DefaultWorkoutRepositoryTest {
         assertEquals(7, document.etag.version)
         assertEquals("80.0", set.targets.targetWeight.toString())
         assertEquals(8, set.targets.targetRepsMin)
+        assertNull(document.detail.exercises.single().supersetGroup)
         assertNull(set.weight)
         assertNull(set.reps)
         assertFalse(set.completed)
@@ -71,6 +72,16 @@ class DefaultWorkoutRepositoryTest {
     }
 
     @Test
+    fun `start from routine trusts workout snapshot grouping`() = runBlocking {
+        server.enqueue(jsonResponse(groupedDetailJson(version = 0), etag = "\"0\"", code = 201))
+
+        val result = repository().startWorkout(ROUTINE_ID) as WorkoutRepositoryResult.Success
+
+        assertEquals(listOf(1, 1), result.value.detail.exercises.map { it.supersetGroup })
+        assertEquals(listOf(EXERCISE_ID, SECOND_EXERCISE_ID), result.value.detail.exercises.map { it.id })
+    }
+
+    @Test
     fun `update sends existing ids omits new ids and all targets then adopts canonical response etag`() = runBlocking {
         server.enqueue(jsonResponse(detailJson(version = 8, includeSecondSet = true), etag = "\"8\""))
         val draft = draft().copy(exercises = listOf(
@@ -93,12 +104,30 @@ class DefaultWorkoutRepositoryTest {
         assertEquals("no-retry", request.getHeader("X-GYmApp-Requires-Authentication"))
         assertTrue(body.contains("\"id\":\"$EXERCISE_ID\""))
         assertTrue(body.contains("\"id\":\"$SET_ID\""))
+        assertTrue(body.contains("\"setType\":\"NORMAL\""))
         assertTrue(body.contains("\"exerciseTemplateId\":\"$OTHER_TEMPLATE_ID\""))
         assertFalse(body.contains("local-set"))
         assertFalse(body.contains("local-exercise"))
         assertFalse(body.contains("targetWeight"))
         assertEquals(8, result.value.etag.version)
         assertEquals(NEW_SET_ID, result.value.detail.exercises.single().sets.last().id)
+    }
+
+    @Test
+    fun `update writes normalized groups and keeps stable exercise ids from canonical response`() = runBlocking {
+        server.enqueue(jsonResponse(groupedDetailJson(version = 8), etag = "\"8\""))
+        val draft = groupedDraft()
+
+        val result = repository().updateWorkout(WORKOUT_ID, draft, WorkoutEtag.fromVersion(7)!!)
+            as WorkoutRepositoryResult.Success
+        val request = server.takeRequest()
+        val body = request.body.readUtf8()
+
+        assertEquals(2, "\"supersetGroup\":1".toRegex().findAll(body).count())
+        assertTrue(!body.contains("temporary-group"))
+        assertEquals(listOf(EXERCISE_ID, SECOND_EXERCISE_ID), result.value.detail.exercises.map { it.id })
+        assertEquals(listOf(1, 1), result.value.detail.exercises.map { it.supersetGroup })
+        assertEquals(8, result.value.etag.version)
     }
 
     @Test
@@ -152,6 +181,21 @@ class DefaultWorkoutRepositoryTest {
         )),
     )
 
+    private fun groupedDraft(): WorkoutDraft = WorkoutDraft(
+        WORKOUT_ID,
+        "Workout",
+        exercises = listOf(
+            WorkoutExerciseDraft(
+                EXERCISE_ID, EXERCISE_ID, TEMPLATE_ID, "Press", ExerciseType.WeightReps,
+                Equipment.Barbell, supersetLocalId = "temporary-group",
+            ),
+            WorkoutExerciseDraft(
+                SECOND_EXERCISE_ID, SECOND_EXERCISE_ID, OTHER_TEMPLATE_ID, "Remo",
+                ExerciseType.WeightReps, Equipment.Barbell, supersetLocalId = "temporary-group",
+            ),
+        ),
+    )
+
     private fun jsonResponse(body: String, etag: String? = null, code: Int = 200) = MockResponse()
         .setResponseCode(code)
         .setHeader("Content-Type", "application/json")
@@ -177,11 +221,25 @@ class DefaultWorkoutRepositoryTest {
              "updatedAt":"2026-08-08T11:00:00Z","version":$version,"exercises":[{
                "id":"$EXERCISE_ID","sourceExerciseTemplateId":"$TEMPLATE_ID",
                "exerciseNameSnapshot":"Press","exerciseTypeSnapshot":"WEIGHT_REPS",
-               "equipmentSnapshot":"BARBELL","position":1,"notes":null,"restSeconds":90,
+               "equipmentSnapshot":"BARBELL","position":1,"supersetGroup":null,"notes":null,"restSeconds":90,
                "sets":[${setJson(SET_ID, 1, targets = true)}$second]
              }]}
         """.trimIndent()
     }
+
+    private fun groupedDetailJson(version: Int): String = """
+        {"id":"$WORKOUT_ID","sourceRoutineId":"$ROUTINE_ID","sourceRoutineName":"Rutina",
+         "title":"Workout","notes":null,"status":"ACTIVE","startedAt":"2026-08-08T10:00:00Z",
+         "completedAt":null,"durationSeconds":0,"createdAt":"2026-08-08T10:00:00Z",
+         "updatedAt":"2026-08-08T10:00:00Z","version":$version,"exercises":[
+           {"id":"$EXERCISE_ID","sourceExerciseTemplateId":"$TEMPLATE_ID","exerciseNameSnapshot":"Press",
+            "exerciseTypeSnapshot":"WEIGHT_REPS","equipmentSnapshot":"BARBELL","position":1,
+            "supersetGroup":1,"notes":null,"restSeconds":90,"sets":[]},
+           {"id":"$SECOND_EXERCISE_ID","sourceExerciseTemplateId":"$OTHER_TEMPLATE_ID","exerciseNameSnapshot":"Remo",
+            "exerciseTypeSnapshot":"WEIGHT_REPS","equipmentSnapshot":"BARBELL","position":2,
+            "supersetGroup":1,"notes":null,"restSeconds":90,"sets":[]}
+         ]}
+    """.trimIndent()
 
     private fun setJson(id: String, position: Int, targets: Boolean): String = if (targets) """
         {"id":"$id","position":$position,"setType":"NORMAL","targetRepsMin":8,"targetRepsMax":10,
@@ -208,5 +266,6 @@ class DefaultWorkoutRepositoryTest {
         const val TEMPLATE_ID = "00000000-0000-4000-8000-000000000004"
         const val OTHER_TEMPLATE_ID = "00000000-0000-4000-8000-000000000006"
         const val ROUTINE_ID = "00000000-0000-4000-8000-000000000007"
+        const val SECOND_EXERCISE_ID = "00000000-0000-4000-8000-000000000008"
     }
 }

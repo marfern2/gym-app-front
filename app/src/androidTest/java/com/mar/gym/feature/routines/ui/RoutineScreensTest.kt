@@ -131,6 +131,48 @@ class RoutineScreensTest {
     }
 
     @Test
+    fun editorShowsGroupingAndExposesAccessibleCreateAndDissolveActions() {
+        val first = exercise(ExerciseType.Duration).copy(
+            localId = "first",
+            exerciseTemplateId = TEMPLATE_ID,
+            supersetLocalId = "temporary-group",
+        )
+        val second = exercise(ExerciseType.Duration).copy(
+            localId = "second",
+            exerciseTemplateId = SECOND_TEMPLATE_ID,
+            supersetLocalId = "temporary-group",
+        )
+        var dissolved: String? = null
+        var grouped: Pair<String, Int>? = null
+        var state by mutableStateOf<RoutineEditorUiState>(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(name = "Superseries", exercises = listOf(first, second)),
+            )),
+        )
+        setEditor(
+            state,
+            onDissolveSuperset = { dissolved = it },
+            onGroupWithAdjacent = { id, offset -> grouped = id to offset },
+            stateProvider = { state },
+        )
+
+        composeRule.onNodeWithTag("routine_superset_first").assertIsDisplayed()
+        composeRule.onNodeWithTag("routine_superset_dissolve_first").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("first", dissolved) }
+
+        composeRule.runOnIdle {
+            state = RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(
+                    name = "Superseries",
+                    exercises = listOf(first.copy(supersetLocalId = null), second.copy(supersetLocalId = null)),
+                ),
+            ))
+        }
+        composeRule.onNodeWithTag("routine_group_next_first").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals("first" to 1, grouped) }
+    }
+
+    @Test
     fun conflictAndUnsavedExitWarningAreVisibleWithoutOverwriting() {
         var reloads = 0
         var exited = 0
@@ -167,6 +209,7 @@ class RoutineScreensTest {
         composeRule.onNodeWithTag("routine-viewer-name").assertIsDisplayed()
         composeRule.onNodeWithText("Descripción de la rutina").assertIsDisplayed()
         composeRule.onNodeWithText("1. Press de banca").assertIsDisplayed()
+        composeRule.onNodeWithTag("routine_viewer_superset_$TEMPLATE_ID").assertIsDisplayed()
         composeRule.onNodeWithText("Serie 1 · 80 kg · 8–10 reps").assertIsDisplayed()
         composeRule.onNodeWithText("Empezar rutina").performClick()
         composeRule.runOnIdle { assertEquals(true, started) }
@@ -208,6 +251,8 @@ class RoutineScreensTest {
         onAddSet: (String) -> Unit = {},
         onRemoveSet: (String, String) -> Unit = { _, _ -> },
         onReload: () -> Unit = {},
+        onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
+        onDissolveSuperset: (String) -> Unit = {},
         stateProvider: () -> RoutineEditorUiState = { state },
     ) {
         composeRule.setContent {
@@ -220,6 +265,8 @@ class RoutineScreensTest {
                     onDescriptionChanged = {},
                     onRemoveExercise = {},
                     onMoveExercise = { _, _ -> },
+                    onGroupWithAdjacent = onGroupWithAdjacent,
+                    onDissolveSuperset = onDissolveSuperset,
                     onUpdateExercise = { _, _ -> },
                     onAddSet = onAddSet,
                     onRemoveSet = onRemoveSet,
@@ -248,6 +295,7 @@ class RoutineScreensTest {
             sets = listOf(RoutineSet(
                 1, SetType.Normal, "8", "10", "80", "", "", "",
             )),
+            supersetGroup = 1,
         )),
     )
 
@@ -265,5 +313,6 @@ class RoutineScreensTest {
     private companion object {
         const val ID = "a1111111-1111-4111-8111-111111111111"
         const val TEMPLATE_ID = "a2222222-2222-4222-8222-222222222222"
+        const val SECOND_TEMPLATE_ID = "a3333333-3333-4333-8333-333333333333"
     }
 }

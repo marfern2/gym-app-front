@@ -106,6 +106,9 @@ fun ActiveWorkoutRoute(
         onUpdateNotes = viewModel::updateNotes,
         onRemoveExercise = viewModel::removeExercise,
         onMoveExercise = viewModel::moveExercise,
+        onGroupWithAdjacent = viewModel::groupWithAdjacent,
+        onRemoveFromSuperset = viewModel::removeFromSuperset,
+        onDissolveSuperset = viewModel::dissolveSuperset,
         onUpdateExercise = viewModel::updateExercise,
         onAddSet = viewModel::addSet,
         onRemoveSet = viewModel::removeSet,
@@ -132,6 +135,9 @@ fun ActiveWorkoutScreen(
     onUpdateNotes: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
+    onRemoveFromSuperset: (String) -> Unit = {},
+    onDissolveSuperset: (String) -> Unit = {},
     onUpdateExercise: (String, (WorkoutExerciseDraft) -> WorkoutExerciseDraft) -> Unit,
     onAddSet: (String) -> Unit,
     onRemoveSet: (String, String) -> Unit,
@@ -184,6 +190,7 @@ fun ActiveWorkoutScreen(
                     WorkoutEditorContent(
                         draft, state.data, clock, enabled = false,
                         onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
                         onRetryPrevious,
@@ -220,6 +227,7 @@ fun ActiveWorkoutScreen(
                     WorkoutEditorContent(
                         draft, state.data, clock, enabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises,
                         onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
                         onRetryPrevious,
@@ -262,6 +270,9 @@ private fun WorkoutEditorContent(
     onUpdateNotes: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onGroupWithAdjacent: (String, Int) -> Unit,
+    onRemoveFromSuperset: (String) -> Unit,
+    onDissolveSuperset: (String) -> Unit,
     onUpdateExercise: (String, (WorkoutExerciseDraft) -> WorkoutExerciseDraft) -> Unit,
     onAddSet: (String) -> Unit,
     onRemoveSet: (String, String) -> Unit,
@@ -317,11 +328,26 @@ private fun WorkoutEditorContent(
         singleLine = false,
     )
     if (draft.exercises.isEmpty()) Text(stringResource(R.string.workout_no_exercises))
+    if (draft.exercises.any { it.supersetLocalId != null }) {
+        Text(
+            stringResource(R.string.superset_reorder_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     draft.exercises.forEachIndexed { index, exercise ->
         WorkoutExerciseEditor(
             exercise, index, draft.exercises.size, data.fieldErrors, enabled,
+            canMoveUp = draft.moveExercise(exercise.localId, -1) != draft,
+            canMoveDown = draft.moveExercise(exercise.localId, 1) != draft,
+            previousSupersetLocalId = draft.exercises.getOrNull(index - 1)?.supersetLocalId,
+            nextSupersetLocalId = draft.exercises.getOrNull(index + 1)?.supersetLocalId,
+            supersetOrdinal = draft.supersetOrdinal(exercise.localId),
             onRemove = { onRemoveExercise(exercise.localId) },
             onMove = { onMoveExercise(exercise.localId, it) },
+            onGroupWithAdjacent = { onGroupWithAdjacent(exercise.localId, it) },
+            onRemoveFromSuperset = { onRemoveFromSuperset(exercise.localId) },
+            onDissolveSuperset = { onDissolveSuperset(exercise.localId) },
             onUpdate = { transform -> onUpdateExercise(exercise.localId, transform) },
             onAddSet = { onAddSet(exercise.localId) },
             onRemoveSet = { onRemoveSet(exercise.localId, it) },
@@ -378,8 +404,16 @@ private fun WorkoutExerciseEditor(
     count: Int,
     errors: Map<String, String>,
     enabled: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    previousSupersetLocalId: String?,
+    nextSupersetLocalId: String?,
+    supersetOrdinal: Int?,
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
+    onGroupWithAdjacent: (Int) -> Unit,
+    onRemoveFromSuperset: () -> Unit,
+    onDissolveSuperset: () -> Unit,
     onUpdate: ((WorkoutExerciseDraft) -> WorkoutExerciseDraft) -> Unit,
     onAddSet: () -> Unit,
     onRemoveSet: (String) -> Unit,
@@ -394,9 +428,53 @@ private fun WorkoutExerciseEditor(
                 Column(Modifier.weight(1f)) {
                     Text(exercise.exerciseNameSnapshot, style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(exercise.exerciseTypeSnapshot.labelResource()), style = MaterialTheme.typography.bodySmall)
+                    supersetOrdinal?.let { ordinal ->
+                        Text(
+                            stringResource(R.string.superset_badge, ordinal),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("workout_superset_${exercise.localId}"),
+                        )
+                    }
                 }
                 TextButton(onClick = onRemove, enabled = enabled) {
                     Text(stringResource(R.string.routine_remove_exercise), color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { onMove(-1) }, enabled = enabled && canMoveUp) {
+                    Text(stringResource(R.string.routine_move_up))
+                }
+                TextButton(onClick = { onMove(1) }, enabled = enabled && canMoveDown) {
+                    Text(stringResource(R.string.routine_move_down))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
+                    TextButton(
+                        onClick = { onGroupWithAdjacent(-1) },
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_group_previous_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_group_previous)) }
+                }
+                if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
+                    TextButton(
+                        onClick = { onGroupWithAdjacent(1) },
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_group_next_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_group_next)) }
+                }
+                if (exercise.supersetLocalId != null) {
+                    TextButton(
+                        onClick = onRemoveFromSuperset,
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_superset_remove_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_remove_member)) }
+                    TextButton(
+                        onClick = onDissolveSuperset,
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_superset_dissolve_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_dissolve)) }
                 }
             }
             WorkoutTextField(
@@ -785,6 +863,7 @@ private fun workoutValidationMessage(code: String): String = stringResource(
         "workout_error_rest_range" -> R.string.workout_error_rest_range
         "workout_error_incompatible_metric" -> R.string.workout_error_incompatible_metric
         "workout_error_completed_metrics" -> R.string.workout_error_completed_metrics
+        "workout_error_invalid_superset" -> R.string.workout_error_invalid_superset
         else -> R.string.workout_error_number_range
     },
 )

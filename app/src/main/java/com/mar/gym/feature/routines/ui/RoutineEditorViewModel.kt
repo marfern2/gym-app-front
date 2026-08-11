@@ -45,6 +45,9 @@ class RoutineEditorViewModel(
     fun updateDescription(value: String) = edit { copy(description = value) }
     fun removeExercise(localId: String) = edit { removeExercise(localId) }
     fun moveExercise(localId: String, offset: Int) = edit { moveExercise(localId, offset) }
+    fun groupWithAdjacent(localId: String, offset: Int) = edit { groupWithAdjacent(localId, offset, ids) }
+    fun removeFromSuperset(localId: String) = edit { removeFromSuperset(localId, ids) }
+    fun dissolveSuperset(localId: String) = edit { dissolveSuperset(localId) }
 
     fun updateExercise(localId: String, transform: (RoutineExerciseDraft) -> RoutineExerciseDraft) = edit {
         copy(exercises = exercises.map { if (it.localId == localId) transform(it) else it })

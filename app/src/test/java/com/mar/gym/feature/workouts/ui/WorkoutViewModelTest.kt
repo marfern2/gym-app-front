@@ -116,6 +116,27 @@ class WorkoutViewModelTest {
     }
 
     @Test
+    fun `superset edit preserves local grouping and stable ids on conflict`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(groupedDocument())
+            updateResult = failure(409, "WORKOUT_VERSION_CONFLICT")
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+        val first = viewModel.uiState.value.data.draft!!.exercises.first()
+
+        viewModel.dissolveSuperset(first.localId)
+        viewModel.save()
+        advanceUntilIdle()
+
+        val retained = viewModel.uiState.value.data.draft!!.exercises
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Conflict)
+        assertTrue(retained.all { it.supersetLocalId == null })
+        assertEquals(listOf(FIRST_EXERCISE_ID, SECOND_EXERCISE_ID), retained.map { it.serverId })
+        assertEquals(1, repository.updateCalls)
+    }
+
+    @Test
     fun `complete validates saves dirty draft then uses refreshed etag`() = runTest {
         val repository = FakeWorkoutRepository()
         val viewModel = viewModel(repository)
@@ -303,6 +324,9 @@ class WorkoutViewModelTest {
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000001"
         const val ROUTINE_ID = "00000000-0000-4000-8000-000000000002"
         const val TEMPLATE_ID = "00000000-0000-4000-8000-000000000003"
+        const val SECOND_TEMPLATE_ID = "00000000-0000-4000-8000-000000000004"
+        const val FIRST_EXERCISE_ID = "00000000-0000-4000-8000-000000000005"
+        const val SECOND_EXERCISE_ID = "00000000-0000-4000-8000-000000000006"
 
         fun document(
             version: Long = 0,
@@ -316,6 +340,21 @@ class WorkoutViewModelTest {
                 600, started, started.plusSeconds(600), version, emptyList(),
             )
             return WorkoutDocument(detail, WorkoutEtag.fromVersion(version)!!)
+        }
+
+        fun groupedDocument(): WorkoutDocument {
+            val base = document()
+            val exercises = listOf(
+                com.mar.gym.feature.workouts.model.WorkoutExercise(
+                    FIRST_EXERCISE_ID, TEMPLATE_ID, "Press", ExerciseType.WeightReps,
+                    Equipment.Barbell, 1, null, 90, emptyList(), supersetGroup = 1,
+                ),
+                com.mar.gym.feature.workouts.model.WorkoutExercise(
+                    SECOND_EXERCISE_ID, SECOND_TEMPLATE_ID, "Remo", ExerciseType.WeightReps,
+                    Equipment.Barbell, 2, null, 90, emptyList(), supersetGroup = 1,
+                ),
+            )
+            return base.copy(detail = base.detail.copy(exercises = exercises))
         }
 
         fun failure(status: Int, code: String) = WorkoutRepositoryResult.Failure(

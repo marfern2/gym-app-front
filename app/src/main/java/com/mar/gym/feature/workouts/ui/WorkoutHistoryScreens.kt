@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -225,6 +226,14 @@ private fun HistoricalExercise(exercise: WorkoutExercise) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(exercise.exerciseNameSnapshot, style = MaterialTheme.typography.titleMedium)
+            exercise.supersetGroup?.let { group ->
+                Text(
+                    text = stringResource(R.string.superset_badge, group),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("workout_history_superset_${exercise.id}"),
+                )
+            }
             Text(
                 text = stringResource(exercise.exerciseTypeSnapshot.labelResource()),
                 style = MaterialTheme.typography.bodySmall,

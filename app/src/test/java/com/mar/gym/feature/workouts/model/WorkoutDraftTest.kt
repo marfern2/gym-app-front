@@ -28,6 +28,53 @@ class WorkoutDraftTest {
     }
 
     @Test
+    fun `loads snapshot grouping with temporary identity and stable workout exercise ids`() {
+        val draft = WorkoutDraft.from(groupedDocument()) { "temporary-group" }
+
+        assertEquals(listOf(EXERCISE_ID, SECOND_EXERCISE_ID), draft.exercises.map { it.serverId })
+        assertEquals(listOf(EXERCISE_ID, SECOND_EXERCISE_ID), draft.exercises.map { it.localId })
+        assertEquals(1, draft.exercises.mapNotNull { it.supersetLocalId }.distinct().size)
+        assertEquals(listOf(1, 1), draft.exercises.map { draft.supersetOrdinal(it.localId) })
+    }
+
+    @Test
+    fun `creates modifies dissolves and groups newly added exercises`() {
+        val base = WorkoutDraft(
+            WORKOUT_ID,
+            "Workout",
+            exercises = listOf(exercise("a", EXERCISE_ID), exercise("b", SECOND_EXERCISE_ID)),
+        )
+        val grouped = base.groupWithAdjacent("a", 1) { "local-group" }
+        assertEquals(grouped.exercises[0].supersetLocalId, grouped.exercises[1].supersetLocalId)
+        assertTrue(grouped.removeFromSuperset("a") { "unused" }.exercises.all { it.supersetLocalId == null })
+        assertTrue(grouped.dissolveSuperset("a").exercises.all { it.supersetLocalId == null })
+
+        val added = base.addExercise(template()) { "new-local-id" }
+        assertNull(added.exercises.last().serverId)
+        val groupedNew = added.groupWithAdjacent("new-local-id", -1) { "new-group" }
+        assertEquals(groupedNew.exercises[1].supersetLocalId, groupedNew.exercises[2].supersetLocalId)
+    }
+
+    @Test
+    fun `delete and reorder preserve ids and superset invariants`() {
+        val triple = WorkoutDraft(
+            WORKOUT_ID,
+            "Workout",
+            exercises = listOf("a", "b", "c").map { id ->
+                exercise(id, "server-$id").copy(supersetLocalId = "group")
+            },
+        )
+        val deleted = triple.removeExercise("b")
+        assertEquals(listOf("server-a", "server-c"), deleted.exercises.map { it.serverId })
+        assertEquals(1, deleted.exercises.mapNotNull { it.supersetLocalId }.distinct().size)
+        assertEquals(listOf("b", "a", "c"), triple.moveExercise("a", 1).exercises.map { it.localId })
+
+        val outside = triple.copy(exercises = triple.exercises + exercise("d", "server-d"))
+        assertEquals(outside, outside.moveExercise("c", 1))
+        assertEquals(listOf("server-a", "server-b", "server-c", "server-d"), outside.exercises.map { it.serverId })
+    }
+
+    @Test
     fun `new manual set has no server id and no targets`() {
         val exercise = WorkoutDraft.from(document()).exercises.single().addSet { "local-new" }
         val added = exercise.sets.last()
@@ -83,6 +130,43 @@ class WorkoutDraftTest {
         )),
     )
 
+    private fun exercise(localId: String, serverId: String?) = WorkoutExerciseDraft(
+        localId = localId,
+        serverId = serverId,
+        exerciseTemplateId = TEMPLATE_ID,
+        exerciseNameSnapshot = "Exercise",
+        exerciseTypeSnapshot = ExerciseType.WeightReps,
+        equipmentSnapshot = Equipment.Barbell,
+    )
+
+    private fun template() = com.mar.gym.feature.exercises.model.ExerciseTemplateDetail(
+        id = TEMPLATE_ID,
+        slug = "press",
+        name = "Press",
+        description = null,
+        primaryMuscleGroup = com.mar.gym.feature.exercises.model.MuscleGroup.Chest,
+        secondaryMuscleGroups = emptyList(),
+        equipment = Equipment.Barbell,
+        exerciseType = ExerciseType.WeightReps,
+        movementPattern = com.mar.gym.feature.exercises.model.MovementPattern.HorizontalPush,
+        instructions = emptyList(),
+        source = com.mar.gym.feature.exercises.model.ExerciseTemplateSource.Global,
+        archived = false,
+    )
+
+    private fun groupedDocument(): WorkoutDocument {
+        val first = document().detail.exercises.single().copy(supersetGroup = 1)
+        val second = first.copy(
+            id = SECOND_EXERCISE_ID,
+            sourceExerciseTemplateId = SECOND_TEMPLATE_ID,
+            exerciseNameSnapshot = "Remo",
+            position = 2,
+            sets = emptyList(),
+        )
+        val base = document()
+        return base.copy(detail = base.detail.copy(exercises = listOf(first, second)))
+    }
+
     private fun document(
         targetWeight: BigDecimal? = null,
         targetMin: Int? = null,
@@ -111,5 +195,7 @@ class WorkoutDraftTest {
         const val EXERCISE_ID = "00000000-0000-4000-8000-000000000002"
         const val SET_ID = "00000000-0000-4000-8000-000000000003"
         const val TEMPLATE_ID = "00000000-0000-4000-8000-000000000004"
+        const val SECOND_EXERCISE_ID = "00000000-0000-4000-8000-000000000005"
+        const val SECOND_TEMPLATE_ID = "00000000-0000-4000-8000-000000000006"
     }
 }

@@ -72,6 +72,9 @@ fun RoutineEditorRoute(
         onDescriptionChanged = viewModel::updateDescription,
         onRemoveExercise = viewModel::removeExercise,
         onMoveExercise = viewModel::moveExercise,
+        onGroupWithAdjacent = viewModel::groupWithAdjacent,
+        onRemoveFromSuperset = viewModel::removeFromSuperset,
+        onDissolveSuperset = viewModel::dissolveSuperset,
         onUpdateExercise = viewModel::updateExercise,
         onAddSet = viewModel::addSet,
         onRemoveSet = viewModel::removeSet,
@@ -97,6 +100,9 @@ fun RoutineEditorScreen(
     onDescriptionChanged: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
+    onRemoveFromSuperset: (String) -> Unit = {},
+    onDissolveSuperset: (String) -> Unit = {},
     onUpdateExercise: (String, (RoutineExerciseDraft) -> RoutineExerciseDraft) -> Unit,
     onAddSet: (String) -> Unit,
     onRemoveSet: (String, String) -> Unit,
@@ -143,14 +149,16 @@ fun RoutineEditorScreen(
                 )
                 if (state.data.draft.routineId != null) EditorContent(
                     state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
-                    onMoveExercise, onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
+                    onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
+                    onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                     onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
                     onStartRoutine = onStartRoutine,
                 )
             }
             else -> EditorContent(
                 state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
-                onMoveExercise, onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
+                onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
+                onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                 onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
                 Modifier.padding(padding),
                 onReload,
@@ -190,6 +198,9 @@ private fun EditorContent(
     onDescriptionChanged: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onGroupWithAdjacent: (String, Int) -> Unit,
+    onRemoveFromSuperset: (String) -> Unit,
+    onDissolveSuperset: (String) -> Unit,
     onUpdateExercise: (String, (RoutineExerciseDraft) -> RoutineExerciseDraft) -> Unit,
     onAddSet: (String) -> Unit,
     onRemoveSet: (String, String) -> Unit,
@@ -244,16 +255,31 @@ private fun EditorContent(
             singleLine = false,
         )
         Text(stringResource(R.string.routine_exercises_title), style = MaterialTheme.typography.titleLarge)
+        if (data.draft.exercises.any { it.supersetLocalId != null }) {
+            Text(
+                stringResource(R.string.superset_reorder_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (data.draft.exercises.isEmpty()) Text(stringResource(R.string.routine_no_exercises))
         data.draft.exercises.forEachIndexed { index, exercise ->
             ExerciseEditor(
                 exercise = exercise,
                 index = index,
                 count = data.draft.exercises.size,
+                canMoveUp = data.draft.moveExercise(exercise.localId, -1) != data.draft,
+                canMoveDown = data.draft.moveExercise(exercise.localId, 1) != data.draft,
+                previousSupersetLocalId = data.draft.exercises.getOrNull(index - 1)?.supersetLocalId,
+                nextSupersetLocalId = data.draft.exercises.getOrNull(index + 1)?.supersetLocalId,
+                supersetOrdinal = data.draft.supersetOrdinal(exercise.localId),
                 errors = data.fieldErrors,
                 enabled = enabled,
                 onRemove = { onRemoveExercise(exercise.localId) },
                 onMove = { onMoveExercise(exercise.localId, it) },
+                onGroupWithAdjacent = { onGroupWithAdjacent(exercise.localId, it) },
+                onRemoveFromSuperset = { onRemoveFromSuperset(exercise.localId) },
+                onDissolveSuperset = { onDissolveSuperset(exercise.localId) },
                 onUpdate = { transform -> onUpdateExercise(exercise.localId, transform) },
                 onAddSet = { onAddSet(exercise.localId) },
                 onRemoveSet = { onRemoveSet(exercise.localId, it) },
@@ -300,10 +326,18 @@ private fun ExerciseEditor(
     exercise: RoutineExerciseDraft,
     index: Int,
     count: Int,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    previousSupersetLocalId: String?,
+    nextSupersetLocalId: String?,
+    supersetOrdinal: Int?,
     errors: Map<String, String>,
     enabled: Boolean,
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
+    onGroupWithAdjacent: (Int) -> Unit,
+    onRemoveFromSuperset: () -> Unit,
+    onDissolveSuperset: () -> Unit,
     onUpdate: ((RoutineExerciseDraft) -> RoutineExerciseDraft) -> Unit,
     onAddSet: () -> Unit,
     onRemoveSet: (String) -> Unit,
@@ -314,10 +348,46 @@ private fun ExerciseEditor(
     OutlinedCard(Modifier.fillMaxWidth().testTag("exercise_${exercise.localId}")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(exercise.exerciseName, style = MaterialTheme.typography.titleMedium)
+            supersetOrdinal?.let { ordinal ->
+                Text(
+                    stringResource(R.string.superset_badge, ordinal),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("routine_superset_${exercise.localId}"),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onMove(-1) }, enabled = enabled && index > 0) { Text(stringResource(R.string.routine_move_up)) }
-                TextButton(onClick = { onMove(1) }, enabled = enabled && index < count - 1) { Text(stringResource(R.string.routine_move_down)) }
+                TextButton(onClick = { onMove(-1) }, enabled = enabled && canMoveUp) { Text(stringResource(R.string.routine_move_up)) }
+                TextButton(onClick = { onMove(1) }, enabled = enabled && canMoveDown) { Text(stringResource(R.string.routine_move_down)) }
                 TextButton(onClick = onRemove, enabled = enabled) { Text(stringResource(R.string.routine_remove_exercise)) }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
+                    TextButton(
+                        onClick = { onGroupWithAdjacent(-1) },
+                        enabled = enabled,
+                        modifier = Modifier.testTag("routine_group_previous_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_group_previous)) }
+                }
+                if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
+                    TextButton(
+                        onClick = { onGroupWithAdjacent(1) },
+                        enabled = enabled,
+                        modifier = Modifier.testTag("routine_group_next_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_group_next)) }
+                }
+                if (exercise.supersetLocalId != null) {
+                    TextButton(
+                        onClick = onRemoveFromSuperset,
+                        enabled = enabled,
+                        modifier = Modifier.testTag("routine_superset_remove_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_remove_member)) }
+                    TextButton(
+                        onClick = onDissolveSuperset,
+                        enabled = enabled,
+                        modifier = Modifier.testTag("routine_superset_dissolve_${exercise.localId}"),
+                    ) { Text(stringResource(R.string.superset_dissolve)) }
+                }
             }
             EditorTextField(
                 exercise.notes, { value -> onUpdate { it.copy(notes = value) } },
@@ -473,6 +543,7 @@ private fun errorResource(code: String) = when (code) {
     "routine_error_reps_order" -> R.string.routine_error_reps_order
     "routine_error_incompatible_metric" -> R.string.routine_error_incompatible_metric
     "routine_error_metric_required" -> R.string.routine_error_metric_required
+    "routine_error_invalid_superset" -> R.string.routine_error_invalid_superset
     else -> R.string.routine_error_number_range
 }
 
@@ -484,6 +555,7 @@ private fun EmptyRoutineEditorPreview() {
             state = RoutineEditorUiState.Editing(RoutineEditorData()),
             onBack = {}, onOpenPicker = {}, onNameChanged = {}, onDescriptionChanged = {},
             onRemoveExercise = {}, onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> },
+            onGroupWithAdjacent = { _, _ -> }, onRemoveFromSuperset = {}, onDissolveSuperset = {},
             onAddSet = {}, onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
             onUpdateSet = { _, _, _ -> }, onSave = {}, onReload = {}, onRetry = {},
             onArchive = {}, onRestore = {}, onDuplicate = {},
