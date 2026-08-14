@@ -119,9 +119,9 @@ class RoutineScreensTest {
             onAddSet = { addedTo = it },
             onRemoveSet = { exerciseId, setId -> removed = exerciseId to setId },
         )
-        composeRule.onNodeWithText("Duración").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Peso").assertDoesNotExist()
-        composeRule.onNodeWithText("Repeticiones mínimas").assertDoesNotExist()
+        composeRule.onNodeWithText("TIEMPO").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("KG").assertDoesNotExist()
+        composeRule.onNodeWithText("REPS").assertDoesNotExist()
         composeRule.onNodeWithText("Añadir serie").performScrollTo().performClick()
         composeRule.onNodeWithText("Eliminar serie").performScrollTo().performClick()
         composeRule.runOnIdle {
@@ -208,9 +208,10 @@ class RoutineScreensTest {
         }
         composeRule.onNodeWithTag("routine-viewer-name").assertIsDisplayed()
         composeRule.onNodeWithText("Descripción de la rutina").assertIsDisplayed()
-        composeRule.onNodeWithText("1. Press de banca").assertIsDisplayed()
+        composeRule.onNodeWithText("Press de banca").assertIsDisplayed()
         composeRule.onNodeWithTag("routine_viewer_superset_$TEMPLATE_ID").assertIsDisplayed()
-        composeRule.onNodeWithText("Serie 1 · 80 kg · 8–10 reps").assertIsDisplayed()
+        composeRule.onNodeWithText("80").assertIsDisplayed()
+        composeRule.onNodeWithText("8–10").assertIsDisplayed()
         composeRule.onNodeWithText("Empezar rutina").performClick()
         composeRule.runOnIdle { assertEquals(true, started) }
     }

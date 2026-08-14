@@ -1,12 +1,16 @@
 package com.mar.gym.feature.routines.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -18,7 +22,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,20 +32,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mar.gym.R
+import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.routines.model.RoutineExercise
 import com.mar.gym.feature.routines.model.RoutineSet
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
+import com.mar.gym.ui.components.ExerciseNameLink
+import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.theme.SetDrop
+import com.mar.gym.ui.theme.SetFailure
+import com.mar.gym.ui.theme.SetWarmup
 
 @Composable
 fun RoutineViewerRoute(
@@ -51,6 +64,7 @@ fun RoutineViewerRoute(
     onEdit: () -> Unit,
     onStartRoutine: () -> Unit,
     onOpenRoutine: (String) -> Unit,
+    onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel) {
@@ -67,6 +81,7 @@ fun RoutineViewerRoute(
         onArchive = viewModel::archive,
         onRestore = viewModel::restore,
         onDuplicate = viewModel::duplicate,
+        onOpenExercise = onOpenExercise,
     )
 }
 
@@ -81,6 +96,7 @@ fun RoutineViewerScreen(
     onArchive: () -> Unit,
     onRestore: () -> Unit,
     onDuplicate: () -> Unit,
+    onOpenExercise: (String) -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showArchiveConfirmation by remember { mutableStateOf(false) }
@@ -184,7 +200,10 @@ fun RoutineViewerScreen(
                         }
                     }
                     itemsIndexed(detail.exercises, key = { _, exercise -> exercise.exerciseTemplateId }) { index, exercise ->
-                        ViewerExerciseCard(exercise, index)
+                        ViewerExercise(
+                            exercise = exercise,
+                            onOpenExercise = { onOpenExercise(exercise.exerciseTemplateId) },
+                        )
                     }
                     item { Spacer(Modifier.padding(bottom = 24.dp)) }
                 }
@@ -227,81 +246,186 @@ fun RoutineViewerScreen(
 }
 
 @Composable
-private fun ViewerExerciseCard(
+private fun ViewerExercise(
     exercise: RoutineExercise,
-    index: Int,
+    onOpenExercise: () -> Unit,
 ) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = stringResource(R.string.routine_exercise_viewer_row, index + 1, exercise.exerciseName),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            exercise.supersetGroup?.let { group ->
+    val fields = routineViewerFields(exercise.exerciseType)
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            ExerciseThumbnail()
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ExerciseNameLink(
+                        name = exercise.exerciseName,
+                        onClick = onOpenExercise,
+                    )
+                    exercise.supersetGroup?.let { group ->
+                        Text(
+                            text = stringResource(R.string.superset_badge, group),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .testTag("routine_viewer_superset_${exercise.exerciseTemplateId}"),
+                        )
+                    }
+                }
                 Text(
-                    text = stringResource(R.string.superset_badge, group),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.testTag("routine_viewer_superset_${exercise.exerciseTemplateId}"),
+                    text = stringResource(
+                        R.string.exercise_row_summary,
+                        stringResource(exercise.exerciseType.labelResource()),
+                        stringResource(exercise.equipment.labelResource()),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        exercise.notes?.takeIf { it.isNotBlank() }?.let {
             Text(
-                text = stringResource(
-                    R.string.exercise_row_summary,
-                    stringResource(exercise.exerciseType.labelResource()),
-                    stringResource(exercise.equipment.labelResource()),
-                ),
-                style = MaterialTheme.typography.bodySmall,
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            exercise.notes?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
-            }
-            Text(
-                text = stringResource(R.string.routine_rest_short, exercise.restSeconds),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (exercise.sets.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.routine_viewer_sets_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+        }
+        Text(
+            text = stringResource(R.string.routine_rest_short, exercise.restSeconds),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (exercise.sets.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ViewerHeaderCell(stringResource(R.string.workout_series_header), Modifier.width(40.dp))
+                    fields.forEach { field ->
+                        ViewerHeaderCell(stringResource(field.header), Modifier.weight(1f))
+                    }
+                }
                 exercise.sets.forEachIndexed { setIndex, set ->
-                    Text(
-                        text = routineSetSummary(setIndex + 1, set),
-                        style = MaterialTheme.typography.bodyMedium,
+                    ViewerSetRow(
+                        set = set,
+                        index = setIndex,
+                        fields = fields,
                     )
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+}
+
+private data class ViewerColumn(
+    val header: Int,
+    val value: (RoutineSet) -> String,
+)
+
+private fun routineViewerFields(type: ExerciseType): List<ViewerColumn> = buildList {
+    if (type.supportsWeight()) {
+        val header = when (type) {
+            ExerciseType.WeightedBodyweight -> R.string.workout_metric_lastre
+            ExerciseType.AssistedBodyweight -> R.string.workout_metric_asistencia
+            else -> R.string.workout_metric_kg
+        }
+        add(ViewerColumn(header) { it.targetWeight.trim() })
+    }
+    if (type.supportsRepetitions()) {
+        add(ViewerColumn(R.string.workout_metric_reps) { repsRange(it) })
+    }
+    if (type.supportsDuration()) {
+        add(ViewerColumn(R.string.workout_metric_time) { it.targetDurationSeconds.trim() })
+    }
+    if (type.supportsDistance()) {
+        add(ViewerColumn(R.string.workout_metric_distance) { it.targetDistanceMeters.trim() })
+    }
+}
+
+private fun repsRange(set: RoutineSet): String {
+    val min = set.targetRepsMin.trim()
+    val max = set.targetRepsMax.trim()
+    return when {
+        min.isNotBlank() && max.isNotBlank() && min != max -> "$min–$max"
+        else -> min.ifBlank { max }
+    }.ifBlank { "" }
+}
+
+@Composable
+private fun ViewerHeaderCell(text: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.heightIn(min = 28.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
-internal fun routineSetSummary(position: Int, set: RoutineSet): String {
-    val targets = buildList {
-        when (set.setType) {
-            SetType.Normal -> Unit
-            SetType.Warmup -> add(stringResource(R.string.workout_set_type_warmup))
-            SetType.Failure -> add(stringResource(R.string.workout_set_type_failure))
-            SetType.Drop -> add(stringResource(R.string.workout_set_type_drop))
-        }
-        set.targetWeight.trim().takeIf(String::isNotBlank)?.let { add("$it kg") }
-        val min = set.targetRepsMin.trim()
-        val max = set.targetRepsMax.trim()
-        if (min.isNotBlank() || max.isNotBlank()) {
-            add(
-                when {
-                    min.isNotBlank() && max.isNotBlank() && min != max -> "$min–$max reps"
-                    else -> "${min.ifBlank { max }} reps"
-                }
+private fun ViewerSetRow(
+    set: RoutineSet,
+    index: Int,
+    fields: List<ViewerColumn>,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = setTypeLabel(set.setType, index),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = setTypeColor(set.setType),
             )
         }
-        set.targetDurationSeconds.trim().takeIf(String::isNotBlank)?.let { add("$it s") }
-        set.targetDistanceMeters.trim().takeIf(String::isNotBlank)?.let { add("$it m") }
-        set.targetRpe.trim().takeIf(String::isNotBlank)?.let { add("RPE $it") }
-    }.joinToString(" · ").ifBlank { stringResource(R.string.routine_set_no_target) }
-    return stringResource(R.string.routine_set_viewer_row, position, targets)
+        fields.forEach { field ->
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                    text = field.value(set).ifBlank { "—" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
 }
+
+private fun setTypeLabel(type: SetType, index: Int): String = when (type) {
+    SetType.Normal -> (index + 1).toString()
+    SetType.Warmup -> "W"
+    SetType.Failure -> "F"
+    SetType.Drop -> "D"
+}
+
+@Composable
+private fun setTypeColor(type: SetType): Color = when (type) {
+    SetType.Normal -> MaterialTheme.colorScheme.onSurfaceVariant
+    SetType.Warmup -> SetWarmup
+    SetType.Failure -> SetFailure
+    SetType.Drop -> SetDrop
+}
+
+private fun ExerciseType.supportsRepetitions() = this in setOf(
+    ExerciseType.WeightReps, ExerciseType.BodyweightReps,
+    ExerciseType.WeightedBodyweight, ExerciseType.AssistedBodyweight,
+)
+private fun ExerciseType.supportsWeight() = this in setOf(
+    ExerciseType.WeightReps, ExerciseType.WeightedBodyweight,
+    ExerciseType.AssistedBodyweight, ExerciseType.WeightDistance,
+)
+private fun ExerciseType.supportsDuration() = this in setOf(ExerciseType.Duration, ExerciseType.DistanceDuration)
+private fun ExerciseType.supportsDistance() = this in setOf(ExerciseType.DistanceDuration, ExerciseType.WeightDistance)

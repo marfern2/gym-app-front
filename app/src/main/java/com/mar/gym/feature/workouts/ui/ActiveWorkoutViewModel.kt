@@ -96,6 +96,7 @@ class ActiveWorkoutViewModel(
     fun updateNotes(value: String) = edit { copy(notes = value) }
     fun removeExercise(localId: String) = edit { removeExercise(localId) }
     fun moveExercise(localId: String, offset: Int) = edit { moveExercise(localId, offset) }
+    fun reorderExercises(orderedLocalIds: List<String>) = edit { reorderExercises(orderedLocalIds) }
     fun groupWithAdjacent(localId: String, offset: Int) = edit { groupWithAdjacent(localId, offset, ids) }
     fun removeFromSuperset(localId: String) = edit { removeFromSuperset(localId, ids) }
     fun dissolveSuperset(localId: String) = edit { dissolveSuperset(localId) }
@@ -156,6 +157,48 @@ class ActiveWorkoutViewModel(
             }
             publishDraft(draft)
             loadPreviousPerformance(draft)
+        }
+    }
+
+    fun replaceExercise(localId: String, exerciseTemplateId: String) {
+        val current = _uiState.value.data
+        val draft = current.draft ?: return
+        val exercise = draft.exercises.firstOrNull { it.localId == localId } ?: return
+        if (exercise.exerciseTemplateId == exerciseTemplateId || current.addingExercises) return
+        if (draft.exercises.any { it.localId != localId && it.exerciseTemplateId == exerciseTemplateId }) return
+        _uiState.value = ActiveWorkoutUiState.Active(current.copy(addingExercises = true))
+        retryAction = { replaceExercise(localId, exerciseTemplateId) }
+        viewModelScope.launch {
+            when (val result = exerciseRepository.getExerciseTemplate(exerciseTemplateId)) {
+                is ExerciseRepositoryResult.Success -> {
+                    val detail = result.value.detail
+                    if (!detail.isSelectable) {
+                        _uiState.value = ActiveWorkoutUiState.Error(
+                            current.copy(addingExercises = false),
+                            WorkoutUiError(WorkoutUiErrorKind.InvalidResponse),
+                        )
+                        return@launch
+                    }
+                    val replaced = draft.copy(
+                        exercises = draft.exercises.map { item ->
+                            if (item.localId != localId) item else item.copy(
+                                exerciseTemplateId = detail.id,
+                                exerciseNameSnapshot = detail.name,
+                                exerciseTypeSnapshot = detail.exerciseType,
+                                equipmentSnapshot = detail.equipment,
+                            )
+                        },
+                    )
+                    publishDraft(replaced)
+                    loadPreviousPerformance(replaced)
+                }
+                is ExerciseRepositoryResult.Failure -> {
+                    _uiState.value = ActiveWorkoutUiState.Error(
+                        current.copy(addingExercises = false),
+                        result.error.toWorkoutUiError(),
+                    )
+                }
+            }
         }
     }
 

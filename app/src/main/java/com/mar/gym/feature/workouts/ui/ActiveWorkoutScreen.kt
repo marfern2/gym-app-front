@@ -20,16 +20,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -45,6 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -66,11 +72,17 @@ import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.formatPreviousPerformance
 import com.mar.gym.feature.workouts.model.previousSetFor
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.ExerciseNameLink
+import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.MetricCell
 import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
+import com.mar.gym.ui.theme.CompletedRowAccentDark
+import com.mar.gym.ui.theme.CompletedRowAccentLight
+import com.mar.gym.ui.theme.CompletedRowContainerDark
+import com.mar.gym.ui.theme.CompletedRowContainerLight
 import com.mar.gym.ui.theme.SetDrop
 import com.mar.gym.ui.theme.SetFailure
 import com.mar.gym.ui.theme.SetWarmup
@@ -85,7 +97,9 @@ fun ActiveWorkoutRoute(
     onBack: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenPicker: (Set<String>) -> Unit,
+    onOpenReplacementPicker: (String) -> Unit,
     onOpenCompletedWorkout: (String) -> Unit,
+    onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel) {
@@ -98,14 +112,17 @@ fun ActiveWorkoutRoute(
         clock = viewModel.clock,
         onBack = onBack,
         onOpenHistory = onOpenHistory,
+        onOpenExercise = onOpenExercise,
         onOpenPicker = {
             onOpenPicker(state.data.draft?.exercises?.map { it.exerciseTemplateId }?.toSet().orEmpty())
         },
+        onOpenReplacementPicker = onOpenReplacementPicker,
         onStartEmpty = viewModel::startEmpty,
         onUpdateTitle = viewModel::updateTitle,
         onUpdateNotes = viewModel::updateNotes,
         onRemoveExercise = viewModel::removeExercise,
         onMoveExercise = viewModel::moveExercise,
+        onReorderExercises = viewModel::reorderExercises,
         onGroupWithAdjacent = viewModel::groupWithAdjacent,
         onRemoveFromSuperset = viewModel::removeFromSuperset,
         onDissolveSuperset = viewModel::dissolveSuperset,
@@ -130,11 +147,13 @@ fun ActiveWorkoutScreen(
     onBack: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenPicker: () -> Unit,
+    onOpenReplacementPicker: (String) -> Unit = {},
     onStartEmpty: () -> Unit,
     onUpdateTitle: (String) -> Unit,
     onUpdateNotes: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onReorderExercises: (List<String>) -> Unit = { _ -> },
     onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
     onRemoveFromSuperset: (String) -> Unit = {},
     onDissolveSuperset: (String) -> Unit = {},
@@ -149,10 +168,12 @@ fun ActiveWorkoutScreen(
     onReload: () -> Unit,
     onRetry: () -> Unit,
     onRetryPrevious: () -> Unit = {},
+    onOpenExercise: (String) -> Unit = {},
 ) {
     var confirmComplete by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
+    var reorderOpen by remember { mutableStateOf(false) }
     val requestBack = { if (state.data.hasUnsavedChanges) confirmExit = true else onBack() }
     BackHandler(onBack = requestBack)
     Scaffold(
@@ -189,11 +210,14 @@ fun ActiveWorkoutScreen(
                 state.data.draft?.let { draft ->
                     WorkoutEditorContent(
                         draft, state.data, clock, enabled = false,
-                        onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        onOpenPicker, onOpenReplacementPicker,
+                        onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
                         onRetryPrevious,
+                        onOpenExercise,
                     )
                 }
             }
@@ -213,24 +237,27 @@ fun ActiveWorkoutScreen(
                         is ActiveWorkoutUiState.Conflict -> {
                             Text(stringResource(R.string.workout_conflict_title), color = MaterialTheme.colorScheme.error)
                             Text(stringResource(R.string.workout_conflict_message))
-                            if (state.data.hasUnsavedChanges) {
-                                Text(stringResource(R.string.workout_conflict_dirty_warning), color = MaterialTheme.colorScheme.error)
-                            }
-                            PrimaryButton(
-                                text = stringResource(R.string.workout_reload_server),
-                                onClick = onReload,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+if (state.data.hasUnsavedChanges) {
+                        Text(stringResource(R.string.workout_conflict_dirty_warning), color = MaterialTheme.colorScheme.error)
+                    }
+                    PrimaryButton(
+                        text = stringResource(R.string.workout_reload_server),
+                        onClick = onReload,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                         else -> Unit
                     }
                     WorkoutEditorContent(
                         draft, state.data, clock, enabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises,
-                        onOpenPicker, onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        onOpenPicker, onOpenReplacementPicker,
+                        onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
+                        { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                         onSave, { confirmComplete = true }, { confirmDiscard = true },
                         onRetryPrevious,
+                        onOpenExercise,
                     )
                 }
             }
@@ -257,6 +284,14 @@ fun ActiveWorkoutScreen(
         onDismiss = { confirmExit = false },
         onConfirm = onBack,
     )
+    val reorderDraft = state.data.draft
+    if (reorderOpen && reorderDraft != null) {
+        WorkoutReorderExercisesDialog(
+            exercises = reorderDraft.exercises,
+            onClose = { reorderOpen = false },
+            onApply = onReorderExercises,
+        )
+    }
 }
 
 @Composable
@@ -266,10 +301,12 @@ private fun WorkoutEditorContent(
     clock: Clock,
     enabled: Boolean,
     onOpenPicker: () -> Unit,
+    onOpenReplacementPicker: (String) -> Unit,
     onUpdateTitle: (String) -> Unit,
     onUpdateNotes: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
+    onReorder: () -> Unit,
     onGroupWithAdjacent: (String, Int) -> Unit,
     onRemoveFromSuperset: (String) -> Unit,
     onDissolveSuperset: (String) -> Unit,
@@ -282,6 +319,7 @@ private fun WorkoutEditorContent(
     onComplete: () -> Unit,
     onDiscard: () -> Unit,
     onRetryPrevious: () -> Unit,
+    onOpenExercise: (String) -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -297,15 +335,6 @@ private fun WorkoutEditorContent(
             )
         }
     }
-    WorkoutTextField(
-        value = draft.title,
-        onValueChange = onUpdateTitle,
-        label = R.string.workout_title_label,
-        error = data.fieldErrors["title"],
-        enabled = enabled,
-        modifier = Modifier.testTag("workout_title"),
-        style = MaterialTheme.typography.titleLarge,
-    )
     if (data.previousPerformanceLoading) {
         Text("Cargando rendimiento anterior…", style = MaterialTheme.typography.bodySmall)
     }
@@ -319,39 +348,23 @@ private fun WorkoutEditorContent(
             TextButton(onClick = onRetryPrevious) { Text(stringResource(R.string.retry)) }
         }
     }
-    WorkoutTextField(
-        value = draft.notes,
-        onValueChange = onUpdateNotes,
-        label = R.string.workout_notes_label,
-        error = data.fieldErrors["notes"],
-        enabled = enabled,
-        singleLine = false,
-    )
     if (draft.exercises.isEmpty()) Text(stringResource(R.string.workout_no_exercises))
-    if (draft.exercises.any { it.supersetLocalId != null }) {
-        Text(
-            stringResource(R.string.superset_reorder_help),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
     draft.exercises.forEachIndexed { index, exercise ->
         WorkoutExerciseEditor(
             exercise, index, draft.exercises.size, data.fieldErrors, enabled,
-            canMoveUp = draft.moveExercise(exercise.localId, -1) != draft,
-            canMoveDown = draft.moveExercise(exercise.localId, 1) != draft,
             previousSupersetLocalId = draft.exercises.getOrNull(index - 1)?.supersetLocalId,
             nextSupersetLocalId = draft.exercises.getOrNull(index + 1)?.supersetLocalId,
             supersetOrdinal = draft.supersetOrdinal(exercise.localId),
+            onOpenExercise = { onOpenExercise(exercise.exerciseTemplateId) },
+            onReorder = onReorder,
+            onReplace = { onOpenReplacementPicker(exercise.localId) },
             onRemove = { onRemoveExercise(exercise.localId) },
-            onMove = { onMoveExercise(exercise.localId, it) },
             onGroupWithAdjacent = { onGroupWithAdjacent(exercise.localId, it) },
             onRemoveFromSuperset = { onRemoveFromSuperset(exercise.localId) },
             onDissolveSuperset = { onDissolveSuperset(exercise.localId) },
             onUpdate = { transform -> onUpdateExercise(exercise.localId, transform) },
             onAddSet = { onAddSet(exercise.localId) },
             onRemoveSet = { onRemoveSet(exercise.localId, it) },
-            onMoveSet = { setId, offset -> onMoveSet(exercise.localId, setId, offset) },
             onUpdateSet = { setId, transform -> onUpdateSet(exercise.localId, setId, transform) },
             previousValue = { setId ->
                 formatPreviousPerformance(
@@ -397,6 +410,7 @@ private fun WorkoutEditorContent(
     Spacer(Modifier.height(24.dp))
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WorkoutExerciseEditor(
     exercise: WorkoutExerciseDraft,
@@ -404,111 +418,209 @@ private fun WorkoutExerciseEditor(
     count: Int,
     errors: Map<String, String>,
     enabled: Boolean,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     previousSupersetLocalId: String?,
     nextSupersetLocalId: String?,
     supersetOrdinal: Int?,
+    onOpenExercise: () -> Unit,
+    onReorder: () -> Unit,
+    onReplace: () -> Unit,
     onRemove: () -> Unit,
-    onMove: (Int) -> Unit,
     onGroupWithAdjacent: (Int) -> Unit,
     onRemoveFromSuperset: () -> Unit,
     onDissolveSuperset: () -> Unit,
     onUpdate: ((WorkoutExerciseDraft) -> WorkoutExerciseDraft) -> Unit,
     onAddSet: () -> Unit,
     onRemoveSet: (String) -> Unit,
-    onMoveSet: (String, Int) -> Unit,
     onUpdateSet: (String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     previousValue: (String) -> String,
 ) {
     val prefix = "exercise.${exercise.localId}"
-    OutlinedCard(Modifier.fillMaxWidth().testTag("workout_exercise_${exercise.localId}")) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(exercise.exerciseNameSnapshot, style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(exercise.exerciseTypeSnapshot.labelResource()), style = MaterialTheme.typography.bodySmall)
+    var showActions by remember { mutableStateOf(false) }
+    var showSupersetActions by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .testTag("workout_exercise_${exercise.localId}"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            ExerciseThumbnail()
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ExerciseNameLink(
+                        name = exercise.exerciseNameSnapshot,
+                        onClick = onOpenExercise,
+                        onLongClick = onReorder,
+                    )
                     supersetOrdinal?.let { ordinal ->
                         Text(
                             stringResource(R.string.superset_badge, ordinal),
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.testTag("workout_superset_${exercise.localId}"),
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .testTag("workout_superset_${exercise.localId}"),
                         )
                     }
                 }
-                TextButton(onClick = onRemove, enabled = enabled) {
-                    Text(stringResource(R.string.routine_remove_exercise), color = MaterialTheme.colorScheme.error)
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onMove(-1) }, enabled = enabled && canMoveUp) {
-                    Text(stringResource(R.string.routine_move_up))
-                }
-                TextButton(onClick = { onMove(1) }, enabled = enabled && canMoveDown) {
-                    Text(stringResource(R.string.routine_move_down))
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
-                    TextButton(
-                        onClick = { onGroupWithAdjacent(-1) },
-                        enabled = enabled,
-                        modifier = Modifier.testTag("workout_group_previous_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_group_previous)) }
-                }
-                if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
-                    TextButton(
-                        onClick = { onGroupWithAdjacent(1) },
-                        enabled = enabled,
-                        modifier = Modifier.testTag("workout_group_next_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_group_next)) }
-                }
-                if (exercise.supersetLocalId != null) {
-                    TextButton(
-                        onClick = onRemoveFromSuperset,
-                        enabled = enabled,
-                        modifier = Modifier.testTag("workout_superset_remove_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_remove_member)) }
-                    TextButton(
-                        onClick = onDissolveSuperset,
-                        enabled = enabled,
-                        modifier = Modifier.testTag("workout_superset_dissolve_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_dissolve)) }
-                }
-            }
-            WorkoutTextField(
-                value = exercise.notes,
-                onValueChange = { value -> onUpdate { it.copy(notes = value) } },
-                label = R.string.workout_exercise_notes_label,
-                error = errors["$prefix.notes"],
-                enabled = enabled,
-                singleLine = false,
-            )
-            WorkoutTextField(
-                value = exercise.restSeconds,
-                onValueChange = { value -> onUpdate { it.copy(restSeconds = value) } },
-                label = R.string.workout_rest_field,
-                error = errors["$prefix.restSeconds"],
-                enabled = enabled,
-                keyboardType = KeyboardType.Number,
-            )
-            if (exercise.sets.isNotEmpty()) {
-                WorkoutSetTable(
-                    exercise = exercise,
-                    prefix = prefix,
-                    errors = errors,
-                    enabled = enabled,
-                    onMoveSet = onMoveSet,
-                    onRemoveSet = onRemoveSet,
-                    onUpdateSet = onUpdateSet,
-                    previousValue = previousValue,
+                Text(
+                    text = stringResource(exercise.exerciseTypeSnapshot.labelResource()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onAddSet, enabled = enabled && exercise.sets.size < 20) {
-                Text(stringResource(R.string.workout_add_set))
+            IconButton(
+                onClick = { showActions = true },
+                enabled = enabled,
+                modifier = Modifier.testTag("workout_exercise_menu_${exercise.localId}"),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(
+                        R.string.workout_exercise_menu,
+                        exercise.exerciseNameSnapshot,
+                    ),
+                )
             }
         }
+        WorkoutTextField(
+            value = exercise.notes,
+            onValueChange = { value -> onUpdate { it.copy(notes = value) } },
+            label = R.string.workout_exercise_notes_label,
+            error = errors["$prefix.notes"],
+            enabled = enabled,
+            singleLine = false,
+        )
+        WorkoutTextField(
+            value = exercise.restSeconds,
+            onValueChange = { value -> onUpdate { it.copy(restSeconds = value) } },
+            label = R.string.workout_rest_field,
+            error = errors["$prefix.restSeconds"],
+            enabled = enabled,
+            keyboardType = KeyboardType.Number,
+        )
+        if (exercise.sets.isNotEmpty()) {
+            WorkoutSetTable(
+                exercise = exercise,
+                prefix = prefix,
+                errors = errors,
+                enabled = enabled,
+                onRemoveSet = onRemoveSet,
+                onUpdateSet = onUpdateSet,
+                previousValue = previousValue,
+            )
+        }
+        TextButton(onClick = onAddSet, enabled = enabled && exercise.sets.size < 20) {
+            Text(stringResource(R.string.workout_add_set))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+    if (showActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showActions = false },
+            modifier = Modifier.testTag("workout_exercise_actions_${exercise.localId}"),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                WorkoutExerciseSheetAction(
+                    text = stringResource(R.string.workout_exercise_action_reorder),
+                    enabled = enabled,
+                    modifier = Modifier.testTag("workout_exercise_reorder_action_${exercise.localId}"),
+                    onClick = { showActions = false; onReorder() },
+                )
+                WorkoutExerciseSheetAction(
+                    text = stringResource(R.string.workout_exercise_action_replace),
+                    enabled = enabled,
+                    modifier = Modifier.testTag("workout_exercise_replace_action_${exercise.localId}"),
+                    onClick = { showActions = false; onReplace() },
+                )
+                WorkoutExerciseSheetAction(
+                    text = stringResource(
+                        if (exercise.supersetLocalId == null) {
+                            R.string.workout_exercise_action_add_superset
+                        } else {
+                            R.string.workout_exercise_action_edit_superset
+                        },
+                    ),
+                    enabled = enabled && (count > 1 || exercise.supersetLocalId != null),
+                    modifier = Modifier.testTag("workout_exercise_superset_action_${exercise.localId}"),
+                    onClick = { showActions = false; showSupersetActions = true },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                WorkoutExerciseSheetAction(
+                    text = stringResource(R.string.routine_remove_exercise),
+                    enabled = enabled,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("workout_exercise_delete_action_${exercise.localId}"),
+                    onClick = { showActions = false; onRemove() },
+                )
+            }
+        }
+    }
+    if (showSupersetActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showSupersetActions = false },
+            modifier = Modifier.testTag("workout_exercise_superset_actions_${exercise.localId}"),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
+                    WorkoutExerciseSheetAction(
+                        text = stringResource(R.string.superset_group_previous),
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_group_previous_${exercise.localId}"),
+                        onClick = { showSupersetActions = false; onGroupWithAdjacent(-1) },
+                    )
+                }
+                if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
+                    WorkoutExerciseSheetAction(
+                        text = stringResource(R.string.superset_group_next),
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_group_next_${exercise.localId}"),
+                        onClick = { showSupersetActions = false; onGroupWithAdjacent(1) },
+                    )
+                }
+                if (exercise.supersetLocalId != null) {
+                    WorkoutExerciseSheetAction(
+                        text = stringResource(R.string.superset_remove_member),
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_superset_remove_${exercise.localId}"),
+                        onClick = { showSupersetActions = false; onRemoveFromSuperset() },
+                    )
+                    WorkoutExerciseSheetAction(
+                        text = stringResource(R.string.superset_dissolve),
+                        enabled = enabled,
+                        modifier = Modifier.testTag("workout_superset_dissolve_${exercise.localId}"),
+                        onClick = { showSupersetActions = false; onDissolveSuperset() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkoutExerciseSheetAction(
+    text: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    color: Color? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = color ?: MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -565,15 +677,6 @@ private fun WorkoutExerciseDraft.metricColumns(): List<MetricColumn> = buildList
             keyboardType = KeyboardType.Decimal,
         )
     )
-    add(
-        MetricColumn(
-            header = stringResource(R.string.workout_metric_rpe),
-            value = { it.rpe },
-            update = { set, v -> set.copy(rpe = v) },
-            errorKey = { p -> "$p.rpe" },
-            keyboardType = KeyboardType.Decimal,
-        )
-    )
 }
 
 @Composable
@@ -582,7 +685,6 @@ private fun WorkoutSetTable(
     prefix: String,
     errors: Map<String, String>,
     enabled: Boolean,
-    onMoveSet: (String, Int) -> Unit,
     onRemoveSet: (String) -> Unit,
     onUpdateSet: (String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     previousValue: (String) -> String,
@@ -604,13 +706,11 @@ private fun WorkoutSetTable(
             WorkoutSetRow(
                 set = set,
                 index = setIndex,
-                count = exercise.sets.size,
                 columns = columns,
                 prefix = "$prefix.set.${set.localId}",
                 errors = errors,
                 enabled = enabled,
                 onRemove = { onRemoveSet(set.localId) },
-                onMove = { onMoveSet(set.localId, it) },
                 onUpdate = { transform -> onUpdateSet(set.localId, transform) },
                 previous = previousValue(set.localId),
             )
@@ -622,78 +722,67 @@ private fun WorkoutSetTable(
 private fun WorkoutSetRow(
     set: WorkoutSetDraft,
     index: Int,
-    count: Int,
     columns: List<MetricColumn>,
     prefix: String,
     errors: Map<String, String>,
     enabled: Boolean,
     onRemove: () -> Unit,
-    onMove: (Int) -> Unit,
     onUpdate: ((WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     previous: String,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .background(if (set.completed) completedRowContainer() else Color.Transparent)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
         ) {
-            SetTypeCell(
-                type = set.setType,
-                index = index,
-                enabled = enabled,
-                onSelect = { value -> onUpdate { it.copy(setType = value) } },
-                onRemove = onRemove,
-                modifier = Modifier.width(40.dp),
-            )
-            Box(
-                modifier = Modifier.weight(1.15f).padding(horizontal = 2.dp).testTag("previous_${set.localId}"),
-                contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(previous, style = MaterialTheme.typography.bodySmall)
-            }
-            columns.forEach { column ->
-                MetricCell(
-                    value = column.value(set),
-                    onValueChange = { value -> onUpdate { column.update(it, value) } },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 2.dp),
-                    keyboardType = column.keyboardType,
+                SetTypeCell(
+                    type = set.setType,
+                    index = index,
                     enabled = enabled,
-                    isError = errors.containsKey(column.errorKey(prefix)),
-                    contentDescription = "${column.header} ${index + 1}",
-                    testTag = "${column.errorKey(prefix)}_${set.localId}",
+                    completed = set.completed,
+                    onSelect = { value -> onUpdate { it.copy(setType = value) } },
+                    onRemove = onRemove,
+                    modifier = Modifier.width(38.dp),
                 )
-            }
-            SetCompleteToggle(
-                completed = set.completed,
-                enabled = enabled,
-                onToggle = { value -> onUpdate { it.copy(completed = value) } },
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = targetSummary(set),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("targets_${set.localId}"),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onMove(-1) }, enabled = enabled && index > 0) {
-                    Text(stringResource(R.string.routine_move_up))
+                Box(
+                    modifier = Modifier.weight(1.15f).padding(horizontal = 2.dp).testTag("previous_${set.localId}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = previous,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (set.completed) completedRowAccent() else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                TextButton(onClick = { onMove(1) }, enabled = enabled && index < count - 1) {
-                    Text(stringResource(R.string.routine_move_down))
+                columns.forEach { column ->
+                    MetricCell(
+                        value = column.value(set),
+                        onValueChange = { value -> onUpdate { column.update(it, value) } },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 2.dp),
+                        keyboardType = column.keyboardType,
+                        enabled = enabled,
+                        isError = errors.containsKey(column.errorKey(prefix)),
+                        contentDescription = "${column.header} ${index + 1}",
+                        testTag = "${column.errorKey(prefix)}_${set.localId}",
+                        containerColor = if (set.completed) Color.Transparent else null,
+                        textColor = if (set.completed) completedRowAccent() else null,
+                    )
                 }
-                TextButton(onClick = onRemove, enabled = enabled) {
-                    Text(stringResource(R.string.routine_remove_set))
-                }
+                SetCompleteToggle(
+                    completed = set.completed,
+                    enabled = enabled,
+                    onToggle = { value -> onUpdate { it.copy(completed = value) } },
+                )
             }
         }
         errors["$prefix.completed"]?.let {
@@ -705,6 +794,18 @@ private fun WorkoutSetRow(
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
     }
+}
+
+@Composable
+private fun completedRowContainer(): Color {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return if (dark) CompletedRowContainerDark else CompletedRowContainerLight
+}
+
+@Composable
+private fun completedRowAccent(): Color {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return if (dark) CompletedRowAccentDark else CompletedRowAccentLight
 }
 
 @Composable
@@ -724,17 +825,21 @@ private fun SetTypeCell(
     type: SetType,
     index: Int,
     enabled: Boolean,
+    completed: Boolean = false,
     onSelect: (SetType) -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showSheet by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
-    val color = when (type) {
-        SetType.Normal -> MaterialTheme.colorScheme.onSurfaceVariant
-        SetType.Warmup -> SetWarmup
-        SetType.Failure -> SetFailure
-        SetType.Drop -> SetDrop
+    val color = when {
+        completed -> completedRowAccent()
+        else -> when (type) {
+            SetType.Normal -> MaterialTheme.colorScheme.onSurfaceVariant
+            SetType.Warmup -> SetWarmup
+            SetType.Failure -> SetFailure
+            SetType.Drop -> SetDrop
+        }
     }
     val label = when (type) {
         SetType.Normal -> (index + 1).toString()
@@ -751,8 +856,18 @@ private fun SetTypeCell(
         modifier = modifier
             .heightIn(min = 44.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .background(
+                if (completed) {
+                    Color.Transparent
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                }
+            )
+            .border(
+                1.dp,
+                if (completed) completedRowAccent().copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant,
+                shape,
+            )
             .semantics { contentDescription = description }
             .clickable(enabled = enabled) { showSheet = true },
         contentAlignment = Alignment.Center,
@@ -817,6 +932,10 @@ private fun SetCompleteToggle(
             checked = completed,
             onCheckedChange = onToggle,
             enabled = enabled,
+            colors = CheckboxDefaults.colors(
+                checkedColor = completedRowAccent(),
+                checkmarkColor = MaterialTheme.colorScheme.onError,
+            ),
         )
     }
 }

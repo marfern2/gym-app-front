@@ -36,3 +36,9 @@ val InkLightOutlineVariant = Color(0xFFC8CBE0)
 val SetWarmup = Color(0xFFFFC53D)
 val SetFailure = Color(0xFFFF5C5C)
 val SetDrop = Color(0xFF4DD0E1)
+
+// Fila de serie completada en el workout activo: verde sobrio y legible en ambos temas.
+val CompletedRowContainerLight = Color(0xFFE3F3E7)
+val CompletedRowContainerDark = Color(0xFF1D3627)
+val CompletedRowAccentLight = Color(0xFF1E7B3B)
+val CompletedRowAccentDark = Color(0xFF7ED99B)

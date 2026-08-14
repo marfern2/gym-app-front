@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">GYmApp</string>
+    <string name="app_name">GymApp</string>
     <string name="connection_status_title">Estado de conexión</string>
     <string name="connection_initial">La conexión con el backend aún no se ha comprobado.</string>
     <string name="connection_loading">Comprobando conexión…</string>
@@ -401,6 +401,9 @@
     <string name="training_title">Entrenamiento</string>
     <string name="training_continue_workout">Continuar entrenamiento</string>
     <string name="training_my_routines">Mis rutinas</string>
+    <string name="training_my_routines_count">Mis rutinas (%1$d)</string>
+    <string name="training_routines_expand">Desplegar mis rutinas</string>
+    <string name="training_routines_collapse">Contraer mis rutinas</string>
     <string name="training_view_all">Ver todas</string>
     <string name="training_actions_title">Acciones</string>
     <string name="training_catalog">Catálogo</string>
@@ -423,7 +426,6 @@
     <string name="workout_series_header">SERIE</string>
     <string name="workout_metric_kg">KG</string>
     <string name="workout_metric_reps">REPS</string>
-    <string name="workout_metric_rpe">RPE</string>
     <string name="workout_metric_lastre">LASTRE</string>
     <string name="workout_metric_asistencia">ASISTENCIA</string>
     <string name="workout_metric_time">TIEMPO</string>
@@ -439,6 +441,10 @@
     <string name="workout_rest_field">Descanso</string>
     <string name="workout_add_exercise">Añadir ejercicio</string>
     <string name="workout_exercise_menu">Opciones de %1$s</string>
+    <string name="workout_exercise_action_reorder">Reordenar</string>
+    <string name="workout_exercise_action_replace">Reemplazar ejercicio</string>
+    <string name="workout_exercise_action_add_superset">Agregar a superserie</string>
+    <string name="workout_exercise_action_edit_superset">Modificar superserie</string>
 
     <!-- Rutinas -->
     <string name="routine_archived_badge">Archivada</string>
@@ -451,11 +457,7 @@
     <string name="routine_viewer_title">Rutina</string>
     <string name="routine_viewer_start">Empezar rutina</string>
     <string name="routine_viewer_archived_message">Esta rutina está archivada. Restáurala para poder iniciarla.</string>
-    <string name="routine_viewer_sets_title">Series previstas</string>
-    <string name="routine_set_no_target">Sin objetivo</string>
     <string name="routine_rest_short">Descanso: %1$s s</string>
-    <string name="routine_set_viewer_row">Serie %1$d · %2$s</string>
-    <string name="routine_exercise_viewer_row">%1$d. %2$s</string>
 
     <!-- Columna SERIE del workout activo -->
     <string name="workout_set_warmup">Serie de calentamiento</string>
@@ -469,4 +471,8 @@
     <string name="workout_set_type_failure">fallida</string>
     <string name="workout_set_type_drop">drop</string>
     <string name="workout_previous_header">ANTERIOR</string>
+    <string name="workout_reorder_title">Reordenar ejercicios</string>
+    <string name="workout_reorder_hint">Mantén pulsado un ejercicio y arrástralo para cambiar su posición.</string>
+    <string name="workout_reorder_apply">Aplicar</string>
+    <string name="workout_reorder_drag_handle">Arrastrar %1$s</string>
 </resources>

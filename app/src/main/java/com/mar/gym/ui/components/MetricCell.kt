@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +38,8 @@ fun MetricCell(
     enabled: Boolean = true,
     isError: Boolean = false,
     testTag: String? = null,
+    containerColor: Color? = null,
+    textColor: Color? = null,
 ) {
     val shape = RoundedCornerShape(10.dp)
     val borderColor = when {
@@ -50,7 +53,7 @@ fun MetricCell(
         modifier = modifier
             .heightIn(min = 44.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(containerColor ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(1.dp, borderColor, shape)
             .then(semanticsModifier)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
@@ -65,7 +68,7 @@ fun MetricCell(
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.SemiBold,
-                color = if (enabled) {
+                color = textColor ?: if (enabled) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant

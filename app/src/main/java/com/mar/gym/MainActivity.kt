@@ -132,9 +132,12 @@ class MainActivity : ComponentActivity() {
         var routineEditorOrigin by rememberSaveable { mutableStateOf<String?>(null) }
         var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+        var workoutExerciseToReplaceId by rememberSaveable { mutableStateOf<String?>(null) }
+        var workoutReplacementPickerRequest by rememberSaveable { mutableStateOf(0) }
         var workoutDetailId by rememberSaveable { mutableStateOf<String?>(null) }
         var pendingRoutineWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
         var catalogOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
+        var detailOrigin by rememberSaveable { mutableStateOf(DEEP_CATALOG) }
 
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
         val historyState by workoutHistoryViewModel().uiState.collectAsStateWithLifecycle()
@@ -157,7 +160,16 @@ class MainActivity : ComponentActivity() {
                         tab = catalogOrigin
                         null
                     }
-                    DEEP_DETAIL, DEEP_PICKER -> DEEP_CATALOG
+                    DEEP_DETAIL -> when (detailOrigin) {
+                        DEEP_ROUTINE_VIEWER -> DEEP_ROUTINE_VIEWER
+                        DEEP_ROUTINE_EDITOR -> DEEP_ROUTINE_EDITOR
+                        DEEP_WORKOUT -> DEEP_WORKOUT
+                        else -> {
+                            exerciseCatalogViewModel().refresh()
+                            DEEP_CATALOG
+                        }
+                    }
+                    DEEP_PICKER -> DEEP_CATALOG
                     DEEP_EXERCISE_PROGRESS -> DEEP_DETAIL
                     DEEP_CUSTOM_EDITOR -> if (exerciseEditorId == null) DEEP_CATALOG else DEEP_DETAIL
                     DEEP_ROUTINE_VIEWER -> {
@@ -186,6 +198,10 @@ class MainActivity : ComponentActivity() {
                     }
                     DEEP_ROUTINE_PICKER -> DEEP_ROUTINE_EDITOR
                     DEEP_WORKOUT_PICKER -> DEEP_WORKOUT
+                    DEEP_WORKOUT_REPLACEMENT_PICKER -> {
+                        workoutExerciseToReplaceId = null
+                        DEEP_WORKOUT
+                    }
                     DEEP_WORKOUT_DETAIL -> DEEP_WORKOUT_HISTORY
                     DEEP_MEASUREMENTS -> {
                         profileViewModel().refresh()
@@ -305,6 +321,7 @@ class MainActivity : ComponentActivity() {
                         tab = catalogOrigin
                     },
                     onOpenDetail = { id ->
+                        detailOrigin = DEEP_CATALOG
                         detailId = id
                         deep = DEEP_DETAIL
                     },
@@ -321,8 +338,8 @@ class MainActivity : ComponentActivity() {
                         imageLoader = AppContainer.exerciseMediaImageLoader,
                         onOpenAttribution = ::openHttpsUrl,
                         onBack = {
-                            exerciseCatalogViewModel().refresh()
-                            deep = DEEP_CATALOG
+                            if (detailOrigin == DEEP_CATALOG) exerciseCatalogViewModel().refresh()
+                            deep = detailOrigin
                         },
                         onEdit = { id ->
                             exerciseEditorId = id
@@ -340,6 +357,7 @@ class MainActivity : ComponentActivity() {
                         tab = catalogOrigin
                     },
                     onOpenDetail = { id ->
+                        detailOrigin = DEEP_CATALOG
                         detailId = id
                         deep = DEEP_DETAIL
                     },
@@ -425,6 +443,11 @@ class MainActivity : ComponentActivity() {
                                 routineId = id
                                 deep = DEEP_ROUTINE_VIEWER
                             },
+                            onOpenExercise = { id ->
+                                detailOrigin = DEEP_ROUTINE_VIEWER
+                                detailId = id
+                                deep = DEEP_DETAIL
+                            },
                         )
                     } else RoutineListRoute(
                         viewModel = remember { routineListViewModel() },
@@ -483,6 +506,11 @@ class MainActivity : ComponentActivity() {
                             pendingRoutineWorkoutId = id
                             deep = DEEP_WORKOUT
                         },
+                        onOpenExercise = { id ->
+                            detailOrigin = DEEP_ROUTINE_EDITOR
+                            detailId = id
+                            deep = DEEP_DETAIL
+                        },
                     )
                 }
                 DEEP_ROUTINE_PICKER -> {
@@ -525,9 +553,19 @@ class MainActivity : ComponentActivity() {
                             workoutPickerInitialIds = ids.toList()
                             deep = DEEP_WORKOUT_PICKER
                         },
+                        onOpenReplacementPicker = { localId ->
+                            workoutExerciseToReplaceId = localId
+                            workoutReplacementPickerRequest += 1
+                            deep = DEEP_WORKOUT_REPLACEMENT_PICKER
+                        },
                         onOpenCompletedWorkout = { id ->
                             workoutDetailId = id
                             deep = DEEP_WORKOUT_DETAIL
+                        },
+                        onOpenExercise = { id ->
+                            detailOrigin = DEEP_WORKOUT
+                            detailId = id
+                            deep = DEEP_DETAIL
                         },
                     )
                 }
@@ -546,6 +584,28 @@ class MainActivity : ComponentActivity() {
                             deep = DEEP_WORKOUT
                         },
                     )
+                }
+                DEEP_WORKOUT_REPLACEMENT_PICKER -> {
+                    val localId = workoutExerciseToReplaceId
+                    if (localId == null) {
+                        LaunchedEffect(Unit) { deep = DEEP_WORKOUT }
+                    } else {
+                        val pickerViewModel = remember(localId, workoutReplacementPickerRequest) {
+                            workoutReplacementPickerViewModel(localId, workoutReplacementPickerRequest)
+                        }
+                        ExercisePickerRoute(
+                            viewModel = pickerViewModel,
+                            onResult = { outcome ->
+                                if (outcome is ExercisePickerOutcome.Confirmed) {
+                                    outcome.result.selectedExerciseTemplateIds.singleOrNull()?.let { templateId ->
+                                        activeWorkoutViewModel().replaceExercise(localId, templateId)
+                                    }
+                                }
+                                workoutExerciseToReplaceId = null
+                                deep = DEEP_WORKOUT
+                            },
+                        )
+                    }
                 }
                 DEEP_WORKOUT_HISTORY -> WorkoutHistoryRoute(
                     viewModel = remember { workoutHistoryViewModel() },
@@ -670,6 +730,17 @@ class MainActivity : ComponentActivity() {
         ),
     )["workout-picker-${initialIds.hashCode()}", ExerciseCatalogViewModel::class.java]
 
+    private fun workoutReplacementPickerViewModel(
+        localId: String,
+        request: Int,
+    ): ExerciseCatalogViewModel = ViewModelProvider(
+        this,
+        ExerciseCatalogViewModelFactory(
+            repository = AppContainer.exerciseTemplateRepository,
+            pickerConfig = ExercisePickerConfig(ExerciseSelectionMode.Single),
+        ),
+    )["workout-replacement-picker-$localId-$request", ExerciseCatalogViewModel::class.java]
+
     private fun workoutHistoryViewModel(): WorkoutHistoryViewModel = ViewModelProvider(
         this,
         WorkoutHistoryViewModelFactory(AppContainer.workoutRepository),
@@ -720,6 +791,7 @@ class MainActivity : ComponentActivity() {
         const val DEEP_ROUTINE_PICKER = "routine_exercise_picker"
         const val DEEP_WORKOUT = "workout"
         const val DEEP_WORKOUT_PICKER = "workout_exercise_picker"
+        const val DEEP_WORKOUT_REPLACEMENT_PICKER = "workout_exercise_replacement_picker"
         const val DEEP_WORKOUT_HISTORY = "workout_history"
         const val DEEP_WORKOUT_DETAIL = "workout_detail"
         const val DEEP_EXERCISE_PROGRESS = "exercise_progress"

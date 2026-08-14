@@ -75,6 +75,27 @@ class WorkoutDraftTest {
     }
 
     @Test
+    fun `reorder only applies contiguous superset safe orders`() {
+        val draft = WorkoutDraft(
+            WORKOUT_ID,
+            "Workout",
+            exercises = listOf(
+                exercise("a", "server-a").copy(supersetLocalId = "group"),
+                exercise("b", "server-b").copy(supersetLocalId = "group"),
+                exercise("c", "server-c"),
+            ),
+        )
+
+        val valid = draft.reorderExercises(listOf("c", "a", "b"))
+        assertEquals(listOf("c", "a", "b"), valid.exercises.map { it.localId })
+        assertEquals(listOf("server-c", "server-a", "server-b"), valid.exercises.map { it.serverId })
+
+        assertEquals(draft, draft.reorderExercises(listOf("a", "c", "b")))
+        assertEquals(draft, draft.reorderExercises(listOf("b", "a")))
+        assertEquals(draft, draft.reorderExercises(listOf("unknown", "a", "b", "c")))
+    }
+
+    @Test
     fun `new manual set has no server id and no targets`() {
         val exercise = WorkoutDraft.from(document()).exercises.single().addSet { "local-new" }
         val added = exercise.sets.last()

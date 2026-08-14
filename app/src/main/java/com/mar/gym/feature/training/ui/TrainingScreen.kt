@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
@@ -26,9 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -69,6 +73,7 @@ fun TrainingScreen(
     modifier: Modifier = Modifier,
 ) {
     var archiveCandidate by remember { mutableStateOf<String?>(null) }
+    var routinesExpanded by rememberSaveable { mutableStateOf(true) }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
@@ -114,51 +119,62 @@ fun TrainingScreen(
             }
         }
         item {
-            SectionHeader(
-                title = stringResource(R.string.training_my_routines),
-                actionLabel = stringResource(R.string.training_view_all),
-                onAction = onOpenAllRoutines,
+            val count = when (routines) {
+                is RoutineListUiState.Content,
+                is RoutineListUiState.LoadingMore,
+                is RoutineListUiState.ErrorLoadingMore,
+                -> routines.data.items.size
+
+                else -> null
+            }
+            MisRoutinesHeader(
+                count = count,
+                expanded = routinesExpanded,
+                onToggle = { routinesExpanded = !routinesExpanded },
+                onViewAll = onOpenAllRoutines,
             )
         }
-        when (routines) {
-            is RoutineListUiState.Loading -> item {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LoadingProgress()
-                    Text(stringResource(R.string.routine_loading))
+        if (routinesExpanded) {
+            when (routines) {
+                is RoutineListUiState.Loading -> item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LoadingProgress()
+                        Text(stringResource(R.string.routine_loading))
+                    }
                 }
-            }
-            is RoutineListUiState.Empty -> item {
-                EmptyState(
-                    icon = Icons.Filled.List,
-                    title = stringResource(R.string.routine_empty_active_title),
-                    message = stringResource(R.string.routine_empty_active_message),
-                    actionLabel = stringResource(R.string.routine_create),
-                    onAction = onCreateRoutine,
-                )
-            }
-            is RoutineListUiState.Error -> item {
-                Text(
-                    text = stringResource(R.string.routine_error_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                TextButton(onClick = onRetryRoutines) { Text(stringResource(R.string.retry)) }
-            }
-            is RoutineListUiState.Content,
-            is RoutineListUiState.LoadingMore,
-            is RoutineListUiState.ErrorLoadingMore,
-            -> {
-                items(routines.data.items.take(5), key = { it.id }) { routine ->
-                    RoutineCard(
-                        routine = routine,
-                        busy = routines.data.operationRoutineId == routine.id,
-                        onOpen = { onOpenRoutine(routine.id) },
-                        onStart = { onStartRoutine(routine.id) },
-                        onDuplicate = { onDuplicateRoutine(routine.id) },
-                        onEdit = { onEditRoutine(routine.id) },
-                        onArchive = { archiveCandidate = routine.id },
-                        onRestore = { onRestoreRoutine(routine.id) },
+                is RoutineListUiState.Empty -> item {
+                    EmptyState(
+                        icon = Icons.Filled.List,
+                        title = stringResource(R.string.routine_empty_active_title),
+                        message = stringResource(R.string.routine_empty_active_message),
+                        actionLabel = stringResource(R.string.routine_create),
+                        onAction = onCreateRoutine,
                     )
+                }
+                is RoutineListUiState.Error -> item {
+                    Text(
+                        text = stringResource(R.string.routine_error_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = onRetryRoutines) { Text(stringResource(R.string.retry)) }
+                }
+                is RoutineListUiState.Content,
+                is RoutineListUiState.LoadingMore,
+                is RoutineListUiState.ErrorLoadingMore,
+                -> {
+                    items(routines.data.items.take(5), key = { it.id }) { routine ->
+                        RoutineCard(
+                            routine = routine,
+                            busy = routines.data.operationRoutineId == routine.id,
+                            onOpen = { onOpenRoutine(routine.id) },
+                            onStart = { onStartRoutine(routine.id) },
+                            onDuplicate = { onDuplicateRoutine(routine.id) },
+                            onEdit = { onEditRoutine(routine.id) },
+                            onArchive = { archiveCandidate = routine.id },
+                            onRestore = { onRestoreRoutine(routine.id) },
+                        )
+                    }
                 }
             }
         }
@@ -200,6 +216,45 @@ fun TrainingScreen(
                 TextButton(onClick = { archiveCandidate = null }) { Text(stringResource(R.string.routine_cancel)) }
             },
         )
+    }
+}
+
+@Composable
+private fun MisRoutinesHeader(
+    count: Int?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onViewAll: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (count == null) {
+                stringResource(R.string.training_my_routines)
+            } else {
+                stringResource(R.string.training_my_routines_count, count)
+            },
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = stringResource(
+                if (expanded) R.string.training_routines_collapse else R.string.training_routines_expand
+            ),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onViewAll) {
+            Text(
+                text = stringResource(R.string.training_view_all),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

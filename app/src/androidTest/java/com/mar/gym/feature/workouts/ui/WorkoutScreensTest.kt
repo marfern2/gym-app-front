@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -34,7 +35,7 @@ class WorkoutScreensTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
-    fun activeEditorShowsTargetSeparatelyFromEmptyResultInputs() {
+    fun activeEditorHidesTargetsAndKeepsCompactPreviousAndInputs() {
         val set = WorkoutSetDraft(
             localId = "set", serverId = "server-set",
             targets = WorkoutSetTargets(8, 10, BigDecimal("80.000"), null, null, null),
@@ -59,10 +60,12 @@ class WorkoutScreensTest {
             }
         }
 
-        composeRule.onNodeWithText("80 kg · 8–10 reps").assertIsDisplayed()
+        composeRule.onNodeWithText("SERIE").assertIsDisplayed()
+        composeRule.onNodeWithText("ANTERIOR").assertIsDisplayed()
         composeRule.onNodeWithText("KG").assertIsDisplayed()
         composeRule.onNodeWithText("REPS").assertIsDisplayed()
-        composeRule.onNodeWithTag("targets_set").assertIsDisplayed()
+        composeRule.onNodeWithText("80 kg · 8–10 reps").assertDoesNotExist()
+        composeRule.onNodeWithTag("targets_set").assertDoesNotExist()
         composeRule.onNodeWithTag("previous_set").assertIsDisplayed()
         composeRule.onNodeWithText("—").assertIsDisplayed()
         composeRule.onNodeWithTag("complete_workout").performScrollTo().assertIsDisplayed()
@@ -125,8 +128,63 @@ class WorkoutScreensTest {
         }
 
         composeRule.onNodeWithTag("workout_superset_first").assertIsDisplayed()
-        composeRule.onNodeWithTag("workout_superset_dissolve_first").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workout_exercise_menu_first").performClick()
+        composeRule.onNodeWithText("Modificar superserie").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("workout_superset_dissolve_first").performClick()
         composeRule.runOnIdle { assertEquals("first", dissolved) }
+    }
+
+    @Test
+    fun activeExerciseMenuUsesExistingActionsAndHasNoStandaloneTrash() {
+        val exercises = listOf(
+            workoutExerciseDraft("first", TEMPLATE, "Press"),
+            workoutExerciseDraft("second", SECOND_TEMPLATE, "Remo"),
+        )
+        val draft = WorkoutDraft("workout", "Fuerza", exercises = exercises)
+        var reordered = emptyList<String>()
+        var replaced: String? = null
+        var grouped: Pair<String, Int>? = null
+        var removed: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenHistory = {}, onOpenPicker = {},
+                    onOpenReplacementPicker = { replaced = it },
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {},
+                    onRemoveExercise = { removed = it }, onMoveExercise = { _, _ -> },
+                    onReorderExercises = { reordered = it },
+                    onGroupWithAdjacent = { id, offset -> grouped = id to offset },
+                    onUpdateExercise = { _, _ -> }, onAddSet = {}, onRemoveSet = { _, _ -> },
+                    onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onComplete = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Eliminar ejercicio").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Opciones de Press").assertIsDisplayed()
+        composeRule.onNodeWithTag("workout_exercise_menu_first").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("workout_exercise_actions_first").assertIsDisplayed()
+        composeRule.onNodeWithText("Reordenar").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("workout_reorder").assertIsDisplayed()
+        composeRule.onNodeWithText("Aplicar").performClick()
+        composeRule.runOnIdle { assertEquals(listOf("first", "second"), reordered) }
+
+        composeRule.onNodeWithTag("workout_exercise_menu_first").performClick()
+        composeRule.onNodeWithText("Reemplazar ejercicio").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals("first", replaced) }
+
+        composeRule.onNodeWithTag("workout_exercise_menu_first").performClick()
+        composeRule.onNodeWithText("Agregar a superserie").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("workout_exercise_superset_actions_first").assertIsDisplayed()
+        composeRule.onNodeWithText("Agrupar con siguiente").performClick()
+        composeRule.runOnIdle { assertEquals("first" to 1, grouped) }
+
+        composeRule.onNodeWithTag("workout_exercise_menu_first").performClick()
+        composeRule.onNodeWithTag("workout_exercise_delete_action_first").assertIsDisplayed()
+        composeRule.onNodeWithText("Eliminar ejercicio").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals("first", removed) }
     }
 
     @Test

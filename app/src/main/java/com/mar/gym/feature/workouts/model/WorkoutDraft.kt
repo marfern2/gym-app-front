@@ -29,6 +29,21 @@ data class WorkoutDraft(
         exercises = exercises.filterNot { it.localId == localId }.dissolveSingletonSupersets(),
     )
 
+    /**
+     * Applies a full reorder of exercises by local id.
+     * The new order is only applied when every superset keeps its members contiguous,
+     * so a drag that would break a superset is rejected as a no-op instead of dissolving it.
+     */
+    fun reorderExercises(orderedLocalIds: List<String>): WorkoutDraft {
+        if (orderedLocalIds.toSet() != exercises.map { it.localId }.toSet()) return this
+        val reordered = orderedLocalIds.mapNotNull { localId ->
+            exercises.firstOrNull { it.localId == localId }
+        }
+        if (reordered.size != exercises.size) return this
+        if (!hasValidLocalSupersetGroups(reordered.map { it.supersetLocalId })) return this
+        return copy(exercises = reordered)
+    }
+
     fun groupWithAdjacent(localId: String, offset: Int, ids: LocalIdSource): WorkoutDraft {
         val index = exercises.indexOfFirst { it.localId == localId }
         val adjacentIndex = index + offset

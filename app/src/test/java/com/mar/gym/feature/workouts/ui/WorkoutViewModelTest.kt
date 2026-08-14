@@ -182,6 +182,39 @@ class WorkoutViewModelTest {
     }
 
     @Test
+    fun `replacement reuses template lookup and preserves workout identity grouping and etag`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(groupedDocument())
+        }
+        val exercises = FakeExerciseRepository(
+            template = FakeExerciseRepository.exerciseDetail().copy(
+                name = "Sentadilla",
+                equipment = Equipment.None,
+                exerciseType = ExerciseType.BodyweightReps,
+            ),
+        )
+        val viewModel = viewModel(repository, exercises)
+        advanceUntilIdle()
+        val before = viewModel.uiState.value.data.draft!!.exercises.first()
+        val beforeEtag = viewModel.uiState.value.data.etag!!.version
+
+        viewModel.replaceExercise(before.localId, THIRD_TEMPLATE_ID)
+        advanceUntilIdle()
+
+        val after = viewModel.uiState.value.data.draft!!.exercises.first()
+        assertEquals(before.localId, after.localId)
+        assertEquals(before.serverId, after.serverId)
+        assertEquals(before.supersetLocalId, after.supersetLocalId)
+        assertEquals(before.sets, after.sets)
+        assertEquals(THIRD_TEMPLATE_ID, after.exerciseTemplateId)
+        assertEquals("Sentadilla", after.exerciseNameSnapshot)
+        assertEquals(ExerciseType.BodyweightReps, after.exerciseTypeSnapshot)
+        assertEquals(beforeEtag, viewModel.uiState.value.data.etag!!.version)
+        assertEquals(0, repository.updateCalls)
+        assertTrue(viewModel.uiState.value.data.hasUnsavedChanges)
+    }
+
+    @Test
     fun `workout accepts active custom and rejects archived custom`() = runTest {
         val active = viewModel(
             FakeWorkoutRepository(),
@@ -325,6 +358,7 @@ class WorkoutViewModelTest {
         const val ROUTINE_ID = "00000000-0000-4000-8000-000000000002"
         const val TEMPLATE_ID = "00000000-0000-4000-8000-000000000003"
         const val SECOND_TEMPLATE_ID = "00000000-0000-4000-8000-000000000004"
+        const val THIRD_TEMPLATE_ID = "00000000-0000-4000-8000-000000000007"
         const val FIRST_EXERCISE_ID = "00000000-0000-4000-8000-000000000005"
         const val SECOND_EXERCISE_ID = "00000000-0000-4000-8000-000000000006"
 

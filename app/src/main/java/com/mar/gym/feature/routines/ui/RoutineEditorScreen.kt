@@ -1,17 +1,26 @@
 package com.mar.gym.feature.routines.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,9 +28,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,22 +43,33 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.mar.gym.R
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.routines.model.RoutineExerciseDraft
 import com.mar.gym.feature.routines.model.RoutineSetDraft
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.ExerciseNameLink
+import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
+import com.mar.gym.ui.components.MetricCell
 import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
+import com.mar.gym.ui.theme.SetDrop
+import com.mar.gym.ui.theme.SetFailure
+import com.mar.gym.ui.theme.SetWarmup
 
 @Composable
 fun RoutineEditorRoute(
@@ -57,6 +78,7 @@ fun RoutineEditorRoute(
     onOpenPicker: (Set<String>) -> Unit,
     onOpenRoutine: (String) -> Unit,
     onStartRoutine: (String) -> Unit = {},
+    onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel) {
@@ -67,6 +89,7 @@ fun RoutineEditorRoute(
     RoutineEditorScreen(
         state = state,
         onBack = onBack,
+        onOpenExercise = onOpenExercise,
         onOpenPicker = { onOpenPicker(state.data.draft.exercises.mapTo(linkedSetOf()) { it.exerciseTemplateId }) },
         onNameChanged = viewModel::updateName,
         onDescriptionChanged = viewModel::updateDescription,
@@ -96,6 +119,7 @@ fun RoutineEditorScreen(
     state: RoutineEditorUiState,
     onBack: () -> Unit,
     onOpenPicker: () -> Unit,
+    onOpenExercise: (String) -> Unit = {},
     onNameChanged: (String) -> Unit,
     onDescriptionChanged: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
@@ -148,7 +172,7 @@ fun RoutineEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (state.data.draft.routineId != null) EditorContent(
-                    state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
+                    state, onOpenPicker, onOpenExercise, onNameChanged, onDescriptionChanged, onRemoveExercise,
                     onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                     onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                     onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
@@ -156,7 +180,7 @@ fun RoutineEditorScreen(
                 )
             }
             else -> EditorContent(
-                state, onOpenPicker, onNameChanged, onDescriptionChanged, onRemoveExercise,
+                state, onOpenPicker, onOpenExercise, onNameChanged, onDescriptionChanged, onRemoveExercise,
                 onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                 onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                 onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
@@ -194,6 +218,7 @@ fun RoutineEditorScreen(
 private fun EditorContent(
     state: RoutineEditorUiState,
     onOpenPicker: () -> Unit,
+    onOpenExercise: (String) -> Unit,
     onNameChanged: (String) -> Unit,
     onDescriptionChanged: (String) -> Unit,
     onRemoveExercise: (String) -> Unit,
@@ -275,6 +300,7 @@ private fun EditorContent(
                 supersetOrdinal = data.draft.supersetOrdinal(exercise.localId),
                 errors = data.fieldErrors,
                 enabled = enabled,
+                onOpenExercise = { onOpenExercise(exercise.exerciseTemplateId) },
                 onRemove = { onRemoveExercise(exercise.localId) },
                 onMove = { onMoveExercise(exercise.localId, it) },
                 onGroupWithAdjacent = { onGroupWithAdjacent(exercise.localId, it) },
@@ -333,6 +359,7 @@ private fun ExerciseEditor(
     supersetOrdinal: Int?,
     errors: Map<String, String>,
     enabled: Boolean,
+    onOpenExercise: () -> Unit,
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
     onGroupWithAdjacent: (Int) -> Unit,
@@ -345,136 +372,391 @@ private fun ExerciseEditor(
     onUpdateSet: (String, (RoutineSetDraft) -> RoutineSetDraft) -> Unit,
 ) {
     val prefix = "exercise.${exercise.localId}"
-    OutlinedCard(Modifier.fillMaxWidth().testTag("exercise_${exercise.localId}")) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(exercise.exerciseName, style = MaterialTheme.typography.titleMedium)
-            supersetOrdinal?.let { ordinal ->
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .testTag("exercise_${exercise.localId}"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            ExerciseThumbnail()
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ExerciseNameLink(
+                        name = exercise.exerciseName,
+                        onClick = onOpenExercise,
+                    )
+                    supersetOrdinal?.let { ordinal ->
+                        Text(
+                            stringResource(R.string.superset_badge, ordinal),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .testTag("routine_superset_${exercise.localId}"),
+                        )
+                    }
+                }
                 Text(
-                    stringResource(R.string.superset_badge, ordinal),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.testTag("routine_superset_${exercise.localId}"),
+                    text = stringResource(
+                        R.string.exercise_row_summary,
+                        stringResource(exercise.exerciseType.labelResource()),
+                        stringResource(exercise.equipment.labelResource()),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onMove(-1) }, enabled = enabled && canMoveUp) { Text(stringResource(R.string.routine_move_up)) }
-                TextButton(onClick = { onMove(1) }, enabled = enabled && canMoveDown) { Text(stringResource(R.string.routine_move_down)) }
-                TextButton(onClick = onRemove, enabled = enabled) { Text(stringResource(R.string.routine_remove_exercise)) }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
-                    TextButton(
-                        onClick = { onGroupWithAdjacent(-1) },
-                        enabled = enabled,
-                        modifier = Modifier.testTag("routine_group_previous_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_group_previous)) }
-                }
-                if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
-                    TextButton(
-                        onClick = { onGroupWithAdjacent(1) },
-                        enabled = enabled,
-                        modifier = Modifier.testTag("routine_group_next_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_group_next)) }
-                }
-                if (exercise.supersetLocalId != null) {
-                    TextButton(
-                        onClick = onRemoveFromSuperset,
-                        enabled = enabled,
-                        modifier = Modifier.testTag("routine_superset_remove_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_remove_member)) }
-                    TextButton(
-                        onClick = onDissolveSuperset,
-                        enabled = enabled,
-                        modifier = Modifier.testTag("routine_superset_dissolve_${exercise.localId}"),
-                    ) { Text(stringResource(R.string.superset_dissolve)) }
-                }
-            }
-            EditorTextField(
-                exercise.notes, { value -> onUpdate { it.copy(notes = value) } },
-                R.string.routine_notes_label, errors["$prefix.notes"], enabled, singleLine = false,
-            )
-            EditorTextField(
-                exercise.restSeconds, { value -> onUpdate { it.copy(restSeconds = value) } },
-                R.string.routine_rest_label, errors["$prefix.restSeconds"], enabled,
-                keyboardType = KeyboardType.Number, suffix = R.string.routine_seconds_unit,
-            )
-            Text(stringResource(R.string.routine_sets_title), style = MaterialTheme.typography.titleSmall)
-            exercise.sets.forEachIndexed { setIndex, set ->
-                SetEditor(
-                    set, setIndex, exercise.sets.size, exercise.exerciseType, prefix, errors, enabled,
-                    onRemove = { onRemoveSet(set.localId) },
-                    onMove = { onMoveSet(set.localId, it) },
-                    onUpdate = { transform -> onUpdateSet(set.localId, transform) },
+            IconButton(onClick = onRemove, enabled = enabled) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = stringResource(R.string.routine_remove_exercise),
+                    tint = MaterialTheme.colorScheme.error,
                 )
-            }
-            OutlinedButton(onClick = onAddSet, enabled = enabled && exercise.sets.size < 20) {
-                Text(stringResource(R.string.routine_add_set))
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { onMove(-1) }, enabled = enabled && canMoveUp) { Text(stringResource(R.string.routine_move_up)) }
+            TextButton(onClick = { onMove(1) }, enabled = enabled && canMoveDown) { Text(stringResource(R.string.routine_move_down)) }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (index > 0 && (exercise.supersetLocalId == null || previousSupersetLocalId == null)) {
+                TextButton(
+                    onClick = { onGroupWithAdjacent(-1) },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("routine_group_previous_${exercise.localId}"),
+                ) { Text(stringResource(R.string.superset_group_previous)) }
+            }
+            if (index < count - 1 && (exercise.supersetLocalId == null || nextSupersetLocalId == null)) {
+                TextButton(
+                    onClick = { onGroupWithAdjacent(1) },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("routine_group_next_${exercise.localId}"),
+                ) { Text(stringResource(R.string.superset_group_next)) }
+            }
+            if (exercise.supersetLocalId != null) {
+                TextButton(
+                    onClick = onRemoveFromSuperset,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("routine_superset_remove_${exercise.localId}"),
+                ) { Text(stringResource(R.string.superset_remove_member)) }
+                TextButton(
+                    onClick = onDissolveSuperset,
+                    enabled = enabled,
+                    modifier = Modifier.testTag("routine_superset_dissolve_${exercise.localId}"),
+                ) { Text(stringResource(R.string.superset_dissolve)) }
+            }
+        }
+        EditorTextField(
+            exercise.notes, { value -> onUpdate { it.copy(notes = value) } },
+            R.string.routine_notes_label, errors["$prefix.notes"], enabled, singleLine = false,
+        )
+        EditorTextField(
+            exercise.restSeconds, { value -> onUpdate { it.copy(restSeconds = value) } },
+            R.string.routine_rest_label, errors["$prefix.restSeconds"], enabled,
+            keyboardType = KeyboardType.Number, suffix = R.string.routine_seconds_unit,
+        )
+        val fields = routineSetFields(exercise.exerciseType)
+        if (exercise.sets.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RoutineHeaderCell(stringResource(R.string.workout_series_header), Modifier.width(40.dp))
+                    fields.forEach { field ->
+                        RoutineHeaderCell(stringResource(field.header), Modifier.weight(1f))
+                    }
+                }
+                exercise.sets.forEachIndexed { setIndex, set ->
+                    RoutineSetRow(
+                        set = set,
+                        index = setIndex,
+                        count = exercise.sets.size,
+                        fields = fields,
+                        prefix = "$prefix.set.${set.localId}",
+                        errors = errors,
+                        enabled = enabled,
+                        onRemove = { onRemoveSet(set.localId) },
+                        onMove = { onMoveSet(set.localId, it) },
+                        onUpdate = { transform -> onUpdateSet(set.localId, transform) },
+                    )
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = onAddSet,
+            enabled = enabled && exercise.sets.size < 20,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.routine_add_set))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+}
+
+private data class RoutineSetField(
+    val header: Int,
+    val repsRange: Boolean = false,
+    val value: (RoutineSetDraft) -> String = { "" },
+    val update: (RoutineSetDraft, String) -> RoutineSetDraft = { set, _ -> set },
+    val errorKey: (String) -> String = { "" },
+    val errorKeySecond: (String) -> String = { "" },
+    val keyboardType: KeyboardType = KeyboardType.Text,
+)
+
+private fun routineSetFields(type: ExerciseType): List<RoutineSetField> = buildList {
+    if (type.supportsWeight()) {
+        val header = when (type) {
+            ExerciseType.WeightedBodyweight -> R.string.workout_metric_lastre
+            ExerciseType.AssistedBodyweight -> R.string.workout_metric_asistencia
+            else -> R.string.workout_metric_kg
+        }
+        add(
+            RoutineSetField(
+                header = header,
+                value = { it.targetWeight },
+                update = { set, v -> set.copy(targetWeight = v) },
+                errorKey = { p -> "$p.targetWeight" },
+                keyboardType = KeyboardType.Decimal,
+            )
+        )
+    }
+    if (type.supportsRepetitions()) {
+        add(
+            RoutineSetField(
+                header = R.string.workout_metric_reps,
+                repsRange = true,
+                errorKey = { p -> "$p.targetRepsMin" },
+                errorKeySecond = { p -> "$p.targetRepsMax" },
+                keyboardType = KeyboardType.Number,
+            )
+        )
+    }
+    if (type.supportsDuration()) {
+        add(
+            RoutineSetField(
+                header = R.string.workout_metric_time,
+                value = { it.targetDurationSeconds },
+                update = { set, v -> set.copy(targetDurationSeconds = v) },
+                errorKey = { p -> "$p.targetDurationSeconds" },
+                keyboardType = KeyboardType.Number,
+            )
+        )
+    }
+    if (type.supportsDistance()) {
+        add(
+            RoutineSetField(
+                header = R.string.workout_metric_distance,
+                value = { it.targetDistanceMeters },
+                update = { set, v -> set.copy(targetDistanceMeters = v) },
+                errorKey = { p -> "$p.targetDistanceMeters" },
+                keyboardType = KeyboardType.Decimal,
+            )
+        )
     }
 }
 
 @Composable
-private fun SetEditor(
+private fun RoutineHeaderCell(text: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.heightIn(min = 28.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun RoutineSetRow(
     set: RoutineSetDraft,
     index: Int,
     count: Int,
-    exerciseType: ExerciseType,
-    exercisePrefix: String,
+    fields: List<RoutineSetField>,
+    prefix: String,
     errors: Map<String, String>,
     enabled: Boolean,
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
     onUpdate: ((RoutineSetDraft) -> RoutineSetDraft) -> Unit,
 ) {
-    val prefix = "$exercisePrefix.set.${set.localId}"
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("set_${set.localId}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(stringResource(R.string.routine_set_number, index + 1), style = MaterialTheme.typography.titleSmall)
-        SetTypeMenu(set.setType, enabled) { type -> onUpdate { it.copy(setType = type) } }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            EditorSetTypeChip(
+                type = set.setType,
+                index = index,
+                enabled = enabled,
+                onSelect = { value -> onUpdate { it.copy(setType = value) } },
+                modifier = Modifier.width(40.dp),
+            )
+            fields.forEach { field ->
+                if (field.repsRange) {
+                    RepsRangeCell(
+                        min = set.targetRepsMin,
+                        onMin = { value -> onUpdate { it.copy(targetRepsMin = value) } },
+                        max = set.targetRepsMax,
+                        onMax = { value -> onUpdate { it.copy(targetRepsMax = value) } },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 2.dp),
+                        enabled = enabled,
+                        isError = errors.containsKey(field.errorKey(prefix)) || errors.containsKey(field.errorKeySecond(prefix)),
+                    )
+                } else {
+                    MetricCell(
+                        value = field.value(set),
+                        onValueChange = { value -> onUpdate { field.update(it, value) } },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 2.dp),
+                        keyboardType = field.keyboardType,
+                        enabled = enabled,
+                        isError = errors.containsKey(field.errorKey(prefix)),
+                        contentDescription = "${stringResource(field.header)} ${index + 1}",
+                    )
+                }
+            }
+        }
+        errors["$prefix.setType"]?.let {
+            Text(stringResource(errorResource(it)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
             TextButton(onClick = { onMove(-1) }, enabled = enabled && index > 0) { Text(stringResource(R.string.routine_move_up)) }
             TextButton(onClick = { onMove(1) }, enabled = enabled && index < count - 1) { Text(stringResource(R.string.routine_move_down)) }
             TextButton(onClick = onRemove, enabled = enabled) { Text(stringResource(R.string.routine_remove_set)) }
         }
-        if (exerciseType.supportsRepetitions()) {
-            EditorTextField(set.targetRepsMin, { value -> onUpdate { it.copy(targetRepsMin = value) } }, R.string.routine_reps_min, errors["$prefix.targetRepsMin"], enabled, keyboardType = KeyboardType.Number)
-            EditorTextField(set.targetRepsMax, { value -> onUpdate { it.copy(targetRepsMax = value) } }, R.string.routine_reps_max, errors["$prefix.targetRepsMax"], enabled, keyboardType = KeyboardType.Number)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditorSetTypeChip(
+    type: SetType,
+    index: Int,
+    enabled: Boolean,
+    onSelect: (SetType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val color = when (type) {
+        SetType.Normal -> MaterialTheme.colorScheme.onSurfaceVariant
+        SetType.Warmup -> SetWarmup
+        SetType.Failure -> SetFailure
+        SetType.Drop -> SetDrop
+    }
+    val label = when (type) {
+        SetType.Normal -> (index + 1).toString()
+        SetType.Warmup -> "W"
+        SetType.Failure -> "F"
+        SetType.Drop -> "D"
+    }
+    Box {
+        Box(
+            modifier = modifier
+                .heightIn(min = 44.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                .clickable(enabled = enabled) { expanded = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = color,
+            )
         }
-        if (exerciseType.supportsWeight()) {
-            val label = when (exerciseType) {
-                ExerciseType.WeightedBodyweight -> R.string.routine_added_weight
-                ExerciseType.AssistedBodyweight -> R.string.routine_assistance
-                else -> R.string.routine_weight
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            SetType.entries.forEach { typeOption ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(typeOption.labelResource())) },
+                    onClick = { expanded = false; onSelect(typeOption) },
+                )
             }
-            EditorTextField(set.targetWeight, { value -> onUpdate { it.copy(targetWeight = value) } }, label, errors["$prefix.targetWeight"], enabled, keyboardType = KeyboardType.Decimal, suffix = R.string.routine_kilograms_unit)
         }
-        if (exerciseType.supportsDuration()) {
-            EditorTextField(set.targetDurationSeconds, { value -> onUpdate { it.copy(targetDurationSeconds = value) } }, R.string.routine_duration, errors["$prefix.targetDurationSeconds"], enabled, keyboardType = KeyboardType.Number, suffix = R.string.routine_seconds_unit)
-        }
-        if (exerciseType.supportsDistance()) {
-            EditorTextField(set.targetDistanceMeters, { value -> onUpdate { it.copy(targetDistanceMeters = value) } }, R.string.routine_distance, errors["$prefix.targetDistanceMeters"], enabled, keyboardType = KeyboardType.Decimal, suffix = R.string.routine_meters_unit)
-        }
-        EditorTextField(set.targetRpe, { value -> onUpdate { it.copy(targetRpe = value) } }, R.string.routine_rpe, errors["$prefix.targetRpe"], enabled, keyboardType = KeyboardType.Decimal)
-        errors["$prefix.setType"]?.let { Text(stringResource(errorResource(it)), color = MaterialTheme.colorScheme.error) }
-        HorizontalDivider()
     }
 }
 
 @Composable
-private fun SetTypeMenu(current: SetType, enabled: Boolean, onSelected: (SetType) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text(stringResource(R.string.routine_set_type), style = MaterialTheme.typography.labelMedium)
-        OutlinedButton(onClick = { expanded = true }, enabled = enabled) {
-            Text(stringResource(current.labelResource()))
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            SetType.entries.forEach { type ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(type.labelResource())) },
-                    onClick = { expanded = false; onSelected(type) },
-                )
-            }
+private fun RepsRangeCell(
+    min: String,
+    onMin: (String) -> Unit,
+    max: String,
+    onMax: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isError: Boolean = false,
+) {
+    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant
+    Box(
+        modifier = modifier
+            .heightIn(min = 44.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .border(1.dp, borderColor, MaterialTheme.shapes.small)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            BasicTextField(
+                value = min,
+                onValueChange = onMin,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = TextAlign.Center,
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            Text(
+                text = "–",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            BasicTextField(
+                value = max,
+                onValueChange = onMax,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = TextAlign.Center,
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
         }
     }
 }
