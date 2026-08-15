@@ -79,6 +79,27 @@ class RoutineListViewModel(
     fun restore(routineId: String) = mutate(routineId, Mutation.Restore)
     fun duplicate(routineId: String) = mutate(routineId, Mutation.Duplicate)
 
+    fun delete(routineId: String) {
+        if (_uiState.value.data.items.none { it.id == routineId }) return
+        if (_uiState.value.data.operationRoutineId != null) return
+        updateData { copy(operationRoutineId = routineId, operationError = null) }
+        viewModelScope.launch {
+            val detail = repository.detail(routineId)
+            val result = when (detail) {
+                is RoutineRepositoryResult.Failure -> RoutineRepositoryResult.Failure(detail.error)
+                is RoutineRepositoryResult.Success -> if (detail.value.detail.id == routineId) {
+                    repository.delete(routineId, detail.value.etag)
+                } else {
+                    RoutineRepositoryResult.Failure(NetworkFailure.InvalidResponse())
+                }
+            }
+            when (result) {
+                is RoutineRepositoryResult.Success -> removeRoutine(routineId)
+                is RoutineRepositoryResult.Failure -> handleDeleteFailure(result.error)
+            }
+        }
+    }
+
     private fun mutate(routineId: String, mutation: Mutation) {
         val item = _uiState.value.data.items.find { it.id == routineId } ?: return
         val etag = RoutineEtag.fromVersion(item.version) ?: return
@@ -99,17 +120,31 @@ class RoutineListViewModel(
                         updateData { copy(operationRoutineId = null) }
                         _effects.emit(RoutineListEffect.OpenRoutine(result.value.detail.id))
                     } else {
-                        updateData {
-                            copy(
-                                items = items.filterNot { it.id == routineId },
-                                operationRoutineId = null,
-                            )
-                        }
-                        if (_uiState.value.data.items.isEmpty()) {
-                            _uiState.value = RoutineListUiState.Empty(_uiState.value.data)
-                        }
+                        removeRoutine(routineId)
                     }
                 }
+            }
+        }
+    }
+
+    private fun removeRoutine(routineId: String) {
+        updateData {
+            copy(
+                items = items.filterNot { it.id == routineId },
+                operationRoutineId = null,
+            )
+        }
+        if (_uiState.value.data.items.isEmpty()) {
+            _uiState.value = RoutineListUiState.Empty(_uiState.value.data)
+        }
+    }
+
+    private fun handleDeleteFailure(error: NetworkFailure) {
+        if (error.toRoutineUiError().kind == RoutineUiErrorKind.NotFound) {
+            firstPage()
+        } else {
+            updateData {
+                copy(operationRoutineId = null, operationError = error.toRoutineUiError())
             }
         }
     }

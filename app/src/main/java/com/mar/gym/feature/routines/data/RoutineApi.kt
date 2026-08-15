@@ -1,8 +1,10 @@
 package com.mar.gym.feature.routines.data
 
 import com.mar.gym.core.network.AUTHENTICATION_REQUIRED_HEADER
+import com.mar.gym.core.network.AUTHENTICATION_NO_RETRY
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Headers
@@ -59,4 +61,11 @@ interface RoutineApi {
         @Header("If-Match") ifMatch: String,
         @Body request: DuplicateRoutineDto,
     ): Response<RoutineDetailDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
+    @DELETE("api/v1/routines/{routineId}")
+    suspend fun delete(
+        @Path("routineId") routineId: String,
+        @Header("If-Match") ifMatch: String,
+    ): Response<Unit>
 }

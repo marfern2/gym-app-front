@@ -96,6 +96,101 @@ class RoutineViewModelTest {
     }
 
     @Test
+    fun listDeleteLoadsCanonicalDetailEtagAndRemovesOnlyAfterSuccess() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            detailHandler = { RoutineRepositoryResult.Success(document(version = 9)) }
+        }
+        val viewModel = RoutineListViewModel(repository, 0)
+        runCurrent()
+
+        viewModel.delete(ROUTINE_ID)
+        runCurrent()
+
+        assertEquals(1, repository.detailRequests)
+        assertEquals(listOf(ROUTINE_ID to "\"9\""), repository.deleteRequests)
+        assertTrue(viewModel.uiState.value is RoutineListUiState.Empty)
+    }
+
+    @Test
+    fun listDeleteConflictKeepsRoutineAnd404RefreshesStaleList() = runTest {
+        val conflictRepository = FakeRoutineRepository().apply {
+            deleteHandler = { _, _ -> conflictFailure() }
+        }
+        val conflictViewModel = RoutineListViewModel(conflictRepository, 0)
+        runCurrent()
+
+        conflictViewModel.delete(ROUTINE_ID)
+        runCurrent()
+
+        assertEquals(listOf(ROUTINE_ID), conflictViewModel.uiState.value.data.items.map { it.id })
+        assertEquals(RoutineUiErrorKind.Conflict, conflictViewModel.uiState.value.data.operationError?.kind)
+
+        val missingRepository = FakeRoutineRepository()
+        var listCall = 0
+        missingRepository.listHandler = {
+            listCall++
+            RoutineRepositoryResult.Success(page(content = if (listCall == 1) listOf(summary()) else emptyList()))
+        }
+        missingRepository.deleteHandler = { _, _ ->
+            RoutineRepositoryResult.Failure(NetworkFailure.HttpUnknown(404, null))
+        }
+        val missingViewModel = RoutineListViewModel(missingRepository, 0)
+        runCurrent()
+        missingViewModel.delete(ROUTINE_ID)
+        runCurrent()
+
+        assertEquals(2, missingRepository.listRequests.size)
+        assertTrue(missingViewModel.uiState.value is RoutineListUiState.Empty)
+        assertEquals(1, missingRepository.deleteRequests.size)
+    }
+
+    @Test
+    fun viewerDeleteUsesLoadedEtagEmitsDeletedAndKeepsContentOnConflict() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            detailHandler = { RoutineRepositoryResult.Success(document(version = 7)) }
+        }
+        val viewModel = RoutineViewerViewModel(ROUTINE_ID, repository)
+        runCurrent()
+        val deleted = async { viewModel.effects.first() }
+
+        viewModel.delete()
+        runCurrent()
+
+        assertEquals(listOf(ROUTINE_ID to "\"7\""), repository.deleteRequests)
+        assertEquals(RoutineViewerEffect.Deleted, deleted.await())
+
+        val conflictRepository = FakeRoutineRepository().apply {
+            deleteHandler = { _, _ -> conflictFailure() }
+        }
+        val conflictViewModel = RoutineViewerViewModel(ROUTINE_ID, conflictRepository)
+        runCurrent()
+        conflictViewModel.delete()
+        runCurrent()
+
+        val conflictState = conflictViewModel.uiState.value as RoutineViewerUiState.Content
+        assertEquals(ROUTINE_ID, conflictState.document.detail.id)
+        assertFalse(conflictState.busy)
+        assertEquals(RoutineUiErrorKind.Conflict, conflictState.operationError?.kind)
+    }
+
+    @Test
+    fun viewerDelete404EmitsUnavailableWithoutPretendingSuccess() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            deleteHandler = { _, _ ->
+                RoutineRepositoryResult.Failure(NetworkFailure.HttpUnknown(404, null))
+            }
+        }
+        val viewModel = RoutineViewerViewModel(ROUTINE_ID, repository)
+        runCurrent()
+        val effect = async { viewModel.effects.first() }
+
+        viewModel.delete()
+        runCurrent()
+
+        assertEquals(RoutineViewerEffect.Unavailable, effect.await())
+    }
+
+    @Test
     fun editorCreationValidationSavingAndUnsavedChanges() = runTest {
         val repository = FakeRoutineRepository()
         val viewModel = RoutineEditorViewModel(null, repository, FakeExerciseRepository(), SequentialIds())
@@ -291,6 +386,7 @@ class RoutineViewModelTest {
         val createRequests = mutableListOf<RoutineDraft>()
         var detailRequests = 0
         var replaceRequests = 0
+        val deleteRequests = mutableListOf<Pair<String, String>>()
         var lastEtag: RoutineEtag? = null
         var listHandler: suspend (ListRequest) -> RoutineRepositoryResult<RoutinePage> = {
             RoutineRepositoryResult.Success(page(archived = it.archived))
@@ -298,11 +394,17 @@ class RoutineViewModelTest {
         var replaceHandler: suspend (RoutineDraft, RoutineEtag) -> RoutineRepositoryResult<RoutineDocument> = { draft, _ ->
             RoutineRepositoryResult.Success(document(version = 3, name = draft.name, description = draft.description))
         }
+        var detailHandler: suspend (String) -> RoutineRepositoryResult<RoutineDocument> = {
+            RoutineRepositoryResult.Success(document())
+        }
+        var deleteHandler: suspend (String, RoutineEtag) -> RoutineRepositoryResult<Unit> = { _, _ ->
+            RoutineRepositoryResult.Success(Unit)
+        }
         override suspend fun list(archived: Boolean, query: String?, page: Int, size: Int, sort: RoutineSort): RoutineRepositoryResult<RoutinePage> {
             val request = ListRequest(archived, query, page); listRequests += request; return listHandler(request)
         }
         override suspend fun detail(routineId: String): RoutineRepositoryResult<RoutineDocument> {
-            detailRequests++; return RoutineRepositoryResult.Success(document())
+            detailRequests++; return detailHandler(routineId)
         }
         override suspend fun create(draft: RoutineDraft): RoutineRepositoryResult<RoutineDocument> {
             createRequests += draft; return RoutineRepositoryResult.Success(document(version = 0, name = draft.name, description = draft.description))
@@ -318,6 +420,10 @@ class RoutineViewModelTest {
         }
         override suspend fun duplicate(routineId: String, etag: RoutineEtag, name: String?): RoutineRepositoryResult<RoutineDocument> {
             lastEtag = etag; return RoutineRepositoryResult.Success(document(id = COPY_ID, version = 0))
+        }
+        override suspend fun delete(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<Unit> {
+            deleteRequests += routineId to etag.headerValue
+            return deleteHandler(routineId, etag)
         }
     }
 

@@ -19,12 +19,13 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -62,17 +64,16 @@ fun TrainingScreen(
     onOpenRoutine: (String) -> Unit,
     onStartRoutine: (String) -> Unit,
     onEditRoutine: (String) -> Unit,
-    onArchiveRoutine: (String) -> Unit,
-    onRestoreRoutine: (String) -> Unit,
     onDuplicateRoutine: (String) -> Unit,
+    onDeleteRoutine: (String) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenCatalog: () -> Unit,
-    onOpenAllRoutines: () -> Unit,
     onCreateRoutine: () -> Unit,
     onRetryRoutines: () -> Unit,
+    onLoadMoreRoutines: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var archiveCandidate by remember { mutableStateOf<String?>(null) }
+    var deleteCandidate by remember { mutableStateOf<String?>(null) }
     var routinesExpanded by rememberSaveable { mutableStateOf(true) }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -131,7 +132,6 @@ fun TrainingScreen(
                 count = count,
                 expanded = routinesExpanded,
                 onToggle = { routinesExpanded = !routinesExpanded },
-                onViewAll = onOpenAllRoutines,
             )
         }
         if (routinesExpanded) {
@@ -163,7 +163,7 @@ fun TrainingScreen(
                 is RoutineListUiState.LoadingMore,
                 is RoutineListUiState.ErrorLoadingMore,
                 -> {
-                    items(routines.data.items.take(5), key = { it.id }) { routine ->
+                    items(routines.data.items, key = { it.id }) { routine ->
                         RoutineCard(
                             routine = routine,
                             busy = routines.data.operationRoutineId == routine.id,
@@ -171,9 +171,24 @@ fun TrainingScreen(
                             onStart = { onStartRoutine(routine.id) },
                             onDuplicate = { onDuplicateRoutine(routine.id) },
                             onEdit = { onEditRoutine(routine.id) },
-                            onArchive = { archiveCandidate = routine.id },
-                            onRestore = { onRestoreRoutine(routine.id) },
+                            onDelete = { deleteCandidate = routine.id },
                         )
+                    }
+                    if (routines is RoutineListUiState.Content && routines.data.hasNextPage) {
+                        item(key = "load-more-routines") {
+                            LaunchedEffect(routines.data.currentPage) { onLoadMoreRoutines() }
+                        }
+                    }
+                    if (routines is RoutineListUiState.LoadingMore) {
+                        item {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                LoadingProgress()
+                                Text(stringResource(R.string.routine_loading_more))
+                            }
+                        }
                     }
                 }
             }
@@ -202,18 +217,25 @@ fun TrainingScreen(
         }
         item { Spacer(Modifier.height(8.dp)) }
     }
-    archiveCandidate?.let { id ->
+    deleteCandidate?.let { id ->
         AlertDialog(
-            onDismissRequest = { archiveCandidate = null },
-            title = { Text(stringResource(R.string.routine_archive_confirm_title)) },
-            text = { Text(stringResource(R.string.routine_archive_confirm_message)) },
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text(stringResource(R.string.routine_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.routine_delete_confirm_message)) },
             confirmButton = {
-                Button(onClick = { archiveCandidate = null; onArchiveRoutine(id) }) {
-                    Text(stringResource(R.string.routine_archive_confirm_action))
+                TextButton(
+                    onClick = { deleteCandidate = null; onDeleteRoutine(id) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("routine-delete-confirm"),
+                ) {
+                    Text(stringResource(R.string.routine_delete_confirm_action))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { archiveCandidate = null }) { Text(stringResource(R.string.routine_cancel)) }
+                TextButton(
+                    onClick = { deleteCandidate = null },
+                    modifier = Modifier.testTag("routine-delete-cancel"),
+                ) { Text(stringResource(R.string.routine_cancel)) }
             },
         )
     }
@@ -224,14 +246,22 @@ private fun MisRoutinesHeader(
     count: Int?,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onViewAll: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("training-routines-header")
             .clickable(onClick = onToggle),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = stringResource(
+                if (expanded) R.string.training_routines_collapse else R.string.training_routines_expand
+            ),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("training-routines-chevron"),
+        )
         Text(
             text = if (count == null) {
                 stringResource(R.string.training_my_routines)
@@ -239,22 +269,11 @@ private fun MisRoutinesHeader(
                 stringResource(R.string.training_my_routines_count, count)
             },
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .weight(1f)
+                .testTag("training-routines-title"),
         )
-        Icon(
-            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-            contentDescription = stringResource(
-                if (expanded) R.string.training_routines_collapse else R.string.training_routines_expand
-            ),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TextButton(onClick = onViewAll) {
-            Text(
-                text = stringResource(R.string.training_view_all),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
     }
 }
 
@@ -306,14 +325,13 @@ private fun TrainingEmptyPreview() {
             onOpenRoutine = {},
             onStartRoutine = {},
             onEditRoutine = {},
-            onArchiveRoutine = {},
-            onRestoreRoutine = {},
             onDuplicateRoutine = {},
+            onDeleteRoutine = {},
             onOpenHistory = {},
             onOpenCatalog = {},
-            onOpenAllRoutines = {},
             onCreateRoutine = {},
             onRetryRoutines = {},
+            onLoadMoreRoutines = {},
         )
     }
 }
@@ -361,14 +379,13 @@ private fun TrainingActivePreview() {
             onOpenRoutine = {},
             onStartRoutine = {},
             onEditRoutine = {},
-            onArchiveRoutine = {},
-            onRestoreRoutine = {},
             onDuplicateRoutine = {},
+            onDeleteRoutine = {},
             onOpenHistory = {},
             onOpenCatalog = {},
-            onOpenAllRoutines = {},
             onCreateRoutine = {},
             onRetryRoutines = {},
+            onLoadMoreRoutines = {},
         )
     }
 }

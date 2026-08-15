@@ -1,6 +1,7 @@
 package com.mar.gym.feature.routines.data
 
 import com.mar.gym.core.network.AUTHENTICATION_REQUIRED_HEADER
+import com.mar.gym.core.network.AUTHENTICATION_NO_RETRY
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.exercises.model.Equipment
@@ -137,6 +138,20 @@ class DefaultRoutineRepositoryTest {
     }
 
     @Test
+    fun deleteUsesCanonicalIfMatchAndAccepts204WithoutBody() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val result = repository().delete(ROUTINE_ID, RoutineEtag.parse("\"7\"")!!)
+
+        assertTrue(result is RoutineRepositoryResult.Success)
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/v1/routines/$ROUTINE_ID", request.path)
+        assertEquals("\"7\"", request.getHeader("If-Match"))
+        assertEquals(AUTHENTICATION_NO_RETRY, request.getHeader(AUTHENTICATION_REQUIRED_HEADER))
+    }
+
+    @Test
     fun preserves404ConflictAndNestedProblemDetails() = runBlocking {
         server.enqueue(problem(404, "ROUTINE_NOT_FOUND"))
         val missing = repository().detail(ROUTINE_ID) as RoutineRepositoryResult.Failure
@@ -146,6 +161,16 @@ class DefaultRoutineRepositoryTest {
         val conflict = repository().replace(draft(ROUTINE_ID), RoutineEtag.fromVersion(1)!!)
             as RoutineRepositoryResult.Failure
         assertEquals("ROUTINE_VERSION_CONFLICT", (conflict.error as NetworkFailure.HttpProblem).problem.errorCode)
+
+        server.enqueue(problem(409, "ROUTINE_VERSION_CONFLICT"))
+        val deleteConflict = repository().delete(ROUTINE_ID, RoutineEtag.fromVersion(1)!!)
+            as RoutineRepositoryResult.Failure
+        assertEquals(409, (deleteConflict.error as NetworkFailure.HttpProblem).statusCode)
+
+        server.enqueue(problem(404, "ROUTINE_NOT_FOUND"))
+        val deleteMissing = repository().delete(ROUTINE_ID, RoutineEtag.fromVersion(1)!!)
+            as RoutineRepositoryResult.Failure
+        assertEquals(404, (deleteMissing.error as NetworkFailure.HttpProblem).statusCode)
 
         server.enqueue(MockResponse().setResponseCode(400).setHeader("Content-Type", "application/problem+json").setBody(
             """{"status":400,"errorCode":"INVALID_ROUTINE_SET","fieldErrors":[{"field":"exercises[0].sets[0].targetRepsMin","code":"INVALID_VALUE","message":"invalid"}]}"""

@@ -36,6 +36,25 @@ class RoutineViewerViewModel(
     fun restore() = mutate { id, etag -> repository.restore(id, etag) }
     fun duplicate() = mutate { id, etag -> repository.duplicate(id, etag) }
 
+    fun delete() {
+        val current = _uiState.value as? RoutineViewerUiState.Content ?: return
+        if (current.busy) return
+        _uiState.value = current.copy(busy = true, operationError = null)
+        viewModelScope.launch {
+            when (val result = repository.delete(current.document.detail.id, current.document.etag)) {
+                is RoutineRepositoryResult.Success -> _effects.emit(RoutineViewerEffect.Deleted)
+                is RoutineRepositoryResult.Failure -> {
+                    val error = result.error.toRoutineUiError()
+                    if (error.kind == RoutineUiErrorKind.NotFound) {
+                        _effects.emit(RoutineViewerEffect.Unavailable)
+                    } else {
+                        _uiState.value = current.copy(operationError = error)
+                    }
+                }
+            }
+        }
+    }
+
     private fun load() {
         retryAction = { load() }
         _uiState.value = RoutineViewerUiState.Loading

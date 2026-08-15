@@ -16,4 +16,6 @@ sealed interface RoutineViewerUiState {
 
 sealed interface RoutineViewerEffect {
     data class OpenRoutine(val routineId: String) : RoutineViewerEffect
+    data object Deleted : RoutineViewerEffect
+    data object Unavailable : RoutineViewerEffect
 }

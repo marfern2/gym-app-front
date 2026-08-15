@@ -31,4 +31,5 @@ interface RoutineRepository {
         etag: RoutineEtag,
         name: String? = null,
     ): RoutineRepositoryResult<RoutineDocument>
+    suspend fun delete(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<Unit>
 }

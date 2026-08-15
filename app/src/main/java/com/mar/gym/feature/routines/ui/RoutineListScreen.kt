@@ -1,6 +1,5 @@
 package com.mar.gym.feature.routines.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,12 +20,12 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +43,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -81,13 +82,11 @@ fun RoutineListRoute(
         onEditRoutine = onEditRoutine,
         onStartRoutine = onStartRoutine,
         onSearchChanged = viewModel::onSearchChanged,
-        onArchivedChanged = viewModel::showArchived,
         onSortChanged = viewModel::changeSort,
         onRetry = viewModel::retry,
         onLoadMore = viewModel::loadMore,
-        onArchive = viewModel::archive,
-        onRestore = viewModel::restore,
         onDuplicate = viewModel::duplicate,
+        onDelete = viewModel::delete,
     )
 }
 
@@ -101,15 +100,13 @@ fun RoutineListScreen(
     onEditRoutine: (String) -> Unit = {},
     onStartRoutine: (String) -> Unit = {},
     onSearchChanged: (String) -> Unit,
-    onArchivedChanged: (Boolean) -> Unit,
     onSortChanged: (RoutineSort) -> Unit,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
-    onArchive: (String) -> Unit,
-    onRestore: (String) -> Unit,
     onDuplicate: (String) -> Unit,
+    onDelete: (String) -> Unit,
 ) {
-    var archiveCandidate by remember { mutableStateOf<String?>(null) }
+    var deleteCandidate by remember { mutableStateOf<String?>(null) }
     Scaffold(
         topBar = {
             AppTopBar(
@@ -130,16 +127,6 @@ fun RoutineListScreen(
                 singleLine = true,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = !state.data.archived,
-                    onClick = { onArchivedChanged(false) },
-                    label = { Text(stringResource(R.string.routine_active)) },
-                )
-                FilterChip(
-                    selected = state.data.archived,
-                    onClick = { onArchivedChanged(true) },
-                    label = { Text(stringResource(R.string.routine_archived)) },
-                )
                 RoutineSortMenu(state.data.sort, onSortChanged)
             }
             state.data.operationError?.let { error ->
@@ -156,7 +143,7 @@ fun RoutineListScreen(
                     message = stringResource(R.string.routine_loading),
                     modifier = Modifier.fillMaxSize(),
                 )
-                is RoutineListUiState.Empty -> EmptyRoutines(state.data.archived, onCreate)
+                is RoutineListUiState.Empty -> EmptyRoutines(onCreate)
                 is RoutineListUiState.Error -> ErrorPane(state.error, onRetry)
                 is RoutineListUiState.Content,
                 is RoutineListUiState.LoadingMore,
@@ -172,8 +159,7 @@ fun RoutineListScreen(
                             onStart = { onStartRoutine(routine.id) },
                             onDuplicate = { onDuplicate(routine.id) },
                             onEdit = { onEditRoutine(routine.id) },
-                            onArchive = { archiveCandidate = routine.id },
-                            onRestore = { onRestore(routine.id) },
+                            onDelete = { deleteCandidate = routine.id },
                         )
                     }
                     item {
@@ -196,17 +182,26 @@ fun RoutineListScreen(
             }
         }
     }
-    archiveCandidate?.let { id ->
+    deleteCandidate?.let { id ->
         AlertDialog(
-            onDismissRequest = { archiveCandidate = null },
-            title = { Text(stringResource(R.string.routine_archive_confirm_title)) },
-            text = { Text(stringResource(R.string.routine_archive_confirm_message)) },
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text(stringResource(R.string.routine_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.routine_delete_confirm_message)) },
             confirmButton = {
-                Button(onClick = { archiveCandidate = null; onArchive(id) }) {
-                    Text(stringResource(R.string.routine_archive_confirm_action))
+                TextButton(
+                    onClick = { deleteCandidate = null; onDelete(id) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("routine-delete-confirm"),
+                ) {
+                    Text(stringResource(R.string.routine_delete_confirm_action))
                 }
             },
-            dismissButton = { TextButton(onClick = { archiveCandidate = null }) { Text(stringResource(R.string.routine_cancel)) } },
+            dismissButton = {
+                TextButton(
+                    onClick = { deleteCandidate = null },
+                    modifier = Modifier.testTag("routine-delete-cancel"),
+                ) { Text(stringResource(R.string.routine_cancel)) }
+            },
         )
     }
 }
@@ -219,8 +214,7 @@ internal fun RoutineCard(
     onStart: (() -> Unit)? = null,
     onDuplicate: () -> Unit,
     onEdit: () -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val openDescription = stringResource(R.string.routine_open, routine.name)
@@ -239,27 +233,12 @@ internal fun RoutineCard(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = routine.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (routine.archived) {
-                            Text(
-                                text = stringResource(R.string.routine_archived_badge),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .background(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = MaterialTheme.shapes.small,
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
+                    Text(
+                        text = routine.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         text = pluralStringResource(
                             R.plurals.routine_exercise_count,
@@ -300,7 +279,7 @@ internal fun RoutineCard(
                     )
                 }
             }
-            if (onStart != null && !routine.archived) {
+            if (onStart != null) {
                 PrimaryButton(
                     text = stringResource(R.string.routine_viewer_start),
                     onClick = onStart,
@@ -312,13 +291,11 @@ internal fun RoutineCard(
     if (showMenu) {
         RoutineActionsSheet(
             routineName = routine.name,
-            archived = routine.archived,
             busy = busy,
             onDismiss = { showMenu = false },
-            onDuplicate = { showMenu = false; onDuplicate() },
             onEdit = { showMenu = false; onEdit() },
-            onArchive = { showMenu = false; onArchive() },
-            onRestore = { showMenu = false; onRestore() },
+            onDuplicate = { showMenu = false; onDuplicate() },
+            onDelete = { showMenu = false; onDelete() },
         )
     }
 }
@@ -327,13 +304,11 @@ internal fun RoutineCard(
 @Composable
 internal fun RoutineActionsSheet(
     routineName: String,
-    archived: Boolean,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onDuplicate: () -> Unit,
     onEdit: () -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -345,28 +320,24 @@ internal fun RoutineActionsSheet(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             SheetAction(
-                text = stringResource(R.string.routine_menu_duplicate),
-                enabled = !busy,
-                onClick = onDuplicate,
-            )
-            SheetAction(
                 text = stringResource(R.string.routine_menu_edit),
                 enabled = !busy,
                 onClick = onEdit,
+                modifier = Modifier.testTag("routine-edit-action"),
             )
-            if (archived) {
-                SheetAction(
-                    text = stringResource(R.string.routine_menu_restore),
-                    enabled = !busy,
-                    onClick = onRestore,
-                )
-            } else {
-                SheetAction(
-                    text = stringResource(R.string.routine_menu_archive),
-                    enabled = !busy,
-                    onClick = onArchive,
-                )
-            }
+            SheetAction(
+                text = stringResource(R.string.routine_menu_duplicate),
+                enabled = !busy,
+                onClick = onDuplicate,
+                modifier = Modifier.testTag("routine-duplicate-action"),
+            )
+            SheetAction(
+                text = stringResource(R.string.routine_menu_delete),
+                enabled = !busy,
+                onClick = onDelete,
+                contentColor = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("routine-delete-action"),
+            )
         }
     }
 }
@@ -376,14 +347,16 @@ internal fun SheetAction(
     text: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    contentColor: Color = Color.Unspecified,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 16.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.bodyLarge)
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = contentColor)
     }
 }
 
@@ -405,16 +378,12 @@ private fun RoutineSortMenu(current: RoutineSort, onSortChanged: (RoutineSort) -
 }
 
 @Composable
-private fun EmptyRoutines(archived: Boolean, onCreate: () -> Unit) {
+private fun EmptyRoutines(onCreate: () -> Unit) {
     EmptyState(
         icon = Icons.Filled.List,
-        title = stringResource(
-            if (archived) R.string.routine_empty_archived_title else R.string.routine_empty_active_title
-        ),
-        message = stringResource(
-            if (archived) R.string.routine_empty_archived_message else R.string.routine_empty_active_message
-        ),
-        actionLabel = if (archived) null else stringResource(R.string.routine_create),
+        title = stringResource(R.string.routine_empty_active_title),
+        message = stringResource(R.string.routine_empty_active_message),
+        actionLabel = stringResource(R.string.routine_create),
         onAction = onCreate,
         modifier = Modifier.fillMaxSize(),
     )
@@ -474,8 +443,8 @@ private fun EmptyRoutineListPreview() {
         RoutineListScreen(
             state = RoutineListUiState.Empty(RoutineListData()),
             onBack = {}, onCreate = {}, onOpenRoutine = {}, onSearchChanged = {},
-            onArchivedChanged = {}, onSortChanged = {}, onRetry = {}, onLoadMore = {},
-            onArchive = {}, onRestore = {}, onDuplicate = {},
+            onSortChanged = {}, onRetry = {}, onLoadMore = {},
+            onDuplicate = {}, onDelete = {},
         )
     }
 }

@@ -61,7 +61,6 @@ import com.mar.gym.feature.routines.ui.RoutineEditorRoute
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModel
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineListEffect
-import com.mar.gym.feature.routines.ui.RoutineListRoute
 import com.mar.gym.feature.routines.ui.RoutineListViewModel
 import com.mar.gym.feature.routines.ui.RoutineListViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineViewerRoute
@@ -128,7 +127,6 @@ class MainActivity : ComponentActivity() {
         var detailId by rememberSaveable { mutableStateOf<String?>(null) }
         var exerciseEditorId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineId by rememberSaveable { mutableStateOf<String?>(null) }
-        var routineViewerOrigin by rememberSaveable { mutableStateOf<String?>(null) }
         var routineEditorOrigin by rememberSaveable { mutableStateOf<String?>(null) }
         var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -147,7 +145,6 @@ class MainActivity : ComponentActivity() {
             routineListViewModel().effects.collect { effect ->
                 if (effect is RoutineListEffect.OpenRoutine) {
                     routineId = effect.routineId
-                    routineViewerOrigin = if (deep == DEEP_ROUTINES) ROUTINE_ORIGIN_ROUTINES else ROUTINE_ORIGIN_TRAINING
                     deep = DEEP_ROUTINE_VIEWER
                 }
             }
@@ -174,13 +171,8 @@ class MainActivity : ComponentActivity() {
                     DEEP_CUSTOM_EDITOR -> if (exerciseEditorId == null) DEEP_CATALOG else DEEP_DETAIL
                     DEEP_ROUTINE_VIEWER -> {
                         routineListViewModel().refresh()
-                        when (routineViewerOrigin) {
-                            ROUTINE_ORIGIN_ROUTINES -> DEEP_ROUTINES
-                            else -> {
-                                tab = TAB_TRAINING
-                                null
-                            }
-                        }
+                        tab = TAB_TRAINING
+                        null
                     }
                     DEEP_ROUTINE_EDITOR -> {
                         routineListViewModel().refresh()
@@ -189,7 +181,6 @@ class MainActivity : ComponentActivity() {
                                 routineId?.let(::refreshRoutineViewer)
                                 DEEP_ROUTINE_VIEWER
                             }
-                            ROUTINE_ORIGIN_ROUTINES -> DEEP_ROUTINES
                             else -> {
                                 tab = TAB_TRAINING
                                 null
@@ -269,7 +260,6 @@ class MainActivity : ComponentActivity() {
                             onRetryWorkout = { activeWorkoutViewModel().retry() },
                             onOpenRoutine = { id ->
                                 routineId = id
-                                routineViewerOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_VIEWER
                             },
                             onStartRoutine = { id ->
@@ -281,9 +271,8 @@ class MainActivity : ComponentActivity() {
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
-                            onArchiveRoutine = { routineListViewModel().archive(it) },
-                            onRestoreRoutine = { routineListViewModel().restore(it) },
                             onDuplicateRoutine = { routineListViewModel().duplicate(it) },
+                            onDeleteRoutine = { routineListViewModel().delete(it) },
                             onOpenHistory = {
                                 workoutHistoryViewModel().refresh()
                                 deep = DEEP_WORKOUT_HISTORY
@@ -292,13 +281,13 @@ class MainActivity : ComponentActivity() {
                                 catalogOrigin = TAB_TRAINING
                                 deep = DEEP_CATALOG
                             },
-                            onOpenAllRoutines = { deep = DEEP_ROUTINES },
                             onCreateRoutine = {
                                 routineId = null
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
                             onRetryRoutines = { routineListViewModel().retry() },
+                            onLoadMoreRoutines = { routineListViewModel().loadMore() },
                         )
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = profileViewModel(),
@@ -390,32 +379,6 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
-                DEEP_ROUTINES -> RoutineListRoute(
-                    viewModel = remember { routineListViewModel() },
-                    onBack = {
-                        deep = null
-                        tab = TAB_TRAINING
-                    },
-                    onCreate = {
-                        routineId = null
-                        routineEditorOrigin = ROUTINE_ORIGIN_ROUTINES
-                        deep = DEEP_ROUTINE_EDITOR
-                    },
-                    onOpenRoutine = { id ->
-                        routineId = id
-                        routineViewerOrigin = ROUTINE_ORIGIN_ROUTINES
-                        deep = DEEP_ROUTINE_VIEWER
-                    },
-                    onEditRoutine = { id ->
-                        routineId = id
-                        routineEditorOrigin = ROUTINE_ORIGIN_ROUTINES
-                        deep = DEEP_ROUTINE_EDITOR
-                    },
-                    onStartRoutine = { id ->
-                        pendingRoutineWorkoutId = id
-                        deep = DEEP_WORKOUT
-                    },
-                )
                 DEEP_ROUTINE_VIEWER -> {
                     val currentId = routineId
                     if (currentId != null) {
@@ -423,13 +386,8 @@ class MainActivity : ComponentActivity() {
                             viewModel = remember(currentId) { routineViewerViewModel(currentId) },
                             onBack = {
                                 routineListViewModel().refresh()
-                                when (routineViewerOrigin) {
-                                    ROUTINE_ORIGIN_ROUTINES -> deep = DEEP_ROUTINES
-                                    else -> {
-                                        deep = null
-                                        tab = TAB_TRAINING
-                                    }
-                                }
+                                deep = null
+                                tab = TAB_TRAINING
                             },
                             onEdit = {
                                 routineEditorOrigin = ROUTINE_ORIGIN_VIEWER
@@ -443,38 +401,23 @@ class MainActivity : ComponentActivity() {
                                 routineId = id
                                 deep = DEEP_ROUTINE_VIEWER
                             },
+                            onDeleted = {
+                                routineId = null
+                                routineListViewModel().refresh()
+                                deep = null
+                                tab = TAB_TRAINING
+                            },
                             onOpenExercise = { id ->
                                 detailOrigin = DEEP_ROUTINE_VIEWER
                                 detailId = id
                                 deep = DEEP_DETAIL
                             },
                         )
-                    } else RoutineListRoute(
-                        viewModel = remember { routineListViewModel() },
-                        onBack = {
-                            deep = null
-                            tab = TAB_TRAINING
-                        },
-                        onCreate = {
-                            routineId = null
-                            routineEditorOrigin = ROUTINE_ORIGIN_ROUTINES
-                            deep = DEEP_ROUTINE_EDITOR
-                        },
-                        onOpenRoutine = { id ->
-                            routineId = id
-                            routineViewerOrigin = ROUTINE_ORIGIN_ROUTINES
-                            deep = DEEP_ROUTINE_VIEWER
-                        },
-                        onEditRoutine = { id ->
-                            routineId = id
-                            routineEditorOrigin = ROUTINE_ORIGIN_ROUTINES
-                            deep = DEEP_ROUTINE_EDITOR
-                        },
-                        onStartRoutine = { id ->
-                            pendingRoutineWorkoutId = id
-                            deep = DEEP_WORKOUT
-                        },
-                    )
+                    } else LaunchedEffect(Unit) {
+                        routineListViewModel().refresh()
+                        deep = null
+                        tab = TAB_TRAINING
+                    }
                 }
                 DEEP_ROUTINE_EDITOR -> {
                     val currentId = routineId
@@ -487,7 +430,6 @@ class MainActivity : ComponentActivity() {
                                     routineId?.let(::refreshRoutineViewer)
                                     deep = DEEP_ROUTINE_VIEWER
                                 }
-                                ROUTINE_ORIGIN_ROUTINES -> deep = DEEP_ROUTINES
                                 else -> {
                                     deep = null
                                     tab = TAB_TRAINING
@@ -778,14 +720,12 @@ class MainActivity : ComponentActivity() {
         const val TAB_PROFILE = "profile"
 
         const val ROUTINE_ORIGIN_TRAINING = "training"
-        const val ROUTINE_ORIGIN_ROUTINES = "routines"
         const val ROUTINE_ORIGIN_VIEWER = "viewer"
 
         const val DEEP_CATALOG = "exercise_catalog"
         const val DEEP_DETAIL = "exercise_detail"
         const val DEEP_PICKER = "exercise_picker"
         const val DEEP_CUSTOM_EDITOR = "custom_exercise_editor"
-        const val DEEP_ROUTINES = "routines"
         const val DEEP_ROUTINE_VIEWER = "routine_viewer"
         const val DEEP_ROUTINE_EDITOR = "routine_editor"
         const val DEEP_ROUTINE_PICKER = "routine_exercise_picker"

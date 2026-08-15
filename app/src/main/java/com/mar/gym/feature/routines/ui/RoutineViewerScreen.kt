@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -64,12 +64,18 @@ fun RoutineViewerRoute(
     onEdit: () -> Unit,
     onStartRoutine: () -> Unit,
     onOpenRoutine: (String) -> Unit,
+    onDeleted: () -> Unit,
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
-            if (effect is RoutineViewerEffect.OpenRoutine) onOpenRoutine(effect.routineId)
+            when (effect) {
+                is RoutineViewerEffect.OpenRoutine -> onOpenRoutine(effect.routineId)
+                RoutineViewerEffect.Deleted,
+                RoutineViewerEffect.Unavailable,
+                -> onDeleted()
+            }
         }
     }
     RoutineViewerScreen(
@@ -78,9 +84,9 @@ fun RoutineViewerRoute(
         onEdit = onEdit,
         onStartRoutine = onStartRoutine,
         onRetry = viewModel::retry,
-        onArchive = viewModel::archive,
-        onRestore = viewModel::restore,
         onDuplicate = viewModel::duplicate,
+        onDelete = viewModel::delete,
+        onReload = viewModel::refresh,
         onOpenExercise = onOpenExercise,
     )
 }
@@ -93,13 +99,13 @@ fun RoutineViewerScreen(
     onEdit: () -> Unit,
     onStartRoutine: () -> Unit,
     onRetry: () -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
     onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+    onReload: () -> Unit,
     onOpenExercise: (String) -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    var showArchiveConfirmation by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     val content = state as? RoutineViewerUiState.Content
     val document = content?.document
 
@@ -150,35 +156,29 @@ fun RoutineViewerScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                                 modifier = Modifier.testTag("routine-viewer-name"),
                             )
-                            if (detail.archived) {
-                                Text(
-                                    text = stringResource(R.string.routine_archived_badge),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                             detail.description
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
                         }
                     }
                     state.operationError?.let { error ->
-                        item { ErrorMessage(error) }
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                ErrorMessage(error)
+                                if (error.kind == RoutineUiErrorKind.Conflict) {
+                                    TextButton(onClick = onReload) {
+                                        Text(stringResource(R.string.routine_reload_server))
+                                    }
+                                }
+                            }
+                        }
                     }
                     item {
-                        if (detail.archived) {
-                            Text(
-                                text = stringResource(R.string.routine_viewer_archived_message),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            PrimaryButton(
-                                text = stringResource(R.string.routine_viewer_start),
-                                onClick = onStartRoutine,
-                                enabled = !state.busy,
-                            )
-                        }
+                        PrimaryButton(
+                            text = stringResource(R.string.routine_viewer_start),
+                            onClick = onStartRoutine,
+                            enabled = !state.busy,
+                        )
                     }
                     item {
                         Text(
@@ -214,30 +214,35 @@ fun RoutineViewerScreen(
     if (showMenu && content != null) {
         RoutineActionsSheet(
             routineName = content.document.detail.name,
-            archived = content.document.detail.archived,
             busy = content.busy,
             onDismiss = { showMenu = false },
-            onDuplicate = { showMenu = false; onDuplicate() },
             onEdit = { showMenu = false; onEdit() },
-            onArchive = { showMenu = false; showArchiveConfirmation = true },
-            onRestore = { showMenu = false; onRestore() },
+            onDuplicate = { showMenu = false; onDuplicate() },
+            onDelete = { showMenu = false; showDeleteConfirmation = true },
         )
     }
-    if (showArchiveConfirmation && document != null) {
+    if (showDeleteConfirmation && document != null) {
         AlertDialog(
-            onDismissRequest = { showArchiveConfirmation = false },
-            title = { Text(stringResource(R.string.routine_archive_confirm_title)) },
-            text = { Text(stringResource(R.string.routine_archive_confirm_message)) },
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text(stringResource(R.string.routine_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.routine_delete_confirm_message)) },
             confirmButton = {
-                Button(onClick = {
-                    showArchiveConfirmation = false
-                    onArchive()
-                }) {
-                    Text(stringResource(R.string.routine_archive_confirm_action))
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("routine-delete-confirm"),
+                ) {
+                    Text(stringResource(R.string.routine_delete_confirm_action))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showArchiveConfirmation = false }) {
+                TextButton(
+                    onClick = { showDeleteConfirmation = false },
+                    modifier = Modifier.testTag("routine-delete-cancel"),
+                ) {
                     Text(stringResource(R.string.routine_cancel))
                 }
             },

@@ -28,6 +28,8 @@ import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -46,37 +48,37 @@ class RoutineScreensTest {
         composeRule.runOnIdle { state = RoutineListUiState.Empty(RoutineListData()) }
         composeRule.onNodeWithText("Aún no tienes rutinas").assertIsDisplayed()
 
-        composeRule.runOnIdle { state = RoutineListUiState.Empty(RoutineListData(archived = true)) }
-        composeRule.onNodeWithText("No hay rutinas archivadas").assertIsDisplayed()
+        composeRule.onNodeWithText("Archivadas").assertDoesNotExist()
     }
 
     @Test
-    fun archiveRequiresConfirmationAndArchivedCardCanRestore() {
-        var archivedId: String? = null
-        var state by mutableStateOf<RoutineListUiState>(
+    fun routineMenuUsesFinalActionsAndDeleteRequiresConfirmation() {
+        var deletedId: String? = null
+        val state =
             RoutineListUiState.Content(RoutineListData(items = listOf(summary())))
-        )
-        var restoredId: String? = null
         setList(
             state,
-            onArchive = { archivedId = it },
-            onRestore = { restoredId = it },
-            stateProvider = { state },
+            onDelete = { deletedId = it },
         )
         composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
-        composeRule.onNodeWithText("Archivar rutina").performClick()
-        composeRule.onNodeWithText("La rutina dejará de aparecer entre las activas. Podrás restaurarla más tarde.").assertIsDisplayed()
-        composeRule.onNodeWithText("Archivar").performClick()
-        composeRule.runOnIdle { assertEquals(ID, archivedId) }
+        composeRule.onNodeWithText("Editar rutina").assertIsDisplayed()
+        composeRule.onNodeWithText("Duplicar rutina").assertIsDisplayed()
+        composeRule.onNodeWithText("Eliminar rutina").assertIsDisplayed()
+        composeRule.onNodeWithText("Archivar rutina").assertDoesNotExist()
+        composeRule.onNodeWithText("Restaurar rutina").assertDoesNotExist()
+        val editTop = composeRule.onNodeWithTag("routine-edit-action").fetchSemanticsNode().boundsInRoot.top
+        val duplicateTop = composeRule.onNodeWithTag("routine-duplicate-action").fetchSemanticsNode().boundsInRoot.top
+        val deleteTop = composeRule.onNodeWithTag("routine-delete-action").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(editTop < duplicateTop && duplicateTop < deleteTop)
+        composeRule.onNodeWithText("Eliminar rutina").performClick()
+        composeRule.onNodeWithText("Esta acción eliminará la rutina. Los entrenamientos ya realizados no se borrarán.").assertIsDisplayed()
+        composeRule.onNodeWithTag("routine-delete-cancel").performClick()
+        composeRule.runOnIdle { assertEquals(null, deletedId) }
 
-        composeRule.runOnIdle {
-            state = RoutineListUiState.Content(
-                RoutineListData(items = listOf(summary(archived = true)), archived = true)
-            )
-        }
         composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
-        composeRule.onNodeWithText("Restaurar rutina").performClick()
-        composeRule.runOnIdle { assertEquals(ID, restoredId) }
+        composeRule.onNodeWithText("Eliminar rutina").performClick()
+        composeRule.onNodeWithTag("routine-delete-confirm").performClick()
+        composeRule.runOnIdle { assertEquals(ID, deletedId) }
     }
 
     @Test
@@ -202,7 +204,7 @@ class RoutineScreensTest {
                 RoutineViewerScreen(
                     state = RoutineViewerUiState.Content(RoutineDocument(detail(), etag())),
                     onBack = {}, onEdit = {}, onStartRoutine = { started = true },
-                    onRetry = {}, onArchive = {}, onRestore = {}, onDuplicate = {},
+                    onRetry = {}, onDuplicate = {}, onDelete = {}, onReload = {},
                 )
             }
         }
@@ -216,10 +218,67 @@ class RoutineScreensTest {
         composeRule.runOnIdle { assertEquals(true, started) }
     }
 
+    @Test
+    fun viewerMenuKeepsEditDuplicateAndConfirmedDeleteOnly() {
+        var edited = false
+        var duplicated = false
+        var deleted = false
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineViewerScreen(
+                    state = RoutineViewerUiState.Content(RoutineDocument(detail(), etag())),
+                    onBack = {}, onEdit = { edited = true }, onStartRoutine = {}, onRetry = {},
+                    onDuplicate = { duplicated = true }, onDelete = { deleted = true }, onReload = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Archivar rutina").assertDoesNotExist()
+        composeRule.onNodeWithText("Restaurar rutina").assertDoesNotExist()
+        composeRule.onNodeWithText("Editar rutina").performClick()
+        composeRule.runOnIdle { assertTrue(edited) }
+
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Duplicar rutina").performClick()
+        composeRule.runOnIdle { assertTrue(duplicated) }
+
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Eliminar rutina").performClick()
+        composeRule.onNodeWithTag("routine-delete-cancel").performClick()
+        composeRule.runOnIdle { assertFalse(deleted) }
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithText("Eliminar rutina").performClick()
+        composeRule.onNodeWithTag("routine-delete-confirm").performClick()
+        composeRule.runOnIdle { assertTrue(deleted) }
+    }
+
+    @Test
+    fun viewerConflictKeepsRoutineVisibleAndOffersReload() {
+        var reloaded = false
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineViewerScreen(
+                    state = RoutineViewerUiState.Content(
+                        document = RoutineDocument(detail(), etag()),
+                        operationError = RoutineUiError(RoutineUiErrorKind.Conflict),
+                    ),
+                    onBack = {}, onEdit = {}, onStartRoutine = {}, onRetry = {},
+                    onDuplicate = {}, onDelete = {}, onReload = { reloaded = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("routine-viewer-name").assertIsDisplayed()
+        composeRule.onNodeWithText("Hay una versión más reciente en el servidor. Tus cambios no se han sobrescrito.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Recargar versión del servidor").performClick()
+        composeRule.runOnIdle { assertTrue(reloaded) }
+    }
+
     private fun setList(
         state: RoutineListUiState,
-        onArchive: (String) -> Unit = {},
-        onRestore: (String) -> Unit = {},
+        onDelete: (String) -> Unit = {},
         stateProvider: () -> RoutineListUiState = { state },
     ) {
         composeRule.setContent {
@@ -232,13 +291,11 @@ class RoutineScreensTest {
                     onEditRoutine = {},
                     onStartRoutine = {},
                     onSearchChanged = {},
-                    onArchivedChanged = {},
                     onSortChanged = {},
                     onRetry = {},
                     onLoadMore = {},
-                    onArchive = onArchive,
-                    onRestore = onRestore,
                     onDuplicate = {},
+                    onDelete = onDelete,
                 )
             }
         }
@@ -276,8 +333,6 @@ class RoutineScreensTest {
                     onSave = onSave,
                     onReload = onReload,
                     onRetry = {},
-                    onArchive = {},
-                    onRestore = {},
                     onDuplicate = {},
                 )
             }

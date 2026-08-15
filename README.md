@@ -384,9 +384,8 @@ detalle.
 
 ## Cliente de rutinas personales
 
-La pantalla autenticada ofrece **Mis rutinas** y una navegación local temporal entre el listado,
-el editor y el selector de ejercicios. No se ha añadido bottom navigation ni se serializan objetos
-en rutas: el detalle recibe únicamente el UUID de la rutina.
+La pantalla **Entrenamiento** integra **Mis rutinas** como una sección desplegable, sin una pantalla
+intermedia para ver el listado completo. El detalle recibe únicamente el UUID de la rutina.
 
 El contrato se confirmó contra `gym-api` y sus pruebas HTTP:
 
@@ -398,13 +397,22 @@ PUT  /api/v1/routines/{routineId}                     If-Match: "<version>"
 POST /api/v1/routines/{routineId}/archive             If-Match: "<version>"
 POST /api/v1/routines/{routineId}/restore             If-Match: "<version>"
 POST /api/v1/routines/{routineId}/duplicate           If-Match: "<version>"
+DELETE /api/v1/routines/{routineId}                   If-Match: "<version>"
 ```
 
 Crear devuelve `201`, `Location`, `ETag` y el detalle. Detalle, reemplazo, archivado y restauración
 devuelven `200`, `ETag` y el detalle; duplicar devuelve `201`, `Location`, `ETag` y el detalle de la
-copia. `If-Match` admite en el backend una versión numérica cruda o entre comillas. El cliente
+copia, y eliminar devuelve `204` sin cuerpo. `If-Match` admite en el backend una versión numérica
+cruda o entre comillas. El cliente
 conserva y reenvía el valor de cabecera entre comillas, comprueba que coincide con `version` y
 rechaza como respuesta incompatible un ETag ausente, débil, mal formado o discordante.
+
+La UX actual no expone archivado, restauración, filtros ni badges de archivadas. Los menús de card
+y Viewer ofrecen editar, duplicar y eliminar. El borrado requiere confirmación; desde una card se
+carga primero el detalle para obtener su ETag canónico, mientras que el Viewer reutiliza el ETag ya
+cargado. DELETE no se reintenta automáticamente. Tras `204` se refresca **Entrenamiento**; un
+conflicto conserva la rutina visible y permite recargar, y un `404` limpia la navegación o el
+listado obsoleto.
 
 El listado pagina desde cero, usa 20 elementos por página (máximo backend 100), excluye archivadas
 por defecto y permite ordenar solo por `name`, `createdAt` o `updatedAt`, en ascendente o
@@ -449,11 +457,12 @@ RFC 9457 y se conservan las rutas anidadas de `fieldErrors`.
 4. Guarda, vuelve al listado, reabre la rutina y comprueba nombre, notas, descanso, orden y series.
 5. Edita nombre y descripción, guarda y vuelve a abrir.
 6. Reordena ejercicios y series con **Mover arriba/abajo**, guarda y reabre.
-7. Confirma el diálogo de archivado, abre **Archivadas**, restaura y verifica la lista activa.
-8. Duplica desde una card o el editor y comprueba que se abre una rutina independiente y activa.
+7. Duplica desde una card o el editor y comprueba que se abre una rutina independiente y activa.
+8. Elimina una rutina desde una card y desde el Viewer; cancela primero y después confirma.
 9. Cierra completamente la aplicación, vuelve a abrirla y comprueba la persistencia remota.
-10. Abre la misma rutina en dos clientes; guarda en uno y luego en el otro con su ETag antiguo.
-    Comprueba que el segundo conserva sus cambios, muestra conflicto y solo recarga al solicitarlo.
+10. Abre la misma rutina en dos clientes; modifica o elimina en uno y luego intenta eliminarla en
+    el otro con su ETag antiguo. Comprueba que el segundo muestra conflicto y solo recarga al
+    solicitarlo.
 11. Detén el backend y comprueba error y reintento tanto en listado como en detalle.
 12. Usa un access token expirado y comprueba que el refresh compartido existente completa una sola
     repetición protegida, sin registrar credenciales ni añadir un refresh específico de rutinas.

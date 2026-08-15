@@ -2,7 +2,9 @@ package com.mar.gym.feature.routines.data
 
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
+import com.mar.gym.core.network.NetworkResponse
 import com.mar.gym.core.network.ProblemDetails
+import com.mar.gym.core.network.executeNetworkUnitRequest
 import com.mar.gym.core.model.hasValidCanonicalSupersetGroups
 import com.mar.gym.core.model.normalizedSupersetOrdinals
 import com.mar.gym.feature.exercises.model.Equipment
@@ -73,6 +75,17 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
         name: String?,
     ): RoutineRepositoryResult<RoutineDocument> = mutate(routineId) {
         api.duplicate(it, etag.headerValue, DuplicateRoutineDto(name?.takeIf(String::isNotBlank)))
+    }
+
+    override suspend fun delete(
+        routineId: String,
+        etag: RoutineEtag,
+    ): RoutineRepositoryResult<Unit> {
+        if (!routineId.isUuid()) return invalid()
+        return when (val response = executeNetworkUnitRequest { api.delete(routineId, etag.headerValue) }) {
+            is NetworkResponse.Failure -> RoutineRepositoryResult.Failure(response.error)
+            is NetworkResponse.Success -> RoutineRepositoryResult.Success(Unit)
+        }
     }
 
     private suspend fun mutate(

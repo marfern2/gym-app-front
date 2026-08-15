@@ -106,8 +106,6 @@ fun RoutineEditorRoute(
         onSave = viewModel::save,
         onReload = viewModel::reloadServerVersion,
         onRetry = viewModel::retry,
-        onArchive = viewModel::archive,
-        onRestore = viewModel::restore,
         onDuplicate = viewModel::duplicate,
         onStartRoutine = { state.data.draft.routineId?.let(onStartRoutine) },
     )
@@ -135,13 +133,10 @@ fun RoutineEditorScreen(
     onSave: () -> Unit,
     onReload: () -> Unit,
     onRetry: () -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
     onDuplicate: () -> Unit,
     onStartRoutine: () -> Unit = {},
 ) {
     var showExitConfirmation by remember { mutableStateOf(false) }
-    var showArchiveConfirmation by remember { mutableStateOf(false) }
     val requestBack = {
         if (state.data.hasUnsavedChanges) showExitConfirmation = true else onBack()
     }
@@ -175,7 +170,7 @@ fun RoutineEditorScreen(
                     state, onOpenPicker, onOpenExercise, onNameChanged, onDescriptionChanged, onRemoveExercise,
                     onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                     onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                    onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
+                    onSave, onDuplicate,
                     onStartRoutine = onStartRoutine,
                 )
             }
@@ -183,7 +178,7 @@ fun RoutineEditorScreen(
                 state, onOpenPicker, onOpenExercise, onNameChanged, onDescriptionChanged, onRemoveExercise,
                 onMoveExercise, onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                 onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                onSave, { showArchiveConfirmation = true }, onRestore, onDuplicate,
+                onSave, onDuplicate,
                 Modifier.padding(padding),
                 onReload,
                 onStartRoutine,
@@ -197,19 +192,6 @@ fun RoutineEditorScreen(
             text = { Text(stringResource(R.string.routine_exit_confirm_message)) },
             confirmButton = { Button(onClick = onBack) { Text(stringResource(R.string.routine_discard_and_exit)) } },
             dismissButton = { TextButton(onClick = { showExitConfirmation = false }) { Text(stringResource(R.string.routine_cancel)) } },
-        )
-    }
-    if (showArchiveConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showArchiveConfirmation = false },
-            title = { Text(stringResource(R.string.routine_archive_confirm_title)) },
-            text = { Text(stringResource(R.string.routine_archive_confirm_message)) },
-            confirmButton = {
-                Button(onClick = { showArchiveConfirmation = false; onArchive() }) {
-                    Text(stringResource(R.string.routine_archive_confirm_action))
-                }
-            },
-            dismissButton = { TextButton(onClick = { showArchiveConfirmation = false }) { Text(stringResource(R.string.routine_cancel)) } },
         )
     }
 }
@@ -232,8 +214,6 @@ private fun EditorContent(
     onMoveSet: (String, String, Int) -> Unit,
     onUpdateSet: (String, String, (RoutineSetDraft) -> RoutineSetDraft) -> Unit,
     onSave: () -> Unit,
-    onArchive: () -> Unit,
-    onRestore: () -> Unit,
     onDuplicate: () -> Unit,
     modifier: Modifier = Modifier,
     onReload: () -> Unit = {},
@@ -334,13 +314,8 @@ private fun EditorContent(
                     enabled = enabled && !data.hasUnsavedChanges,
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (data.draft.archived) {
-                    OutlinedButton(onClick = onRestore, enabled = enabled) { Text(stringResource(R.string.routine_restore)) }
-                } else {
-                    OutlinedButton(onClick = onArchive, enabled = enabled) { Text(stringResource(R.string.routine_archive)) }
-                }
-                OutlinedButton(onClick = onDuplicate, enabled = enabled) { Text(stringResource(R.string.routine_duplicate)) }
+            OutlinedButton(onClick = onDuplicate, enabled = enabled) {
+                Text(stringResource(R.string.routine_duplicate))
             }
         }
         Spacer(Modifier.height(32.dp))
@@ -840,7 +815,7 @@ private fun EmptyRoutineEditorPreview() {
             onGroupWithAdjacent = { _, _ -> }, onRemoveFromSuperset = {}, onDissolveSuperset = {},
             onAddSet = {}, onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
             onUpdateSet = { _, _, _ -> }, onSave = {}, onReload = {}, onRetry = {},
-            onArchive = {}, onRestore = {}, onDuplicate = {},
+            onDuplicate = {},
         )
     }
 }
