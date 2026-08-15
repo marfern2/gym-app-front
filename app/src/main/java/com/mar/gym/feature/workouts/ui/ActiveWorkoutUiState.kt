@@ -3,6 +3,7 @@ package com.mar.gym.feature.workouts.ui
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
+import com.mar.gym.feature.workouts.model.WorkoutSummary
 import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import java.time.Instant
 
@@ -10,6 +11,7 @@ data class ActiveWorkoutData(
     val draft: WorkoutDraft? = null,
     val etag: WorkoutEtag? = null,
     val startedAt: Instant? = null,
+    val sourceRoutineName: String? = null,
     val hasUnsavedChanges: Boolean = false,
     val fieldErrors: Map<String, String> = emptyMap(),
     val addingExercises: Boolean = false,
@@ -28,6 +30,10 @@ sealed interface ActiveWorkoutUiState {
     data class Completing(override val data: ActiveWorkoutData) : ActiveWorkoutUiState
     data class Discarding(override val data: ActiveWorkoutData) : ActiveWorkoutUiState
     data class Conflict(override val data: ActiveWorkoutData) : ActiveWorkoutUiState
+    data class Completed(
+        override val data: ActiveWorkoutData = ActiveWorkoutData(),
+        val summary: WorkoutSummary,
+    ) : ActiveWorkoutUiState
     data class Error(
         override val data: ActiveWorkoutData,
         val error: WorkoutUiError,
@@ -43,10 +49,6 @@ data class WorkoutUiError(
 enum class WorkoutUiErrorKind {
     Network, Timeout, Unauthorized, NotFound, ActiveAlreadyExists, RoutineArchived,
     Validation, Conflict, AlreadyCompleted, InvalidResponse, Server, Unknown,
-}
-
-sealed interface ActiveWorkoutEffect {
-    data class OpenCompletedWorkout(val workoutId: String) : ActiveWorkoutEffect
 }
 
 internal fun NetworkFailure.toWorkoutUiError(): WorkoutUiError {

@@ -72,12 +72,8 @@ import com.mar.gym.feature.training.ui.TrainingScreen
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModel
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModelFactory
-import com.mar.gym.feature.workouts.ui.WorkoutDetailRoute
-import com.mar.gym.feature.workouts.ui.WorkoutDetailViewModel
-import com.mar.gym.feature.workouts.ui.WorkoutDetailViewModelFactory
-import com.mar.gym.feature.workouts.ui.WorkoutHistoryRoute
-import com.mar.gym.feature.workouts.ui.WorkoutHistoryViewModel
-import com.mar.gym.feature.workouts.ui.WorkoutHistoryViewModelFactory
+import com.mar.gym.feature.workouts.ui.SaveWorkoutRoute
+import com.mar.gym.feature.workouts.ui.WorkoutCongratsRoute
 import com.mar.gym.ui.components.BarbellIcon
 import com.mar.gym.ui.theme.GYmAppTheme
 
@@ -132,14 +128,19 @@ class MainActivity : ComponentActivity() {
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutExerciseToReplaceId by rememberSaveable { mutableStateOf<String?>(null) }
         var workoutReplacementPickerRequest by rememberSaveable { mutableStateOf(0) }
-        var workoutDetailId by rememberSaveable { mutableStateOf<String?>(null) }
         var pendingRoutineWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
         var catalogOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var detailOrigin by rememberSaveable { mutableStateOf(DEEP_CATALOG) }
 
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
-        val historyState by workoutHistoryViewModel().uiState.collectAsStateWithLifecycle()
         val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
+
+        val finishCompletedWorkout: () -> Unit = {
+            activeWorkoutViewModel().clearCompletedWorkout()
+            profileViewModel().refresh()
+            deep = null
+            tab = TAB_TRAINING
+        }
 
         LaunchedEffect(Unit) {
             routineListViewModel().effects.collect { effect ->
@@ -152,6 +153,10 @@ class MainActivity : ComponentActivity() {
 
         BackHandler(enabled = deep != null || tab != TAB_HOME) {
             when {
+                deep == DEEP_WORKOUT_CONGRATS -> finishCompletedWorkout()
+                deep == DEEP_WORKOUT_SAVE && activeWorkoutState is com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState.Completed ->
+                    deep = DEEP_WORKOUT_CONGRATS
+                deep == DEEP_WORKOUT_SAVE && activeWorkoutState is com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState.Completing -> Unit
                 deep != null -> deep = when (deep) {
                     DEEP_CATALOG -> {
                         tab = catalogOrigin
@@ -193,7 +198,7 @@ class MainActivity : ComponentActivity() {
                         workoutExerciseToReplaceId = null
                         DEEP_WORKOUT
                     }
-                    DEEP_WORKOUT_DETAIL -> DEEP_WORKOUT_HISTORY
+                    DEEP_WORKOUT_SAVE -> DEEP_WORKOUT
                     DEEP_MEASUREMENTS -> {
                         profileViewModel().refresh()
                         tab = TAB_PROFILE
@@ -238,15 +243,9 @@ class MainActivity : ComponentActivity() {
                         TAB_HOME -> HomeScreen(
                             user = user,
                             activeWorkout = activeWorkoutState,
-                            history = historyState,
                             clock = AppContainer.applicationClock,
                             onContinueWorkout = { deep = DEEP_WORKOUT },
-                            onOpenHistoryItem = { id ->
-                                workoutDetailId = id
-                                deep = DEEP_WORKOUT_DETAIL
-                            },
                             onOpenTraining = { tab = TAB_TRAINING },
-                            onRetryHistory = { workoutHistoryViewModel().retry() },
                         )
                         TAB_TRAINING -> TrainingScreen(
                             activeWorkout = activeWorkoutState,
@@ -273,10 +272,6 @@ class MainActivity : ComponentActivity() {
                             },
                             onDuplicateRoutine = { routineListViewModel().duplicate(it) },
                             onDeleteRoutine = { routineListViewModel().delete(it) },
-                            onOpenHistory = {
-                                workoutHistoryViewModel().refresh()
-                                deep = DEEP_WORKOUT_HISTORY
-                            },
                             onOpenCatalog = {
                                 catalogOrigin = TAB_TRAINING
                                 deep = DEEP_CATALOG
@@ -487,10 +482,7 @@ class MainActivity : ComponentActivity() {
                             deep = null
                             tab = TAB_TRAINING
                         },
-                        onOpenHistory = {
-                            workoutHistoryViewModel().refresh()
-                            deep = DEEP_WORKOUT_HISTORY
-                        },
+                        onOpenSaveWorkout = { deep = DEEP_WORKOUT_SAVE },
                         onOpenPicker = { ids ->
                             workoutPickerInitialIds = ids.toList()
                             deep = DEEP_WORKOUT_PICKER
@@ -500,10 +492,6 @@ class MainActivity : ComponentActivity() {
                             workoutReplacementPickerRequest += 1
                             deep = DEEP_WORKOUT_REPLACEMENT_PICKER
                         },
-                        onOpenCompletedWorkout = { id ->
-                            workoutDetailId = id
-                            deep = DEEP_WORKOUT_DETAIL
-                        },
                         onOpenExercise = { id ->
                             detailOrigin = DEEP_WORKOUT
                             detailId = id
@@ -511,6 +499,15 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
+                DEEP_WORKOUT_SAVE -> SaveWorkoutRoute(
+                    viewModel = remember { activeWorkoutViewModel() },
+                    onBack = { deep = DEEP_WORKOUT },
+                    onCompleted = { deep = DEEP_WORKOUT_CONGRATS },
+                )
+                DEEP_WORKOUT_CONGRATS -> WorkoutCongratsRoute(
+                    state = activeWorkoutState,
+                    onDone = finishCompletedWorkout,
+                )
                 DEEP_WORKOUT_PICKER -> {
                     val pickerViewModel = remember(workoutPickerInitialIds) {
                         workoutExercisePickerViewModel(workoutPickerInitialIds.toSet())
@@ -548,23 +545,6 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
-                }
-                DEEP_WORKOUT_HISTORY -> WorkoutHistoryRoute(
-                    viewModel = remember { workoutHistoryViewModel() },
-                    onBack = {
-                        deep = null
-                        tab = TAB_TRAINING
-                    },
-                    onOpenWorkout = { id ->
-                        workoutDetailId = id
-                        deep = DEEP_WORKOUT_DETAIL
-                    },
-                )
-                DEEP_WORKOUT_DETAIL -> workoutDetailId?.let { id ->
-                    WorkoutDetailRoute(
-                        viewModel = remember(id) { workoutDetailViewModel(id) },
-                        onBack = { deep = DEEP_WORKOUT_HISTORY },
-                    )
                 }
                 DEEP_EXERCISE_PROGRESS -> detailId?.let { id ->
                     ExerciseProgressRoute(
@@ -683,16 +663,6 @@ class MainActivity : ComponentActivity() {
         ),
     )["workout-replacement-picker-$localId-$request", ExerciseCatalogViewModel::class.java]
 
-    private fun workoutHistoryViewModel(): WorkoutHistoryViewModel = ViewModelProvider(
-        this,
-        WorkoutHistoryViewModelFactory(AppContainer.workoutRepository),
-    )[WorkoutHistoryViewModel::class.java]
-
-    private fun workoutDetailViewModel(workoutId: String): WorkoutDetailViewModel = ViewModelProvider(
-        this,
-        WorkoutDetailViewModelFactory(workoutId, AppContainer.workoutRepository),
-    )["workout-detail-$workoutId", WorkoutDetailViewModel::class.java]
-
     private fun profileViewModel(): ProfileViewModel = ViewModelProvider(
         this,
         ProfileViewModelFactory(
@@ -732,8 +702,8 @@ class MainActivity : ComponentActivity() {
         const val DEEP_WORKOUT = "workout"
         const val DEEP_WORKOUT_PICKER = "workout_exercise_picker"
         const val DEEP_WORKOUT_REPLACEMENT_PICKER = "workout_exercise_replacement_picker"
-        const val DEEP_WORKOUT_HISTORY = "workout_history"
-        const val DEEP_WORKOUT_DETAIL = "workout_detail"
+        const val DEEP_WORKOUT_SAVE = "workout_save"
+        const val DEEP_WORKOUT_CONGRATS = "workout_congrats"
         const val DEEP_EXERCISE_PROGRESS = "exercise_progress"
         const val DEEP_MEASUREMENTS = "measurements"
     }

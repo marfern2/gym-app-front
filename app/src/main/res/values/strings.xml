@@ -163,11 +163,8 @@
     <string name="workout_completing">Guardando y completando entrenamiento…</string>
     <string name="workout_discarding">Descartando entrenamiento…</string>
     <string name="workout_adding_exercises">Cargando ejercicios seleccionados…</string>
-    <string name="workout_complete">Completar entrenamiento</string>
     <string name="workout_discard">Descartar entrenamiento</string>
     <string name="workout_elapsed">Tiempo transcurrido: %1$s</string>
-    <string name="workout_complete_confirm_title">Completar entrenamiento</string>
-    <string name="workout_complete_confirm_message">Se guardarán primero los cambios pendientes y el entrenamiento pasará a ser readonly.</string>
     <string name="workout_discard_confirm_title">Descartar entrenamiento</string>
     <string name="workout_discard_confirm_message">El entrenamiento activo se eliminará de forma permanente y no aparecerá en el historial.</string>
     <string name="workout_exit_confirm_title">Salir con cambios sin guardar</string>
@@ -198,29 +195,28 @@
     <string name="workout_error_server">El servidor no pudo completar la petición.</string>
     <string name="workout_error_unknown">Se produjo un error inesperado.</string>
 
-    <string name="workout_history_title">Historial</string>
-    <string name="workout_history_loading">Cargando historial…</string>
-    <string name="workout_history_empty_title">Aún no hay entrenamientos completados</string>
-    <string name="workout_history_empty_message">Los entrenamientos completados aparecerán aquí.</string>
-    <string name="workout_history_loading_more">Cargando más entrenamientos…</string>
-    <string name="workout_history_error_more">No se pudo cargar la página siguiente.</string>
-    <string name="workout_history_load_more">Cargar más</string>
-    <string name="workout_history_duration">Duración: %1$s</string>
-    <plurals name="workout_history_exercise_count">
-        <item quantity="one">%1$d ejercicio</item>
-        <item quantity="other">%1$d ejercicios</item>
-    </plurals>
-    <plurals name="workout_history_completed_sets">
+    <string name="workout_save_title">Guardar</string>
+    <string name="workout_save_action">Guardar</string>
+    <string name="workout_save_saving">Guardando el entrenamiento…</string>
+    <string name="workout_save_error_title">No se pudo guardar</string>
+    <string name="workout_save_validation_message">Vuelve al entrenamiento para corregir los resultados indicados.</string>
+    <string name="workout_save_unavailable">El resumen del entrenamiento no está disponible.</string>
+    <string name="workout_summary_duration">Duración</string>
+    <string name="workout_summary_volume">Volumen</string>
+    <string name="workout_summary_volume_value">%1$s kg·rep</string>
+    <string name="workout_summary_sets">Series</string>
+    <string name="workout_summary_exercises">Ejercicios realizados</string>
+    <string name="workout_summary_no_completed_sets">Sin series completadas</string>
+    <string name="workout_summary_set_result">Serie %1$d · %2$s</string>
+    <string name="workout_congrats_title">¡Bien hecho!</string>
+    <string name="workout_congrats_message">Tu entrenamiento se ha guardado.</string>
+    <string name="workout_congrats_saved">Entrenamiento guardado</string>
+    <string name="workout_congrats_ok">OK</string>
+
+    <plurals name="workout_summary_completed_sets">
         <item quantity="one">%1$d serie completada</item>
         <item quantity="other">%1$d series completadas</item>
     </plurals>
-    <string name="workout_history_detail_title">Detalle histórico</string>
-    <string name="workout_detail_loading">Cargando entrenamiento…</string>
-    <string name="workout_rest_seconds">Descanso: %1$d s</string>
-    <string name="workout_target_prefix">Objetivo: %1$s</string>
-    <string name="workout_result_prefix">Resultado: %1$s</string>
-    <string name="workout_set_completed_yes">Completada</string>
-    <string name="workout_set_completed_no">No completada</string>
 
     <string name="exercise_catalog_title">Ejercicios</string>
     <string name="exercise_catalog_subtitle">Catálogo de plantillas</string>
@@ -392,8 +388,6 @@
     <string name="home_subtitle">¿Listo para el siguiente paso?</string>
     <string name="home_active_workout_title">Entrenamiento en curso</string>
     <string name="home_continue">Continuar</string>
-    <string name="home_recent_title">Actividad reciente</string>
-    <string name="home_recent_empty">Todavía no has completado entrenamientos. Tu primera sesión empieza en Entrenamiento.</string>
     <string name="home_community_title">Comunidad</string>
     <string name="home_community_empty">Pronto podrás ver la actividad de otros atletas.</string>
 

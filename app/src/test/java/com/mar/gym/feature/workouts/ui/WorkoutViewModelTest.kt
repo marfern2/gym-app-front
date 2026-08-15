@@ -34,14 +34,14 @@ import com.mar.gym.feature.workouts.model.WorkoutDetail
 import com.mar.gym.feature.workouts.model.WorkoutDocument
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
-import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
-import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
 import com.mar.gym.feature.workouts.model.WorkoutStatus
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -144,7 +144,7 @@ class WorkoutViewModelTest {
         viewModel.updateTitle("Edited")
         repository.updateResult = WorkoutRepositoryResult.Success(document(version = 1, title = "Edited"))
         repository.completeResult = WorkoutRepositoryResult.Success(
-            document(version = 2, title = "Edited", status = WorkoutStatus.Completed),
+            document(version = 2, title = "Canonical completed", status = WorkoutStatus.Completed),
         )
 
         viewModel.complete()
@@ -152,6 +152,59 @@ class WorkoutViewModelTest {
 
         assertEquals(1, repository.updateCalls)
         assertEquals(1, repository.completeEtags.single().version)
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Completed)
+        assertEquals("Canonical completed", (viewModel.uiState.value as ActiveWorkoutUiState.Completed).summary.title)
+    }
+
+    @Test
+    fun `complete error remains available for save retry without automatic retry`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            completeResult = WorkoutRepositoryResult.Failure(NetworkFailure.Network())
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.complete()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Error)
+        assertEquals(1, repository.completeEtags.size)
+    }
+
+    @Test
+    fun `complete conflict preserves active draft and etag without retry`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            completeResult = failure(409, "WORKOUT_VERSION_CONFLICT")
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.complete()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Conflict)
+        assertEquals("Workout", viewModel.uiState.value.data.draft?.title)
+        assertEquals(0L, viewModel.uiState.value.data.etag?.version)
+        assertEquals(1, repository.completeEtags.size)
+    }
+
+    @Test
+    fun `double complete tap sends one request and completed state clears only on exit`() = runTest {
+        val gate = CompletableDeferred<WorkoutRepositoryResult<WorkoutDocument>>()
+        val repository = FakeWorkoutRepository().apply { completeGate = gate }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.complete()
+        viewModel.complete()
+        runCurrent()
+
+        assertEquals(1, repository.completeEtags.size)
+        gate.complete(WorkoutRepositoryResult.Success(document(status = WorkoutStatus.Completed)))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Completed)
+
+        viewModel.clearCompletedWorkout()
         assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.NoActiveWorkout)
     }
 
@@ -246,28 +299,6 @@ class WorkoutViewModelTest {
         assertTrue(archived.uiState.value.data.draft?.exercises.orEmpty().isEmpty())
     }
 
-    @Test
-    fun `history exposes empty paging loading more and error loading more`() = runTest {
-        val repository = FakeWorkoutRepository().apply {
-            historyResults += WorkoutRepositoryResult.Success(historyPage(emptyList(), 0, last = true))
-        }
-        val empty = WorkoutHistoryViewModel(repository)
-        advanceUntilIdle()
-        assertTrue(empty.uiState.value is WorkoutHistoryUiState.Empty)
-
-        val pagingRepository = FakeWorkoutRepository().apply {
-            historyResults += WorkoutRepositoryResult.Success(historyPage(listOf(historyItem("1")), 0, last = false))
-            historyResults += WorkoutRepositoryResult.Failure(NetworkFailure.Network())
-        }
-        val paging = WorkoutHistoryViewModel(pagingRepository)
-        advanceUntilIdle()
-        assertTrue(paging.uiState.value is WorkoutHistoryUiState.Content)
-        paging.loadMore()
-        advanceUntilIdle()
-        assertTrue(paging.uiState.value is WorkoutHistoryUiState.ErrorLoadingMore)
-        assertEquals(1, paging.uiState.value.data.items.size)
-    }
-
     private fun viewModel(
         repository: FakeWorkoutRepository,
         exercises: ExerciseTemplateRepository = FakeExerciseRepository(),
@@ -294,7 +325,7 @@ class WorkoutViewModelTest {
         var updateResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document(version = 1))
         var completeResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document(status = WorkoutStatus.Completed))
         var discardResult: WorkoutRepositoryResult<Unit> = WorkoutRepositoryResult.Success(Unit)
-        val historyResults = ArrayDeque<WorkoutRepositoryResult<WorkoutHistoryPage>>()
+        var completeGate: CompletableDeferred<WorkoutRepositoryResult<WorkoutDocument>>? = null
         val startedWith = mutableListOf<String?>()
         val completeEtags = mutableListOf<WorkoutEtag>()
         val discardEtags = mutableListOf<WorkoutEtag>()
@@ -312,13 +343,14 @@ class WorkoutViewModelTest {
         }
         override suspend fun completeWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<WorkoutDocument> {
             completeEtags += etag
-            return completeResult
+            return completeGate?.await() ?: completeResult
         }
         override suspend fun discardWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<Unit> {
             discardEtags += etag
             return discardResult
         }
-        override suspend fun getWorkoutHistory(page: Int, size: Int) = historyResults.removeFirst()
+        override suspend fun getWorkoutHistory(page: Int, size: Int) =
+            WorkoutRepositoryResult.Failure(NetworkFailure.Network())
     }
 
     private class FakeExerciseRepository(
@@ -395,13 +427,5 @@ class WorkoutViewModelTest {
             NetworkFailure.HttpProblem(status, ProblemDetails(status = status, errorCode = code), null),
         )
 
-        fun historyItem(suffix: String) = WorkoutHistoryItem(
-            "00000000-0000-4000-8000-00000000000$suffix", "Workout", Instant.EPOCH,
-            Instant.EPOCH.plusSeconds(60), 60, 1, 1,
-        )
-
-        fun historyPage(items: List<WorkoutHistoryItem>, page: Int, last: Boolean) = WorkoutHistoryPage(
-            items, page, 20, items.size.toLong(), if (last) page + 1 else page + 2, page == 0, last,
-        )
     }
 }

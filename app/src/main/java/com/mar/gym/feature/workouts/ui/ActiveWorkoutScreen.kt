@@ -95,23 +95,16 @@ import kotlinx.coroutines.delay
 fun ActiveWorkoutRoute(
     viewModel: ActiveWorkoutViewModel,
     onBack: () -> Unit,
-    onOpenHistory: () -> Unit,
+    onOpenSaveWorkout: () -> Unit,
     onOpenPicker: (Set<String>) -> Unit,
     onOpenReplacementPicker: (String) -> Unit,
-    onOpenCompletedWorkout: (String) -> Unit,
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
-    LaunchedEffect(viewModel) {
-        viewModel.effects.collect { effect ->
-            if (effect is ActiveWorkoutEffect.OpenCompletedWorkout) onOpenCompletedWorkout(effect.workoutId)
-        }
-    }
     ActiveWorkoutScreen(
         state = state,
         clock = viewModel.clock,
         onBack = onBack,
-        onOpenHistory = onOpenHistory,
         onOpenExercise = onOpenExercise,
         onOpenPicker = {
             onOpenPicker(state.data.draft?.exercises?.map { it.exerciseTemplateId }?.toSet().orEmpty())
@@ -132,7 +125,7 @@ fun ActiveWorkoutRoute(
         onMoveSet = viewModel::moveSet,
         onUpdateSet = viewModel::updateSet,
         onSave = viewModel::save,
-        onComplete = viewModel::complete,
+        onFinish = onOpenSaveWorkout,
         onDiscard = viewModel::discard,
         onReload = viewModel::reloadDiscardingLocalChanges,
         onRetry = viewModel::retry,
@@ -145,7 +138,6 @@ fun ActiveWorkoutScreen(
     state: ActiveWorkoutUiState,
     clock: Clock,
     onBack: () -> Unit,
-    onOpenHistory: () -> Unit,
     onOpenPicker: () -> Unit,
     onOpenReplacementPicker: (String) -> Unit = {},
     onStartEmpty: () -> Unit,
@@ -163,14 +155,13 @@ fun ActiveWorkoutScreen(
     onMoveSet: (String, String, Int) -> Unit,
     onUpdateSet: (String, String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     onSave: () -> Unit,
-    onComplete: () -> Unit,
+    onFinish: () -> Unit,
     onDiscard: () -> Unit,
     onReload: () -> Unit,
     onRetry: () -> Unit,
     onRetryPrevious: () -> Unit = {},
     onOpenExercise: (String) -> Unit = {},
 ) {
-    var confirmComplete by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
     var reorderOpen by remember { mutableStateOf(false) }
@@ -181,9 +172,6 @@ fun ActiveWorkoutScreen(
             AppTopBar(
                 title = stringResource(R.string.workout_active_title),
                 onBack = requestBack,
-                actions = {
-                    TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.workout_history_title)) }
-                },
             )
         },
     ) { padding ->
@@ -194,7 +182,6 @@ fun ActiveWorkoutScreen(
             )
             is ActiveWorkoutUiState.NoActiveWorkout -> NoActiveWorkout(
                 onStart = onStartEmpty,
-                onHistory = onOpenHistory,
                 modifier = Modifier.padding(padding),
             )
             is ActiveWorkoutUiState.Error -> Column(
@@ -215,7 +202,7 @@ fun ActiveWorkoutScreen(
                         { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                        onSave, { confirmComplete = true }, { confirmDiscard = true },
+                        onSave, onFinish, { confirmDiscard = true },
                         onRetryPrevious,
                         onOpenExercise,
                     )
@@ -255,7 +242,7 @@ if (state.data.hasUnsavedChanges) {
                         { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                        onSave, { confirmComplete = true }, { confirmDiscard = true },
+                        onSave, onFinish, { confirmDiscard = true },
                         onRetryPrevious,
                         onOpenExercise,
                     )
@@ -263,13 +250,6 @@ if (state.data.hasUnsavedChanges) {
             }
         }
     }
-    if (confirmComplete) ConfirmDialog(
-        title = R.string.workout_complete_confirm_title,
-        message = R.string.workout_complete_confirm_message,
-        action = R.string.workout_complete,
-        onDismiss = { confirmComplete = false },
-        onConfirm = { confirmComplete = false; onComplete() },
-    )
     if (confirmDiscard) ConfirmDialog(
         title = R.string.workout_discard_confirm_title,
         message = R.string.workout_discard_confirm_message,
@@ -316,7 +296,7 @@ private fun WorkoutEditorContent(
     onMoveSet: (String, String, Int) -> Unit,
     onUpdateSet: (String, String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     onSave: () -> Unit,
-    onComplete: () -> Unit,
+    onFinish: () -> Unit,
     onDiscard: () -> Unit,
     onRetryPrevious: () -> Unit,
     onOpenExercise: (String) -> Unit = {},
@@ -390,7 +370,7 @@ private fun WorkoutEditorContent(
         )
     }
     Button(
-        onClick = onComplete,
+        onClick = onFinish,
         enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
@@ -1000,7 +980,7 @@ private fun WorkoutElapsed(startedAt: Instant, clock: Clock) {
 }
 
 @Composable
-private fun NoActiveWorkout(onStart: () -> Unit, onHistory: () -> Unit, modifier: Modifier = Modifier) = Column(
+private fun NoActiveWorkout(onStart: () -> Unit, modifier: Modifier = Modifier) = Column(
     modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
 ) {
     Text(stringResource(R.string.workout_no_active_title), style = MaterialTheme.typography.headlineSmall)
@@ -1008,11 +988,6 @@ private fun NoActiveWorkout(onStart: () -> Unit, onHistory: () -> Unit, modifier
     PrimaryButton(
         text = stringResource(R.string.workout_start_empty),
         onClick = onStart,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    SecondaryButton(
-        text = stringResource(R.string.workout_history_title),
-        onClick = onHistory,
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -1097,10 +1072,10 @@ private fun NoActiveWorkoutPreview() {
     GYmAppTheme {
         ActiveWorkoutScreen(
             state = ActiveWorkoutUiState.NoActiveWorkout(), clock = Clock.systemUTC(),
-            onBack = {}, onOpenHistory = {}, onOpenPicker = {}, onStartEmpty = {},
+            onBack = {}, onOpenPicker = {}, onStartEmpty = {},
             onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {}, onMoveExercise = { _, _ -> },
             onUpdateExercise = { _, _ -> }, onAddSet = {}, onRemoveSet = { _, _ -> },
-            onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> }, onSave = {}, onComplete = {},
+            onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {},
             onDiscard = {}, onReload = {}, onRetry = {},
         )
     }
@@ -1128,10 +1103,10 @@ private fun ActiveEditorPreview() {
                     startedAt = Instant.now().minusSeconds(600),
                 )
             ),
-            clock = Clock.systemUTC(), onBack = {}, onOpenHistory = {}, onOpenPicker = {}, onStartEmpty = {},
+            clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {}, onStartEmpty = {},
             onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {}, onMoveExercise = { _, _ -> },
             onUpdateExercise = { _, _ -> }, onAddSet = {}, onRemoveSet = { _, _ -> },
-            onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> }, onSave = {}, onComplete = {},
+            onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {},
             onDiscard = {}, onReload = {}, onRetry = {},
         )
     }

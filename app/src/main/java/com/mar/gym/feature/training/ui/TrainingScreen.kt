@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.List
@@ -66,7 +65,6 @@ fun TrainingScreen(
     onEditRoutine: (String) -> Unit,
     onDuplicateRoutine: (String) -> Unit,
     onDeleteRoutine: (String) -> Unit,
-    onOpenHistory: () -> Unit,
     onOpenCatalog: () -> Unit,
     onCreateRoutine: () -> Unit,
     onRetryRoutines: () -> Unit,
@@ -199,11 +197,6 @@ fun TrainingScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TrainingAction(
-                    icon = Icons.Filled.DateRange,
-                    title = stringResource(R.string.workout_history_title),
-                    onClick = onOpenHistory,
-                )
-                TrainingAction(
                     icon = Icons.Filled.List,
                     title = stringResource(R.string.training_catalog),
                     onClick = onOpenCatalog,
@@ -327,7 +320,6 @@ private fun TrainingEmptyPreview() {
             onEditRoutine = {},
             onDuplicateRoutine = {},
             onDeleteRoutine = {},
-            onOpenHistory = {},
             onOpenCatalog = {},
             onCreateRoutine = {},
             onRetryRoutines = {},
@@ -381,7 +373,6 @@ private fun TrainingActivePreview() {
             onEditRoutine = {},
             onDuplicateRoutine = {},
             onDeleteRoutine = {},
-            onOpenHistory = {},
             onOpenCatalog = {},
             onCreateRoutine = {},
             onRetryRoutines = {},

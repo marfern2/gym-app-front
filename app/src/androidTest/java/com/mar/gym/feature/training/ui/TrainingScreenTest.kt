@@ -35,7 +35,7 @@ class TrainingScreenTest {
                     clock = Clock.systemUTC(),
                     onContinueWorkout = {}, onStartEmpty = {}, onRetryWorkout = {},
                     onOpenRoutine = {}, onStartRoutine = {}, onEditRoutine = {},
-                    onDuplicateRoutine = {}, onDeleteRoutine = { deletedId = it }, onOpenHistory = {},
+                    onDuplicateRoutine = {}, onDeleteRoutine = { deletedId = it },
                     onOpenCatalog = {}, onCreateRoutine = {}, onRetryRoutines = {},
                     onLoadMoreRoutines = {},
                 )
@@ -54,6 +54,7 @@ class TrainingScreenTest {
         ).fetchSemanticsNode().boundsInRoot
         assertTrue(chevron.right <= title.left)
         composeRule.onNodeWithText("Ver todas").assertDoesNotExist()
+        composeRule.onNodeWithText("Historial").assertDoesNotExist()
         composeRule.onNodeWithText("Archivar rutina").assertDoesNotExist()
         composeRule.onNodeWithText("Restaurar rutina").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Abrir Rutina de fuerza").assertIsDisplayed()

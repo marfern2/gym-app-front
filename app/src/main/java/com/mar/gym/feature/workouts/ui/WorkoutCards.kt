@@ -1,6 +1,5 @@
 package com.mar.gym.feature.workouts.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +27,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mar.gym.R
-import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.ui.components.BarbellIcon
 import com.mar.gym.ui.components.PrimaryButton
@@ -122,45 +120,6 @@ fun ActiveWorkoutCard(
 }
 
 @Composable
-fun WorkoutHistoryCard(
-    item: WorkoutHistoryItem,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = formatHistoryDate(item.completedAt),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(item.title, style = MaterialTheme.typography.titleMedium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.workout_history_duration, formatDuration(item.durationSeconds)),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = pluralStringResource(R.plurals.workout_history_exercise_count, item.exerciseCount, item.exerciseCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = pluralStringResource(R.plurals.workout_history_completed_sets, item.completedSetCount, item.completedSetCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun WorkoutElapsedText(
     startedAt: Instant,
     clock: Clock,
@@ -182,10 +141,3 @@ fun WorkoutElapsedText(
         modifier = modifier,
     )
 }
-
-internal fun formatHistoryDate(instant: Instant): String =
-    java.time.ZoneId.systemDefault().let { zone ->
-        java.time.format.DateTimeFormatter
-            .ofPattern("EEEE d MMM · HH:mm")
-            .format(instant.atZone(zone))
-    }

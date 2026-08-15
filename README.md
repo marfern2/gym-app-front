@@ -329,13 +329,20 @@ general del toolchain. Existe un único `ImageLoader` reutilizable en `AppContai
 y disco predeterminadas de Coil; no existe descarga propia, precarga, proxy ni almacenamiento
 offline.
 
-## Workouts activos e historial
+## Workouts activos y finalización
 
 El cliente implementa el contrato actual de `/api/v1/workouts`: recupera el único workout
 `ACTIVE`, permite iniciarlo vacío o desde una rutina, reemplazar su contenido completo, completarlo,
-descartarlo y consultar el historial paginado y su detalle readonly. Las lecturas usan el cliente
-autenticado con refresh existente. Si el access token ya no es utilizable se renueva antes de
-enviar una mutación; las mutaciones se marcan `no-retry` y nunca se repiten automáticamente.
+descartarlo y conserva los contratos de historial paginado y detalle para usos internos. La UX no
+expone pantallas separadas de historial ni detalle histórico. Las lecturas usan el cliente autenticado
+con refresh existente. Si el access token ya no es utilizable se renueva antes de enviar una mutación;
+las mutaciones se marcan `no-retry` y nunca se repiten automáticamente.
+
+`Terminar` abre primero un resumen `Guardar` sin modificar el workout `ACTIVE`. Volver desde ese
+resumen conserva el mismo borrador editable. El botón `Guardar` persiste antes los cambios pendientes,
+si existen, y solo entonces llama a `complete` con el ETag canónico más reciente. La respuesta
+`COMPLETED` alimenta la pantalla `¡Bien hecho!`; `OK` limpia el estado local completado y vuelve a
+Entrenamiento sin navegar por historial.
 
 Cada documento conserva el `ETag` validado contra `version`. `PUT`, `complete` y `discard` envían
 ese valor mediante `If-Match`; una respuesta correcta sustituye el borrador por el documento

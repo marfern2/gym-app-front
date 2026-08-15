@@ -18,14 +18,12 @@ import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.feature.workouts.model.validate
 import java.time.Clock
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -38,8 +36,6 @@ class ActiveWorkoutViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<ActiveWorkoutUiState>(ActiveWorkoutUiState.Loading())
     val uiState: StateFlow<ActiveWorkoutUiState> = _uiState.asStateFlow()
-    private val _effects = MutableSharedFlow<ActiveWorkoutEffect>()
-    val effects: SharedFlow<ActiveWorkoutEffect> = _effects.asSharedFlow()
     private var baseline: WorkoutDraft? = null
     private var loadJob: Job? = null
     private var previousJob: Job? = null
@@ -222,7 +218,9 @@ class ActiveWorkoutViewModel(
     }
 
     fun complete() {
-        val data = _uiState.value.data
+        val state = _uiState.value
+        if (state !is ActiveWorkoutUiState.Active && state !is ActiveWorkoutUiState.Error) return
+        val data = state.data
         val localDraft = data.draft ?: return
         val localEtag = data.etag ?: return
         val validation = localDraft.validate()
@@ -255,13 +253,29 @@ class ActiveWorkoutViewModel(
                     completed,
                 )
                 is WorkoutRepositoryResult.Success -> {
-                    baseline = canonicalDraft
+                    val detail = completed.value.detail
+                    if (detail.status != WorkoutStatus.Completed || detail.id != canonicalDraft.workoutId) {
+                        retryAction = null
+                        _uiState.value = ActiveWorkoutUiState.Error(
+                            data.copy(draft = canonicalDraft, etag = currentEtag),
+                            WorkoutUiError(WorkoutUiErrorKind.InvalidResponse),
+                        )
+                        return@launch
+                    }
+                    baseline = null
+                    previousJob?.cancel()
                     retryAction = null
-                    _effects.emit(ActiveWorkoutEffect.OpenCompletedWorkout(completed.value.detail.id))
-                    _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
+                    _uiState.value = ActiveWorkoutUiState.Completed(summary = detail.toSummary())
                 }
             }
         }
+    }
+
+    fun clearCompletedWorkout() {
+        if (_uiState.value !is ActiveWorkoutUiState.Completed) return
+        baseline = null
+        retryAction = null
+        _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
     }
 
     fun discard() {
@@ -347,6 +361,7 @@ class ActiveWorkoutViewModel(
             is ActiveWorkoutUiState.Completing -> ActiveWorkoutUiState.Completing(state.data.transform())
             is ActiveWorkoutUiState.Discarding -> ActiveWorkoutUiState.Discarding(state.data.transform())
             is ActiveWorkoutUiState.Conflict -> ActiveWorkoutUiState.Conflict(state.data.transform())
+            is ActiveWorkoutUiState.Completed -> state
             is ActiveWorkoutUiState.Error -> ActiveWorkoutUiState.Error(state.data.transform(), state.error)
         }
     }
@@ -367,6 +382,7 @@ class ActiveWorkoutViewModel(
                 draft = draft,
                 etag = document.etag,
                 startedAt = document.detail.startedAt,
+                sourceRoutineName = document.detail.sourceRoutineName,
             ),
         )
         loadPreviousPerformance(draft)
