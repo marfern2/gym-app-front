@@ -135,6 +135,49 @@ class WorkoutDraftTest {
     }
 
     @Test
+    fun `completed sets progress derives from completed over total and reacts to toggles`() {
+        val draft = WorkoutDraft(
+            WORKOUT_ID,
+            "Workout",
+            exercises = listOf(
+                exercise("a", "server-a").copy(sets = listOf(
+                    WorkoutSetDraft("s1", null),
+                    WorkoutSetDraft("s2", null, completed = true),
+                    WorkoutSetDraft("s3", null, completed = true),
+                )),
+                exercise("b", "server-b").copy(sets = listOf(
+                    WorkoutSetDraft("s4", null),
+                )),
+            ),
+        )
+
+        assertEquals(4, draft.totalSets)
+        assertEquals(2, draft.completedSets)
+        assertEquals(0.5f, draft.completedSetsProgress)
+
+        val allCompleted = draft.copy(exercises = draft.exercises.map { exercise ->
+            exercise.copy(sets = exercise.sets.map { it.copy(completed = true) })
+        })
+        assertEquals(4, allCompleted.completedSets)
+        assertEquals(1f, allCompleted.completedSetsProgress)
+
+        val noneCompleted = draft.copy(exercises = draft.exercises.map { exercise ->
+            exercise.copy(sets = exercise.sets.map { it.copy(completed = false) })
+        })
+        assertEquals(0, noneCompleted.completedSets)
+        assertEquals(0f, noneCompleted.completedSetsProgress)
+    }
+
+    @Test
+    fun `completed sets progress handles a workout without sets`() {
+        val empty = WorkoutDraft(WORKOUT_ID, "Workout")
+
+        assertEquals(0, empty.totalSets)
+        assertEquals(0, empty.completedSets)
+        assertEquals(0f, empty.completedSetsProgress)
+    }
+
+    @Test
     fun `elapsed is derived from startedAt and injected clock`() {
         val started = Instant.parse("2026-08-08T10:00:00Z")
         val clock = Clock.fixed(Instant.parse("2026-08-08T10:20:05Z"), ZoneOffset.UTC)

@@ -36,6 +36,7 @@ class ActiveWorkoutViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<ActiveWorkoutUiState>(ActiveWorkoutUiState.Loading())
     val uiState: StateFlow<ActiveWorkoutUiState> = _uiState.asStateFlow()
+    internal val manualClockState = ManualWorkoutClockState(clock)
     private var baseline: WorkoutDraft? = null
     private var loadJob: Job? = null
     private var previousJob: Job? = null
@@ -54,6 +55,7 @@ class ActiveWorkoutViewModel(
                 is WorkoutRepositoryResult.Failure -> {
                     _uiState.value = if (result.error.isNoActiveWorkout()) {
                         baseline = null
+                        manualClockState.clear()
                         ActiveWorkoutUiState.NoActiveWorkout()
                     } else ActiveWorkoutUiState.Error(retained, result.error.toWorkoutUiError())
                 }
@@ -265,6 +267,7 @@ class ActiveWorkoutViewModel(
                     baseline = null
                     previousJob?.cancel()
                     retryAction = null
+                    manualClockState.clear()
                     _uiState.value = ActiveWorkoutUiState.Completed(summary = detail.toSummary())
                 }
             }
@@ -275,6 +278,7 @@ class ActiveWorkoutViewModel(
         if (_uiState.value !is ActiveWorkoutUiState.Completed) return
         baseline = null
         retryAction = null
+        manualClockState.clear()
         _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
     }
 
@@ -289,6 +293,7 @@ class ActiveWorkoutViewModel(
                 is WorkoutRepositoryResult.Success -> {
                     baseline = null
                     retryAction = null
+                    manualClockState.clear()
                     _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
                 }
                 is WorkoutRepositoryResult.Failure -> publishFailure(data, draft, result)
@@ -375,6 +380,7 @@ class ActiveWorkoutViewModel(
             return
         }
         val draft = WorkoutDraft.from(document, ids)
+        manualClockState.bindWorkout(draft.workoutId)
         baseline = draft
         retryAction = null
         _uiState.value = ActiveWorkoutUiState.Active(

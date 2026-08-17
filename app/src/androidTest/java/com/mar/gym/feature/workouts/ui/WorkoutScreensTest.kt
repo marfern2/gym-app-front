@@ -1,12 +1,20 @@
 package com.mar.gym.feature.workouts.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.workouts.model.WorkoutDraft
@@ -22,7 +30,10 @@ import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -64,7 +75,7 @@ class WorkoutScreensTest {
         composeRule.onNodeWithTag("targets_set").assertDoesNotExist()
         composeRule.onNodeWithTag("previous_set").assertIsDisplayed()
         composeRule.onNodeWithText("—").assertIsDisplayed()
-        composeRule.onNodeWithTag("complete_workout").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("complete_workout").assertIsDisplayed()
     }
 
     @Test
@@ -99,6 +110,36 @@ class WorkoutScreensTest {
         composeRule.onNodeWithText("ANTERIOR").assertIsDisplayed()
         composeRule.onNodeWithText("80 kg × 8", substring = true).fetchSemanticsNode()
         composeRule.onNodeWithTag("previous_set").assertIsDisplayed()
+    }
+
+    @Test
+    fun activeEditorKeepsRestEditingThroughSharedPicker() {
+        val exercise = workoutExerciseDraft("exercise", TEMPLATE, "Press")
+            .copy(restSeconds = "90")
+        val draft = WorkoutDraft("workout", "Fuerza", exercises = listOf(exercise))
+        var updatedRest: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> },
+                    onUpdateExercise = { _, transform -> updatedRest = transform(exercise).restSeconds },
+                    onAddSet = {}, onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {}, onDiscard = {},
+                    onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("workout_rest_exercise").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workout_rest_exercise_value_90").assertIsSelected()
+        composeRule.onNodeWithTag("workout_rest_exercise_value_95").performClick()
+        composeRule.onNodeWithTag("workout_rest_exercise_confirm").performClick()
+
+        composeRule.runOnIdle { assertEquals("95", updatedRest) }
+        composeRule.onNodeWithText("segundos").assertDoesNotExist()
     }
 
     @Test
@@ -204,11 +245,213 @@ class WorkoutScreensTest {
             }
         }
 
-        composeRule.onNodeWithTag("complete_workout").performScrollTo().performClick()
+        composeRule.onNodeWithTag("complete_workout").performClick()
         composeRule.runOnIdle {
             assertEquals(1, finishRequests)
             assertEquals(0, saveRequests)
         }
+    }
+
+    @Test
+    fun activeWorkoutHeaderHasRequestedOrderColorAccessibilityAndExistingActions() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        var backs = 0
+        var finishes = 0
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = { backs++ }, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = { finishes++ }, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        val back = composeRule.onNodeWithContentDescription("Volver").assertIsDisplayed()
+        val title = composeRule.onNodeWithText("Entreno").assertIsDisplayed()
+        val clock = composeRule.onNodeWithContentDescription("Abrir reloj").assertIsDisplayed()
+        val finish = composeRule.onNodeWithText("Terminar").assertIsDisplayed()
+        val headerImage = composeRule.onNodeWithTag("active_workout_header").captureToImage()
+        val background = headerImage.toPixelMap()[headerImage.width / 2, headerImage.height - 4]
+        assertEquals(ActiveWorkoutHeaderBackground.red, background.red, 0.02f)
+        assertEquals(ActiveWorkoutHeaderBackground.green, background.green, 0.02f)
+        assertEquals(ActiveWorkoutHeaderBackground.blue, background.blue, 0.02f)
+
+        assertTrue(back.fetchSemanticsNode().boundsInRoot.left < title.fetchSemanticsNode().boundsInRoot.left)
+        assertTrue(title.fetchSemanticsNode().boundsInRoot.left < clock.fetchSemanticsNode().boundsInRoot.left)
+        assertTrue(clock.fetchSemanticsNode().boundsInRoot.left < finish.fetchSemanticsNode().boundsInRoot.left)
+        back.performClick()
+        finish.performClick()
+        composeRule.runOnIdle {
+            assertEquals(1, backs)
+            assertEquals(1, finishes)
+        }
+    }
+
+    @Test
+    fun clockIconOpensSheetAndTabsAndHorizontalSwipeChangePages() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Abrir reloj").performClick()
+        composeRule.onNodeWithText("Reloj").assertIsDisplayed()
+        composeRule.onNodeWithText("Temporizador").assertIsSelected()
+        composeRule.onNodeWithText("Cronómetro").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Cronómetro").assertIsSelected()
+        composeRule.onNodeWithText("00:00.000").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Temporizador").performClick()
+        composeRule.onNodeWithText("Temporizador").assertIsSelected()
+        composeRule.onNodeWithTag("manual_clock_pager").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithText("Cronómetro").assertIsSelected()
+    }
+
+    @Test
+    fun manualTimerControlsStartAndSurviveScreenRecomposition() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        val manualClock = ManualWorkoutClockState(Clock.fixed(Instant.EPOCH, ZoneOffset.UTC))
+        val recompositions = androidx.compose.runtime.mutableIntStateOf(0)
+        composeRule.setContent {
+            recompositions.intValue
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                    manualClockState = manualClock,
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Abrir reloj").performClick()
+        composeRule.onNodeWithText("00:00").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_minus").performClick()
+        composeRule.onNodeWithText("00:00").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_plus").performClick()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_minus").performClick()
+        composeRule.onNodeWithText("00:00").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_plus").performClick()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("manual_timer_start").assertIsEnabled().performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithTag("manual_timer_start").assertIsNotEnabled()
+
+        composeRule.runOnIdle { recompositions.intValue++ }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_start").assertIsNotEnabled()
+    }
+
+    @Test
+    fun relojHeaderIsCenteredAcrossTheSheet() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Abrir reloj").performClick()
+        val sheetBounds = composeRule.onNodeWithTag("manual_clock_sheet").fetchSemanticsNode().boundsInRoot
+        val titleBounds = composeRule.onNodeWithText("Reloj").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue(kotlin.math.abs(sheetBounds.center.x - titleBounds.center.x) < sheetBounds.width * 0.05f)
+    }
+
+    @Test
+    fun manualTimerAdjustmentButtonsStayAccessibleAndDiscrete() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Abrir reloj").performClick()
+        val minus = composeRule.onNodeWithTag("manual_timer_minus").assertIsDisplayed().assertIsEnabled()
+        val plus = composeRule.onNodeWithTag("manual_timer_plus").assertIsDisplayed().assertIsEnabled()
+        val minTouchPx = with(composeRule.density) { 48.dp.toPx() }
+        assertTrue(minus.fetchSemanticsNode().boundsInRoot.height >= minTouchPx)
+        assertTrue(plus.fetchSemanticsNode().boundsInRoot.height >= minTouchPx)
+        composeRule.onNodeWithTag("manual_timer_plus").performClick()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+    }
+
+    @Test
+    fun stopwatchShowsStartStopResumeAndResetButtonStates() {
+        val draft = WorkoutDraft("workout", "Fuerza")
+        val clock = MutableAndroidClock(Instant.EPOCH)
+        val manualClock = ManualWorkoutClockState(clock)
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = clock, onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                    manualClockState = manualClock,
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Abrir reloj").performClick()
+        composeRule.onNodeWithText("Cronómetro").performClick()
+        composeRule.onNodeWithText("00:00.000").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_start").assertIsDisplayed()
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("manual_stopwatch_start").performClick()
+        clock.advanceMillis(1_234L)
+        composeRule.mainClock.advanceTimeBy(20L)
+        composeRule.onNodeWithText("00:01.234").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_stop").performClick()
+        composeRule.mainClock.advanceTimeBy(20L)
+        composeRule.onNodeWithTag("manual_stopwatch_reset").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_resume").assertIsDisplayed().performClick()
+        clock.advanceMillis(766L)
+        composeRule.mainClock.advanceTimeBy(20L)
+        composeRule.onNodeWithText("00:02.000").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_stop").performClick()
+        composeRule.mainClock.advanceTimeBy(20L)
+        composeRule.onNodeWithTag("manual_stopwatch_reset").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("00:00.000").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_start").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_stopwatch_reset").assertDoesNotExist()
     }
 
     @Test
@@ -348,5 +591,18 @@ class WorkoutScreensTest {
     private companion object {
         const val TEMPLATE = "00000000-0000-4000-8000-000000000001"
         const val SECOND_TEMPLATE = "00000000-0000-4000-8000-000000000002"
+    }
+}
+
+private class MutableAndroidClock(
+    private var current: Instant,
+    private val zone: ZoneId = ZoneOffset.UTC,
+) : Clock() {
+    override fun getZone(): ZoneId = zone
+    override fun withZone(zone: ZoneId): Clock = MutableAndroidClock(current, zone)
+    override fun instant(): Instant = current
+
+    fun advanceMillis(milliseconds: Long) {
+        current = current.plusMillis(milliseconds)
     }
 }

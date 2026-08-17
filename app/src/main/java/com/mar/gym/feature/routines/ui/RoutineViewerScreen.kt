@@ -53,6 +53,7 @@ import com.mar.gym.ui.components.ExerciseNameLink
 import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.formatRestSeconds
 import com.mar.gym.ui.theme.SetDrop
 import com.mar.gym.ui.theme.SetFailure
 import com.mar.gym.ui.theme.SetWarmup
@@ -303,7 +304,10 @@ private fun ViewerExercise(
             )
         }
         Text(
-            text = stringResource(R.string.routine_rest_short, exercise.restSeconds),
+            text = stringResource(
+                R.string.routine_rest_short,
+                formatRestSeconds(exercise.restSeconds),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

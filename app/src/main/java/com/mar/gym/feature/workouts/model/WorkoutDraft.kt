@@ -17,6 +17,9 @@ data class WorkoutDraft(
     val exercises: List<WorkoutExerciseDraft> = emptyList(),
 ) {
     val totalSets: Int get() = exercises.sumOf { it.sets.size }
+    val completedSets: Int get() = exercises.sumOf { exercise -> exercise.sets.count { it.completed } }
+    val completedSetsProgress: Float
+        get() = if (totalSets == 0) 0f else completedSets.toFloat() / totalSets
 
     fun moveExercise(localId: String, offset: Int): WorkoutDraft {
         val moved = exercises.move(localId, offset) { it.localId }

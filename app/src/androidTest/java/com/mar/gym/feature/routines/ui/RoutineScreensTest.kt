@@ -1,6 +1,8 @@
 package com.mar.gym.feature.routines.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -133,6 +135,30 @@ class RoutineScreensTest {
     }
 
     @Test
+    fun editorUsesRestPickerAndConfirmationKeepsExistingDraftCallback() {
+        val draftExercise = exercise(ExerciseType.Duration).copy(restSeconds = "90")
+        var updatedRest: String? = null
+        setEditor(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(name = "Temporizada", exercises = listOf(draftExercise)),
+            )),
+            onUpdateExercise = { _, transform -> updatedRest = transform(draftExercise).restSeconds },
+        )
+
+        composeRule.onNodeWithTag("routine_rest_exercise-local")
+            .performScrollTo()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.onNodeWithText("Tiempo de descanso").assertIsDisplayed()
+        composeRule.onNodeWithTag("routine_rest_exercise-local_value_90").assertIsSelected()
+        composeRule.onNodeWithTag("routine_rest_exercise-local_value_95").performClick()
+        composeRule.onNodeWithTag("routine_rest_exercise-local_confirm").performClick()
+
+        composeRule.runOnIdle { assertEquals("95", updatedRest) }
+        composeRule.onNodeWithText("segundos").assertDoesNotExist()
+    }
+
+    @Test
     fun editorShowsGroupingAndExposesAccessibleCreateAndDissolveActions() {
         val first = exercise(ExerciseType.Duration).copy(
             localId = "first",
@@ -212,6 +238,7 @@ class RoutineScreensTest {
         composeRule.onNodeWithText("Descripción de la rutina").assertIsDisplayed()
         composeRule.onNodeWithText("Press de banca").assertIsDisplayed()
         composeRule.onNodeWithTag("routine_viewer_superset_$TEMPLATE_ID").assertIsDisplayed()
+        composeRule.onNodeWithText("Descanso: 1:30").assertIsDisplayed()
         composeRule.onNodeWithText("80").assertIsDisplayed()
         composeRule.onNodeWithText("8–10").assertIsDisplayed()
         composeRule.onNodeWithText("Empezar rutina").performClick()
@@ -311,6 +338,7 @@ class RoutineScreensTest {
         onReload: () -> Unit = {},
         onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
         onDissolveSuperset: (String) -> Unit = {},
+        onUpdateExercise: (String, (RoutineExerciseDraft) -> RoutineExerciseDraft) -> Unit = { _, _ -> },
         stateProvider: () -> RoutineEditorUiState = { state },
     ) {
         composeRule.setContent {
@@ -325,7 +353,7 @@ class RoutineScreensTest {
                     onMoveExercise = { _, _ -> },
                     onGroupWithAdjacent = onGroupWithAdjacent,
                     onDissolveSuperset = onDissolveSuperset,
-                    onUpdateExercise = { _, _ -> },
+                    onUpdateExercise = onUpdateExercise,
                     onAddSet = onAddSet,
                     onRemoveSet = onRemoveSet,
                     onMoveSet = { _, _, _ -> },

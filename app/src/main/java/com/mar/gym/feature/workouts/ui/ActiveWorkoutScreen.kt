@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +17,18 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -38,6 +45,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,12 +64,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mar.gym.R
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.ui.labelResource
@@ -71,12 +85,12 @@ import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.formatPreviousPerformance
 import com.mar.gym.feature.workouts.model.previousSetFor
-import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ExerciseNameLink
 import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.MetricCell
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.RestTimePickerButton
 import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 import com.mar.gym.ui.theme.CompletedRowAccentDark
@@ -90,6 +104,7 @@ import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun ActiveWorkoutRoute(
@@ -130,6 +145,7 @@ fun ActiveWorkoutRoute(
         onReload = viewModel::reloadDiscardingLocalChanges,
         onRetry = viewModel::retry,
         onRetryPrevious = viewModel::retryPreviousPerformance,
+        manualClockState = viewModel.manualClockState,
     )
 }
 
@@ -161,19 +177,35 @@ fun ActiveWorkoutScreen(
     onRetry: () -> Unit,
     onRetryPrevious: () -> Unit = {},
     onOpenExercise: (String) -> Unit = {},
+    manualClockState: ManualWorkoutClockState? = null,
 ) {
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
     var reorderOpen by remember { mutableStateOf(false) }
+    var clockSheetOpen by remember { mutableStateOf(false) }
+    val clockState = manualClockState ?: remember(clock) { ManualWorkoutClockState(clock) }
     val requestBack = { if (state.data.hasUnsavedChanges) confirmExit = true else onBack() }
+    val editorEnabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises
     BackHandler(onBack = requestBack)
     Scaffold(
         topBar = {
-            AppTopBar(
-                title = stringResource(R.string.workout_active_title),
-                onBack = requestBack,
-            )
+            Column {
+                ActiveWorkoutHeader(
+                    onBack = requestBack,
+                    onOpenClock = { clockSheetOpen = true },
+                    onFinish = onFinish,
+                    actionsEnabled = editorEnabled,
+                )
+                state.data.draft?.let { draft ->
+                    WorkoutProgressBar(
+                        progress = draft.completedSetsProgress,
+                        modifier = Modifier.testTag("workout_progress"),
+                    )
+                }
+            }
         },
+        containerColor = Color.Black,
+        contentColor = Color.White,
     ) { padding ->
         when (state) {
             is ActiveWorkoutUiState.Loading -> LoadingState(
@@ -202,7 +234,7 @@ fun ActiveWorkoutScreen(
                         { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                        onSave, onFinish, { confirmDiscard = true },
+                        onSave, { confirmDiscard = true },
                         onRetryPrevious,
                         onOpenExercise,
                     )
@@ -236,13 +268,13 @@ if (state.data.hasUnsavedChanges) {
                         else -> Unit
                     }
                     WorkoutEditorContent(
-                        draft, state.data, clock, enabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises,
+                        draft, state.data, clock, enabled = editorEnabled,
                         onOpenPicker, onOpenReplacementPicker,
                         onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
                         { reorderOpen = true },
                         onGroupWithAdjacent, onRemoveFromSuperset, onDissolveSuperset,
                         onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
-                        onSave, onFinish, { confirmDiscard = true },
+                        onSave, { confirmDiscard = true },
                         onRetryPrevious,
                         onOpenExercise,
                     )
@@ -272,6 +304,404 @@ if (state.data.hasUnsavedChanges) {
             onApply = onReorderExercises,
         )
     }
+    if (clockSheetOpen) {
+        ManualWorkoutClockSheet(
+            state = clockState,
+            onDismiss = { clockSheetOpen = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActiveWorkoutHeader(
+    onBack: () -> Unit,
+    onOpenClock: () -> Unit,
+    onFinish: () -> Unit,
+    actionsEnabled: Boolean,
+) {
+    TopAppBar(
+        modifier = Modifier.testTag("active_workout_header"),
+        title = {
+            Text(
+                text = stringResource(R.string.workout_header_title),
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.routine_back),
+                    tint = Color.White,
+                )
+            }
+        },
+        actions = {
+            IconButton(
+                onClick = onOpenClock,
+                enabled = actionsEnabled,
+                modifier = Modifier.testTag("manual_clock_open"),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Alarm,
+                    contentDescription = stringResource(R.string.workout_clock_open),
+                    tint = Color.White,
+                )
+            }
+            Button(
+                onClick = onFinish,
+                enabled = actionsEnabled,
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .height(40.dp)
+                    .testTag("complete_workout"),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                    disabledContentColor = Color.White.copy(alpha = 0.65f),
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.workout_finish),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = ActiveWorkoutHeaderBackground,
+            titleContentColor = Color.White,
+            navigationIconContentColor = Color.White,
+            actionIconContentColor = Color.White,
+        ),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualWorkoutClockSheet(
+    state: ManualWorkoutClockState,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ManualClockBackground,
+        contentColor = Color.White,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .testTag("manual_clock_sheet"),
+        ) {
+            Text(
+                text = stringResource(R.string.workout_clock_title),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.65f))
+            Row(Modifier.fillMaxWidth()) {
+                ManualClockTab(
+                    text = stringResource(R.string.workout_clock_timer),
+                    selected = pagerState.currentPage == 0,
+                    modifier = Modifier.weight(1f),
+                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                )
+                ManualClockTab(
+                    text = stringResource(R.string.workout_clock_stopwatch),
+                    selected = pagerState.currentPage == 1,
+                    modifier = Modifier.weight(1f),
+                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                )
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+                    .testTag("manual_clock_pager"),
+                verticalAlignment = Alignment.Top,
+            ) { page ->
+                when (page) {
+                    0 -> ManualTimerPage(state)
+                    else -> ManualStopwatchPage(state)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualClockTab(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .height(54.dp)
+            .selectable(selected = selected, onClick = onClick, role = Role.Tab),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(bottom = 12.dp),
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.62f),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+        )
+    }
+}
+
+@Composable
+private fun ManualTimerPage(state: ManualWorkoutClockState) {
+    val revision by state.revision.collectAsState()
+    var refresh by remember { mutableLongStateOf(0L) }
+    val snapshot = remember(revision, refresh) { state.snapshot() }
+    LaunchedEffect(snapshot.timerRunning) {
+        if (snapshot.timerRunning) {
+            while (state.snapshot().timerRunning) {
+                delay(100L)
+                refresh += 1L
+            }
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(190.dp)
+                .testTag("manual_timer_ring"),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(
+                progress = { timerProgress(snapshot.timerRemainingMillis, snapshot.timerConfiguredMillis) },
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = Color.White.copy(alpha = 0.12f),
+                strokeWidth = 6.dp,
+            )
+            Text(
+                text = formatTimer(snapshot.timerRemainingMillis),
+                modifier = Modifier.testTag("manual_timer_value"),
+                color = Color.White,
+                fontSize = 52.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TimerAdjustmentButton(
+                text = stringResource(R.string.workout_clock_minus_fifteen),
+                enabled = !snapshot.timerRunning,
+                testTag = "manual_timer_minus",
+                onClick = { state.adjustTimerSeconds(-15L) },
+            )
+            TimerAdjustmentButton(
+                text = stringResource(R.string.workout_clock_plus_fifteen),
+                enabled = !snapshot.timerRunning,
+                testTag = "manual_timer_plus",
+                onClick = { state.adjustTimerSeconds(15L) },
+            )
+        }
+        ClockActionButton(
+            text = stringResource(R.string.workout_clock_start),
+            onClick = state::startTimer,
+            blue = true,
+            enabled = !snapshot.timerRunning && snapshot.timerRemainingMillis > 0L,
+            modifier = Modifier.testTag("manual_timer_start"),
+        )
+    }
+}
+
+@Composable
+private fun TimerAdjustmentButton(
+    text: String,
+    enabled: Boolean,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .testTag(testTag),
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = MaterialTheme.colorScheme.primary,
+            disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+        ),
+    ) {
+        Text(text = text, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
+    val revision by state.revision.collectAsState()
+    var refresh by remember { mutableLongStateOf(0L) }
+    val snapshot = remember(revision, refresh) { state.snapshot() }
+    LaunchedEffect(snapshot.stopwatchStatus) {
+        if (snapshot.stopwatchStatus == StopwatchStatus.Running) {
+            while (state.snapshot().stopwatchStatus == StopwatchStatus.Running) {
+                delay(16L)
+                refresh += 1L
+            }
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = formatStopwatch(snapshot.stopwatchElapsedMillis),
+            modifier = Modifier.testTag("manual_stopwatch_value"),
+            color = Color.White,
+            fontSize = 52.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        when (snapshot.stopwatchStatus) {
+            StopwatchStatus.Initial -> ClockActionButton(
+                text = stringResource(R.string.workout_clock_start),
+                onClick = state::startStopwatch,
+                blue = true,
+                modifier = Modifier.testTag("manual_stopwatch_start"),
+            )
+            StopwatchStatus.Running -> ClockActionButton(
+                text = stringResource(R.string.workout_clock_stop),
+                onClick = state::stopStopwatch,
+                blue = false,
+                modifier = Modifier.testTag("manual_stopwatch_stop"),
+            )
+            StopwatchStatus.Stopped -> Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ClockActionButton(
+                    text = stringResource(R.string.workout_clock_reset),
+                    onClick = state::resetStopwatch,
+                    blue = false,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("manual_stopwatch_reset"),
+                )
+                ClockActionButton(
+                    text = stringResource(R.string.workout_clock_start),
+                    onClick = state::startStopwatch,
+                    blue = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("manual_stopwatch_resume"),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClockActionButton(
+    text: String,
+    onClick: () -> Unit,
+    blue: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (blue) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = Color.White,
+            disabledContainerColor = if (blue) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            },
+            disabledContentColor = Color.White.copy(alpha = 0.55f),
+        ),
+    ) {
+        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
+
+internal fun formatTimer(milliseconds: Long): String {
+    val totalSeconds = (milliseconds.coerceAtLeast(0L) + 999L) / 1_000L
+    return "%02d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+}
+
+internal fun timerProgress(remainingMillis: Long, configuredMillis: Long): Float =
+    if (configuredMillis > 0L) {
+        (remainingMillis.toFloat() / configuredMillis).coerceIn(0f, 1f)
+    } else 0f
+
+internal fun formatStopwatch(milliseconds: Long): String {
+    val safe = milliseconds.coerceAtLeast(0L)
+    val totalSeconds = safe / 1_000L
+    return "%02d:%02d.%03d".format(totalSeconds / 60L, totalSeconds % 60L, safe % 1_000L)
+}
+
+internal val ActiveWorkoutHeaderBackground = Color(0xFF242424)
+private val ActiveWorkoutProgressTrack = Color(0xFF333333)
+private val ManualClockBackground = Color(0xFF121212)
+
+@Composable
+private fun WorkoutProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    val fraction = progress.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(ActiveWorkoutProgressTrack),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .height(3.dp)
+                .background(MaterialTheme.colorScheme.primary),
+        )
+    }
 }
 
 @Composable
@@ -296,7 +726,6 @@ private fun WorkoutEditorContent(
     onMoveSet: (String, String, Int) -> Unit,
     onUpdateSet: (String, String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     onSave: () -> Unit,
-    onFinish: () -> Unit,
     onDiscard: () -> Unit,
     onRetryPrevious: () -> Unit,
     onOpenExercise: (String) -> Unit = {},
@@ -369,18 +798,6 @@ private fun WorkoutEditorContent(
             modifier = Modifier.fillMaxWidth().testTag("save_workout"),
         )
     }
-    Button(
-        onClick = onFinish,
-        enabled = enabled,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .testTag("complete_workout"),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.error,
-            contentColor = MaterialTheme.colorScheme.onError,
-        ),
-    ) { Text(stringResource(R.string.workout_finish), fontWeight = FontWeight.Bold) }
     SecondaryButton(
         text = stringResource(R.string.workout_discard),
         onClick = onDiscard,
@@ -476,13 +893,12 @@ private fun WorkoutExerciseEditor(
             enabled = enabled,
             singleLine = false,
         )
-        WorkoutTextField(
-            value = exercise.restSeconds,
-            onValueChange = { value -> onUpdate { it.copy(restSeconds = value) } },
-            label = R.string.workout_rest_field,
-            error = errors["$prefix.restSeconds"],
+        RestTimePickerButton(
+            restSeconds = exercise.restSeconds,
+            onConfirm = { value -> onUpdate { it.copy(restSeconds = value) } },
             enabled = enabled,
-            keyboardType = KeyboardType.Number,
+            testTag = "workout_rest_${exercise.localId}",
+            errorMessage = errors["$prefix.restSeconds"]?.let { workoutValidationMessage(it) },
         )
         if (exercise.sets.isNotEmpty()) {
             WorkoutSetTable(

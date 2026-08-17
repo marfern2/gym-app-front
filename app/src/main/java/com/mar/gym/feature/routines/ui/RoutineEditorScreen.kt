@@ -65,6 +65,7 @@ import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.MetricCell
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.RestTimePickerButton
 import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
 import com.mar.gym.ui.theme.SetDrop
@@ -431,10 +432,12 @@ private fun ExerciseEditor(
             exercise.notes, { value -> onUpdate { it.copy(notes = value) } },
             R.string.routine_notes_label, errors["$prefix.notes"], enabled, singleLine = false,
         )
-        EditorTextField(
-            exercise.restSeconds, { value -> onUpdate { it.copy(restSeconds = value) } },
-            R.string.routine_rest_label, errors["$prefix.restSeconds"], enabled,
-            keyboardType = KeyboardType.Number, suffix = R.string.routine_seconds_unit,
+        RestTimePickerButton(
+            restSeconds = exercise.restSeconds,
+            onConfirm = { value -> onUpdate { it.copy(restSeconds = value) } },
+            enabled = enabled,
+            testTag = "routine_rest_${exercise.localId}",
+            errorMessage = errors["$prefix.restSeconds"]?.let { stringResource(errorResource(it)) },
         )
         val fields = routineSetFields(exercise.exerciseType)
         if (exercise.sets.isNotEmpty()) {
