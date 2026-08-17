@@ -64,6 +64,12 @@ fun formatRestSeconds(seconds: Int): String = when {
     else -> "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 }
 
+fun formatWorkoutRestSeconds(seconds: Int): String = when {
+    seconds <= 0 -> "Apagado"
+    seconds < 60 -> "${seconds}s"
+    else -> "${seconds / 60}min ${seconds % 60}s"
+}
+
 fun nearestRestSeconds(seconds: Int): Int =
     ((seconds.coerceIn(REST_SECONDS_MIN, REST_SECONDS_MAX).toFloat() / REST_SECONDS_STEP)
         .roundToInt() * REST_SECONDS_STEP)
@@ -77,6 +83,7 @@ fun RestTimePickerButton(
     testTag: String,
     errorMessage: String? = null,
     modifier: Modifier = Modifier,
+    ghost: Boolean = false,
 ) {
     val currentSeconds = restSeconds.toIntOrNull()
         ?.coerceIn(REST_SECONDS_MIN, REST_SECONDS_MAX)
@@ -90,22 +97,55 @@ fun RestTimePickerButton(
     }
     val buttonDescription = stringResource(R.string.rest_time_configure, formatted)
 
+    val textColor = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.4f)
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        OutlinedButton(
-            onClick = { showPicker = true },
-            enabled = enabled,
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .testTag(testTag)
-                .semantics {
-                    contentDescription = buttonDescription
-                },
-        ) {
-            Icon(imageVector = Icons.Outlined.Timer, contentDescription = null)
-            Text(
-                text = buttonText,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+        if (ghost) {
+            val ghostText = if (currentSeconds == 0) {
+                stringResource(R.string.workout_rest_off)
+            } else {
+                stringResource(R.string.workout_rest_time, formatWorkoutRestSeconds(currentSeconds))
+            }
+            val ghostDescription = stringResource(R.string.rest_time_configure, formatWorkoutRestSeconds(currentSeconds))
+            Row(
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .clickable(enabled = enabled) { showPicker = true }
+                    .testTag(testTag)
+                    .semantics {
+                        contentDescription = ghostDescription
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Timer,
+                    contentDescription = null,
+                    tint = textColor,
+                )
+                Text(
+                    text = ghostText,
+                    modifier = Modifier.padding(start = 8.dp),
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else {
+            OutlinedButton(
+                onClick = { showPicker = true },
+                enabled = enabled,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag(testTag)
+                    .semantics {
+                        contentDescription = buttonDescription
+                    },
+            ) {
+                Icon(imageVector = Icons.Outlined.Timer, contentDescription = null)
+                Text(
+                    text = buttonText,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
         errorMessage?.let {
             Text(

@@ -1,6 +1,13 @@
 package com.mar.gym.feature.workouts.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,17 +30,17 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -41,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,7 +66,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -246,7 +254,7 @@ fun ActiveWorkoutScreen(
                     message = stringResource(R.string.workout_loading),
                     modifier = Modifier.padding(padding),
                 ) else Column(
-                    Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+                    Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     when (state) {
@@ -254,17 +262,30 @@ fun ActiveWorkoutScreen(
                         is ActiveWorkoutUiState.Completing -> OperationStatus(R.string.workout_completing)
                         is ActiveWorkoutUiState.Discarding -> OperationStatus(R.string.workout_discarding)
                         is ActiveWorkoutUiState.Conflict -> {
-                            Text(stringResource(R.string.workout_conflict_title), color = MaterialTheme.colorScheme.error)
-                            Text(stringResource(R.string.workout_conflict_message))
-if (state.data.hasUnsavedChanges) {
-                        Text(stringResource(R.string.workout_conflict_dirty_warning), color = MaterialTheme.colorScheme.error)
-                    }
-                    PrimaryButton(
-                        text = stringResource(R.string.workout_reload_server),
-                        onClick = onReload,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                            Text(
+                                stringResource(R.string.workout_conflict_title),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+                            )
+                            Text(
+                                stringResource(R.string.workout_conflict_message),
+                                modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+                            )
+                            if (state.data.hasUnsavedChanges) {
+                                Text(
+                                    stringResource(R.string.workout_conflict_dirty_warning),
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+                                )
+                            }
+                            PrimaryButton(
+                                text = stringResource(R.string.workout_reload_server),
+                                onClick = onReload,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = WorkoutContentHorizontalPadding),
+                            )
+                        }
                         else -> Unit
                     }
                     WorkoutEditorContent(
@@ -525,22 +546,26 @@ private fun ManualTimerPage(state: ManualWorkoutClockState) {
         ) {
             TimerAdjustmentButton(
                 text = stringResource(R.string.workout_clock_minus_fifteen),
-                enabled = !snapshot.timerRunning,
                 testTag = "manual_timer_minus",
                 onClick = { state.adjustTimerSeconds(-15L) },
             )
             TimerAdjustmentButton(
                 text = stringResource(R.string.workout_clock_plus_fifteen),
-                enabled = !snapshot.timerRunning,
                 testTag = "manual_timer_plus",
                 onClick = { state.adjustTimerSeconds(15L) },
             )
         }
         ClockActionButton(
-            text = stringResource(R.string.workout_clock_start),
-            onClick = state::startTimer,
-            blue = true,
-            enabled = !snapshot.timerRunning && snapshot.timerRemainingMillis > 0L,
+            text = stringResource(
+                if (snapshot.timerRunning) {
+                    R.string.workout_clock_cancel
+                } else {
+                    R.string.workout_clock_start
+                },
+            ),
+            onClick = if (snapshot.timerRunning) state::cancelTimer else state::startTimer,
+            blue = !snapshot.timerRunning,
+            enabled = if (snapshot.timerRunning) true else snapshot.timerRemainingMillis > 0L,
             modifier = Modifier.testTag("manual_timer_start"),
         )
     }
@@ -549,19 +574,16 @@ private fun ManualTimerPage(state: ManualWorkoutClockState) {
 @Composable
 private fun TimerAdjustmentButton(
     text: String,
-    enabled: Boolean,
     testTag: String,
     onClick: () -> Unit,
 ) {
     TextButton(
         onClick = onClick,
-        enabled = enabled,
         modifier = Modifier
             .heightIn(min = 48.dp)
             .testTag(testTag),
         colors = ButtonDefaults.textButtonColors(
             contentColor = MaterialTheme.colorScheme.primary,
-            disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
         ),
     ) {
         Text(text = text, fontWeight = FontWeight.Bold)
@@ -731,7 +753,9 @@ private fun WorkoutEditorContent(
     onOpenExercise: (String) -> Unit = {},
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = WorkoutContentHorizontalPadding),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -745,10 +769,17 @@ private fun WorkoutEditorContent(
         }
     }
     if (data.previousPerformanceLoading) {
-        Text("Cargando rendimiento anterior…", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Cargando rendimiento anterior…",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+        )
     }
     if (data.previousPerformanceError != null) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 "No se pudo cargar ANTERIOR.",
                 color = MaterialTheme.colorScheme.error,
@@ -757,7 +788,12 @@ private fun WorkoutEditorContent(
             TextButton(onClick = onRetryPrevious) { Text(stringResource(R.string.retry)) }
         }
     }
-    if (draft.exercises.isEmpty()) Text(stringResource(R.string.workout_no_exercises))
+    if (draft.exercises.isEmpty()) {
+        Text(
+            stringResource(R.string.workout_no_exercises),
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+        )
+    }
     draft.exercises.forEachIndexed { index, exercise ->
         WorkoutExerciseEditor(
             exercise, index, draft.exercises.size, data.fieldErrors, enabled,
@@ -787,7 +823,9 @@ private fun WorkoutEditorContent(
         text = stringResource(R.string.workout_add_exercises),
         onClick = onOpenPicker,
         enabled = enabled && draft.exercises.size < WorkoutDraft.MAX_EXERCISES,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = WorkoutContentHorizontalPadding),
     )
     if (data.addingExercises) OperationStatus(R.string.workout_adding_exercises)
     if (data.hasUnsavedChanges) {
@@ -795,14 +833,19 @@ private fun WorkoutEditorContent(
             text = stringResource(R.string.workout_save),
             onClick = onSave,
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().testTag("save_workout"),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = WorkoutContentHorizontalPadding)
+                .testTag("save_workout"),
         )
     }
     SecondaryButton(
         text = stringResource(R.string.workout_discard),
         onClick = onDiscard,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = WorkoutContentHorizontalPadding),
     )
     Spacer(Modifier.height(24.dp))
 }
@@ -840,66 +883,74 @@ private fun WorkoutExerciseEditor(
             .testTag("workout_exercise_${exercise.localId}"),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            ExerciseThumbnail()
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ExerciseNameLink(
-                        name = exercise.exerciseNameSnapshot,
-                        onClick = onOpenExercise,
-                        onLongClick = onReorder,
-                    )
-                    supersetOrdinal?.let { ordinal ->
-                        Text(
-                            stringResource(R.string.superset_badge, ordinal),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .testTag("workout_superset_${exercise.localId}"),
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = WorkoutContentHorizontalPadding),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                ExerciseThumbnail()
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ExerciseNameLink(
+                            name = exercise.exerciseNameSnapshot,
+                            onClick = onOpenExercise,
+                            onLongClick = onReorder,
                         )
+                        supersetOrdinal?.let { ordinal ->
+                            Text(
+                                stringResource(R.string.superset_badge, ordinal),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .testTag("workout_superset_${exercise.localId}"),
+                            )
+                        }
                     }
+                    Text(
+                        text = stringResource(exercise.exerciseTypeSnapshot.labelResource()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(
-                    text = stringResource(exercise.exerciseTypeSnapshot.labelResource()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                IconButton(
+                    onClick = { showActions = true },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("workout_exercise_menu_${exercise.localId}"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(
+                            R.string.workout_exercise_menu,
+                            exercise.exerciseNameSnapshot,
+                        ),
+                    )
+                }
             }
-            IconButton(
-                onClick = { showActions = true },
+            WorkoutTextField(
+                value = exercise.notes,
+                onValueChange = { value -> onUpdate { it.copy(notes = value) } },
+                label = R.string.workout_exercise_notes_hint,
+                error = errors["$prefix.notes"],
                 enabled = enabled,
-                modifier = Modifier.testTag("workout_exercise_menu_${exercise.localId}"),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = stringResource(
-                        R.string.workout_exercise_menu,
-                        exercise.exerciseNameSnapshot,
-                    ),
-                )
-            }
+                singleLine = false,
+            )
+            RestTimePickerButton(
+                restSeconds = exercise.restSeconds,
+                onConfirm = { value -> onUpdate { it.copy(restSeconds = value) } },
+                enabled = enabled,
+                testTag = "workout_rest_${exercise.localId}",
+                errorMessage = errors["$prefix.restSeconds"]?.let { workoutValidationMessage(it) },
+                ghost = true,
+            )
         }
-        WorkoutTextField(
-            value = exercise.notes,
-            onValueChange = { value -> onUpdate { it.copy(notes = value) } },
-            label = R.string.workout_exercise_notes_label,
-            error = errors["$prefix.notes"],
-            enabled = enabled,
-            singleLine = false,
-        )
-        RestTimePickerButton(
-            restSeconds = exercise.restSeconds,
-            onConfirm = { value -> onUpdate { it.copy(restSeconds = value) } },
-            enabled = enabled,
-            testTag = "workout_rest_${exercise.localId}",
-            errorMessage = errors["$prefix.restSeconds"]?.let { workoutValidationMessage(it) },
-        )
         if (exercise.sets.isNotEmpty()) {
             WorkoutSetTable(
                 exercise = exercise,
@@ -911,10 +962,17 @@ private fun WorkoutExerciseEditor(
                 previousValue = previousValue,
             )
         }
-        TextButton(onClick = onAddSet, enabled = enabled && exercise.sets.size < 20) {
+        TextButton(
+            onClick = onAddSet,
+            enabled = enabled && exercise.sets.size < 20,
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+        ) {
             Text(stringResource(R.string.workout_add_set))
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+        )
     }
     if (showActions) {
         ModalBottomSheet(
@@ -1088,15 +1146,26 @@ private fun WorkoutSetTable(
     val columns = exercise.metricColumns()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = WorkoutSetRowContentPadding),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            TableHeaderCell(stringResource(R.string.workout_series_header))
+            TableHeaderCell(
+                stringResource(R.string.workout_series_header),
+                modifier = Modifier.width(SetTypeColumnWidth),
+            )
             TableHeaderCell(stringResource(R.string.workout_previous_header), modifier = Modifier.weight(1.15f))
             columns.forEach { column ->
                 TableHeaderCell(column.header, modifier = Modifier.weight(1f))
             }
-            Spacer(Modifier.width(48.dp))
+            TableHeaderCell(
+                "✓",
+                modifier = Modifier
+                    .width(48.dp)
+                    .testTag("set_complete_header"),
+            )
         }
         exercise.sets.forEachIndexed { setIndex, set ->
             WorkoutSetRow(
@@ -1126,16 +1195,22 @@ private fun WorkoutSetRow(
     onUpdate: ((WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     previous: String,
 ) {
+    val rowBackground by animateColorAsState(
+        targetValue = if (set.completed) completedRowContainer() else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "completed_row_background",
+    )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(MaterialTheme.shapes.small)
-                .background(if (set.completed) completedRowContainer() else Color.Transparent)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .testTag("set_row_background_${set.localId}")
+                .background(rowBackground),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = WorkoutSetRowContentPadding, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -1143,10 +1218,9 @@ private fun WorkoutSetRow(
                     type = set.setType,
                     index = index,
                     enabled = enabled,
-                    completed = set.completed,
                     onSelect = { value -> onUpdate { it.copy(setType = value) } },
                     onRemove = onRemove,
-                    modifier = Modifier.width(38.dp),
+                    modifier = Modifier.width(SetTypeColumnWidth),
                 )
                 Box(
                     modifier = Modifier.weight(1.15f).padding(horizontal = 2.dp).testTag("previous_${set.localId}"),
@@ -1155,7 +1229,7 @@ private fun WorkoutSetRow(
                     Text(
                         text = previous,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (set.completed) completedRowAccent() else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 columns.forEach { column ->
@@ -1170,14 +1244,15 @@ private fun WorkoutSetRow(
                         isError = errors.containsKey(column.errorKey(prefix)),
                         contentDescription = "${column.header} ${index + 1}",
                         testTag = "${column.errorKey(prefix)}_${set.localId}",
-                        containerColor = if (set.completed) Color.Transparent else null,
-                        textColor = if (set.completed) completedRowAccent() else null,
+                        ghost = true,
                     )
                 }
                 SetCompleteToggle(
                     completed = set.completed,
                     enabled = enabled,
                     onToggle = { value -> onUpdate { it.copy(completed = value) } },
+                    testTag = "set_complete_tick_${set.localId}",
+                    toggleTag = "set_complete_${set.localId}",
                 )
             }
         }
@@ -1186,9 +1261,13 @@ private fun WorkoutSetRow(
                 text = stringResource(R.string.workout_error_completed_metrics),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
             )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+        )
     }
 }
 
@@ -1215,27 +1294,26 @@ private fun TableHeaderCell(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+private val WorkoutContentHorizontalPadding = 16.dp
+private val WorkoutSetRowContentPadding = WorkoutContentHorizontalPadding + 4.dp
+private val SetTypeColumnWidth = 38.dp
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SetTypeCell(
     type: SetType,
     index: Int,
     enabled: Boolean,
-    completed: Boolean = false,
     onSelect: (SetType) -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showSheet by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
-    val color = when {
-        completed -> completedRowAccent()
-        else -> when (type) {
-            SetType.Normal -> MaterialTheme.colorScheme.onSurfaceVariant
-            SetType.Warmup -> SetWarmup
-            SetType.Failure -> SetFailure
-            SetType.Drop -> SetDrop
-        }
+    val color = when (type) {
+        SetType.Normal -> Color.White
+        SetType.Warmup -> SetWarmup
+        SetType.Failure -> SetFailure
+        SetType.Drop -> SetDrop
     }
     val label = when (type) {
         SetType.Normal -> (index + 1).toString()
@@ -1251,19 +1329,6 @@ private fun SetTypeCell(
     Box(
         modifier = modifier
             .heightIn(min = 44.dp)
-            .clip(shape)
-            .background(
-                if (completed) {
-                    Color.Transparent
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                }
-            )
-            .border(
-                1.dp,
-                if (completed) completedRowAccent().copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant,
-                shape,
-            )
             .semantics { contentDescription = description }
             .clickable(enabled = enabled) { showSheet = true },
         contentAlignment = Alignment.Center,
@@ -1314,25 +1379,54 @@ private fun SetCompleteToggle(
     completed: Boolean,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
+    testTag: String? = null,
+    toggleTag: String? = null,
 ) {
     val description = stringResource(
         if (completed) R.string.workout_uncheck_set else R.string.workout_check_set
     )
+    val accent = completedRowAccent()
+    val ringColor = if (completed) {
+        accent
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    }
+    val checkColor = if (accent.luminance() > 0.5f) Color.Black else Color.White
     Box(
         modifier = Modifier
             .size(48.dp)
-            .semantics { contentDescription = description },
+            .then(if (toggleTag != null) Modifier.testTag(toggleTag) else Modifier)
+            .semantics { contentDescription = description }
+            .clickable(
+                enabled = enabled,
+                role = Role.Checkbox,
+                onClick = { onToggle(!completed) },
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Checkbox(
-            checked = completed,
-            onCheckedChange = onToggle,
-            enabled = enabled,
-            colors = CheckboxDefaults.colors(
-                checkedColor = completedRowAccent(),
-                checkmarkColor = MaterialTheme.colorScheme.onError,
-            ),
-        )
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (completed) accent else Color.Transparent)
+                .border(2.dp, ringColor, RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            AnimatedVisibility(
+                visible = completed,
+                enter = fadeIn(animationSpec = tween(150)),
+                exit = fadeOut(animationSpec = tween(150)),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
+                    tint = checkColor,
+                )
+            }
+        }
     }
 }
 
@@ -1355,18 +1449,46 @@ private fun WorkoutTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(stringResource(label)) },
+    var focused by remember { mutableStateOf(false) }
+    Column(
         modifier = modifier.fillMaxWidth(),
-        enabled = enabled,
-        singleLine = singleLine,
-        textStyle = style,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        isError = error != null,
-        supportingText = error?.let { { Text(workoutValidationMessage(it)) } },
-    )
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .onFocusChanged { focused = it.isFocused }
+                .padding(vertical = 10.dp),
+            singleLine = singleLine,
+            textStyle = style.copy(
+                color = if (enabled) Color.White else Color.White.copy(alpha = 0.45f),
+            ),
+            cursorBrush = SolidColor(Color.White),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            decorationBox = { innerTextField ->
+                Box {
+                    if (value.isEmpty() && !focused) {
+                        Text(
+                            text = stringResource(label),
+                            style = style.copy(color = Color.White.copy(alpha = 0.45f)),
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+        error?.let {
+            Text(
+                text = workoutValidationMessage(it),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
 }
 
 @Composable
@@ -1409,7 +1531,10 @@ private fun NoActiveWorkout(onStart: () -> Unit, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun OperationStatus(text: Int) = Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun OperationStatus(text: Int) = Row(
+    modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+) {
     CircularProgressIndicator()
     Text(stringResource(text))
 }

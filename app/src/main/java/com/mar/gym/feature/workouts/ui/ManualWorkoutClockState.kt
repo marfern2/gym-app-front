@@ -40,11 +40,27 @@ class ManualWorkoutClockState internal constructor(
 
     @Synchronized
     internal fun adjustTimerSeconds(deltaSeconds: Long) {
-        val current = snapshot()
-        if (current.timerRunning) return
+        val now = clock.instant()
+        val current = snapshot(now)
+        val deltaMillis = deltaSeconds * 1_000L
+        val newRemaining = (current.timerRemainingMillis + deltaMillis).coerceAtLeast(0L)
+        if (current.timerRunning) {
+            // Mientras corre, los ajustes +/-15 también modifican el tiempo configurado de esta
+            // ejecución para que el progress circular permanezca coherente (dentro de 0..1).
+            timerDurationMillis = (current.timerConfiguredMillis + deltaMillis).coerceAtLeast(0L)
+            // Alcanzar cero deja un deadline ya vencido igual que la expiración natural.
+            timerDeadline = now.plusMillis(newRemaining)
+        } else {
+            timerDurationMillis = newRemaining
+            timerDeadline = null
+        }
+        publishChange()
+    }
+
+    @Synchronized
+    internal fun cancelTimer() {
+        if (timerDeadline == null) return
         timerDeadline = null
-        timerDurationMillis = (current.timerRemainingMillis + deltaSeconds * 1_000L)
-            .coerceAtLeast(0L)
         publishChange()
     }
 

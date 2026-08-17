@@ -1,19 +1,28 @@
 package com.mar.gym.feature.workouts.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
@@ -353,12 +362,28 @@ class WorkoutScreensTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithTag("manual_timer_start").assertIsEnabled().performClick()
         composeRule.mainClock.advanceTimeByFrame()
-        composeRule.onNodeWithTag("manual_timer_start").assertIsNotEnabled()
+        composeRule.onNodeWithText("Cancelar").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_start").assertIsEnabled()
+
+        composeRule.onNodeWithTag("manual_timer_plus").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("00:30").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancelar").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_minus").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancelar").assertIsDisplayed()
 
         composeRule.runOnIdle { recompositions.intValue++ }
         composeRule.mainClock.advanceTimeByFrame()
         composeRule.onNodeWithText("00:15").assertIsDisplayed()
-        composeRule.onNodeWithTag("manual_timer_start").assertIsNotEnabled()
+        composeRule.onNodeWithText("Cancelar").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("manual_timer_start").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("Empezar").assertIsDisplayed()
+        composeRule.onNodeWithText("00:15").assertIsDisplayed()
+        composeRule.onNodeWithTag("manual_timer_start").assertIsEnabled()
     }
 
     @Test
@@ -582,6 +607,353 @@ class WorkoutScreensTest {
         composeRule.onNodeWithText("Sesión pendiente").assertIsDisplayed()
         composeRule.onNodeWithText("Reintentar").performClick()
         composeRule.runOnIdle { assertEquals(1, retries) }
+    }
+
+    @Test
+    fun ghostMetricCellsStayEditableOnFocus() {
+        val set = WorkoutSetDraft(localId = "set", serverId = "server-set")
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(set))),
+        )
+        var updatedWeight: String? = null
+        var updatedReps: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, setId, transform ->
+                        val result = transform(set)
+                        updatedWeight = result.weight
+                        updatedReps = result.reps
+                    },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        val weightCell = composeRule.onNodeWithTag("exercise.exercise.set.set.weight_set")
+        weightCell.performScrollTo().performClick()
+        weightCell.assert(
+            SemanticsMatcher("campo editable con foco") { node ->
+                node.config.getOrNull(SemanticsProperties.Focused) == true &&
+                    node.config.contains(SemanticsActions.SetText) &&
+                    node.config.contains(SemanticsActions.InsertTextAtCursor)
+            },
+        )
+
+        val repsCell = composeRule.onNodeWithTag("exercise.exercise.set.set.reps_set")
+        repsCell.performClick()
+        repsCell.assert(
+            SemanticsMatcher("campo editable con foco") { node ->
+                node.config.getOrNull(SemanticsProperties.Focused) == true &&
+                    node.config.contains(SemanticsActions.SetText)
+            },
+        )
+    }
+
+    @Test
+    fun setTypeIndicatorStillOpensSheetAndKeepsTheSameActions() {
+        val set = WorkoutSetDraft(localId = "set", serverId = "server-set")
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(set))),
+        )
+        var selectedType: SetType? = null
+        var removed: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, setId -> removed = setId }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, setId, transform -> selectedType = transform(set).setType },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("1").performScrollTo().performClick()
+        composeRule.onNodeWithText("Serie normal").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie de calentamiento").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie fallida").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie drop").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie de calentamiento").performClick()
+        composeRule.runOnIdle { assertEquals(SetType.Warmup, selectedType) }
+
+        composeRule.onNodeWithText("1").performScrollTo().performClick()
+        composeRule.onNodeWithText("Eliminar serie").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assertEquals("set", removed) }
+    }
+
+    @Test
+    fun workoutRestLabelUsesCompactFormatsAcrossValues() {
+        val exercises = listOf(
+            "0" to "exercise0",
+            "30" to "exercise1",
+            "60" to "exercise2",
+            "90" to "exercise3",
+            "120" to "exercise4",
+        ).map { (rest, id) ->
+            workoutExerciseDraft(id, TEMPLATE, "Press $id").copy(restSeconds = rest)
+        }
+        val draft = WorkoutDraft("workout", "Fuerza", exercises = exercises)
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Descanso: Apagado").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Descanso: 30s").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Descanso: 1min 0s").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Descanso: 1min 30s").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Descanso: 2min 0s").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun workoutRestCompactLabelOpensTheSameSharedPicker() {
+        val exercise = workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(restSeconds = "120")
+        val draft = WorkoutDraft("workout", "Fuerza", exercises = listOf(exercise))
+        var updatedRest: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> },
+                    onUpdateExercise = { _, transform -> updatedRest = transform(exercise).restSeconds },
+                    onAddSet = {}, onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {}, onDiscard = {},
+                    onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Descanso: 2min 0s").assertIsDisplayed()
+        composeRule.onNodeWithTag("workout_rest_exercise").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workout_rest_exercise_value_120").assertIsSelected()
+        composeRule.onNodeWithTag("workout_rest_exercise_value_125").performClick()
+        composeRule.onNodeWithTag("workout_rest_exercise_confirm").performClick()
+        composeRule.runOnIdle { assertEquals("125", updatedRest) }
+    }
+
+    @Test
+    fun completingSetShowsTickAndUncompletingRemovesIt() {
+        val set = WorkoutSetDraft(localId = "set", serverId = "server-set")
+        var completed by mutableStateOf(false)
+        composeRule.setContent {
+            GYmAppTheme {
+                val currentSet = set.copy(completed = completed)
+                val draft = WorkoutDraft(
+                    workoutId = "workout", title = "Fuerza",
+                    exercises = listOf(
+                        workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(currentSet)),
+                    ),
+                )
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, setId, transform -> completed = transform(currentSet).completed },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("set_complete_tick_set", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("set_complete_set").performScrollTo().performClick()
+        composeRule.onNodeWithTag("set_complete_tick_set", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("set_complete_set").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("set_complete_tick_set", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(false, completed)
+        }
+    }
+
+    @Test
+    fun completedHeaderAddsCheckColumnOverTheToggles() {
+        val set = WorkoutSetDraft(localId = "set", serverId = "server-set")
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(set))),
+        )
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("set_complete_header").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("✓").assertIsDisplayed()
+        composeRule.onNodeWithTag("set_complete_set").assertIsDisplayed()
+    }
+
+    @Test
+    fun completedRowBackgroundSpansFullWidthWhileColumnsStayAligned() {
+        val set = WorkoutSetDraft(
+            localId = "set", serverId = "server-set",
+            weight = "100", reps = "12", completed = true,
+        )
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(set))),
+        )
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        val rootWidth = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
+        val background = composeRule.onNodeWithTag("set_row_background_set")
+            .performScrollTo()
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val header = composeRule.onNodeWithTag("set_complete_header")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val toggle = composeRule.onNodeWithTag("set_complete_set")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val contentInsetPx = with(composeRule.density) { 20.dp.toPx() }
+
+        assertTrue(
+            "completed band should start at the left screen edge, got ${background.left}",
+            background.left <= 1f,
+        )
+        assertTrue(
+            "completed band should reach the right screen edge (${rootWidth}), got ${background.right}",
+            kotlin.math.abs(background.right - rootWidth) <= 1f,
+        )
+        assertTrue(
+            "header should be inset ${contentInsetPx}px from the band, got ${background.right - header.right}",
+            kotlin.math.abs((background.right - header.right) - contentInsetPx) <= 2f,
+        )
+        assertTrue(
+            "row content should be inset ${contentInsetPx}px from the band, got ${background.right - toggle.right}",
+            kotlin.math.abs((background.right - toggle.right) - contentInsetPx) <= 2f,
+        )
+        assertTrue(
+            "row columns should stay aligned with the header, toggle ${toggle.left} vs header ${header.left}",
+            kotlin.math.abs(toggle.left - header.left) <= 1f,
+        )
+    }
+
+    @Test
+    fun completedRowKeepsMetricsAndSetTypeSemantics() {
+        val set = WorkoutSetDraft(
+            localId = "set", serverId = "server-set",
+            weight = "100", reps = "12", setType = SetType.Drop, completed = true,
+        )
+        val previous = PreviousPerformanceItem(
+            TEMPLATE,
+            PreviousExercisePerformance(
+                "workout-old", Instant.EPOCH, "Press", ExerciseType.WeightReps,
+                listOf(PreviousPerformanceSet(1, 1, SetType.Normal, 8, BigDecimal("80"), null, null, null)),
+            ),
+        )
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = listOf(set))),
+        )
+        var transformed: WorkoutSetDraft? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft, previousPerformance = listOf(previous))),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, transform -> transformed = transform(set) },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("previous_set").performScrollTo()
+        composeRule.onNodeWithText("100").assertIsDisplayed()
+        composeRule.onNodeWithText("12").assertIsDisplayed()
+        composeRule.onNodeWithText("80 kg × 8", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Serie 1: drop").assertIsDisplayed()
+        composeRule.onNodeWithText("D").assertIsDisplayed()
+        composeRule.onNodeWithTag("set_complete_set").assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            assertEquals(false, transformed?.completed)
+            assertEquals("100", transformed?.weight)
+            assertEquals("12", transformed?.reps)
+            assertEquals(SetType.Drop, transformed?.setType)
+        }
+    }
+
+    @Test
+    fun setTypeGlyphsKeepTheirMeaningAndDropStaysDrop() {
+        val sets = listOf(
+            WorkoutSetDraft(localId = "a", serverId = "s1"),
+            WorkoutSetDraft(localId = "b", serverId = "s2", setType = SetType.Warmup),
+            WorkoutSetDraft(localId = "c", serverId = "s3", setType = SetType.Failure),
+            WorkoutSetDraft(localId = "d", serverId = "s4", setType = SetType.Drop),
+        )
+        val draft = WorkoutDraft(
+            workoutId = "workout", title = "Fuerza",
+            exercises = listOf(workoutExerciseDraft("exercise", TEMPLATE, "Press").copy(sets = sets)),
+        )
+        var updatedType: SetType? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, setId, transform ->
+                        updatedType = transform(sets.first { it.localId == setId }).setType
+                    },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("1").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("W").assertIsDisplayed()
+        composeRule.onNodeWithText("F").assertIsDisplayed()
+        composeRule.onNodeWithText("D").assertIsDisplayed()
+        composeRule.onNodeWithText("D").performClick()
+        composeRule.onNodeWithText("Serie drop").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie normal").performClick()
+        composeRule.runOnIdle { assertEquals(SetType.Normal, updatedType) }
     }
 
     private fun workoutExerciseDraft(id: String, template: String, name: String) = WorkoutExerciseDraft(

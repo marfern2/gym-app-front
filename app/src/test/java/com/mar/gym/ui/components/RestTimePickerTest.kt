@@ -14,6 +14,16 @@ class RestTimePickerTest {
     }
 
     @Test
+    fun `workout label uses compact seconds and explicit minutes`() {
+        assertEquals("Apagado", formatWorkoutRestSeconds(0))
+        assertEquals("30s", formatWorkoutRestSeconds(30))
+        assertEquals("1min 0s", formatWorkoutRestSeconds(60))
+        assertEquals("1min 30s", formatWorkoutRestSeconds(90))
+        assertEquals("2min 0s", formatWorkoutRestSeconds(120))
+        assertEquals("2min 5s", formatWorkoutRestSeconds(125))
+    }
+
+    @Test
     fun `options cover the existing domain in five second increments`() {
         assertEquals(0, restSecondsOptions.first())
         assertEquals(3_600, restSecondsOptions.last())

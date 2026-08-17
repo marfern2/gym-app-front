@@ -115,6 +115,102 @@ class ManualWorkoutClockStateTest {
         assertEquals(7_500L, state.snapshot().timerRemainingMillis)
         assertEquals(0.5f, timerProgress(state.snapshot().timerRemainingMillis, state.snapshot().timerConfiguredMillis))
     }
+
+    @Test
+    fun `cancelTimer stops the countdown and restores the configured duration`() {
+        state.adjustTimerSeconds(15L)
+        state.startTimer()
+        clock.advanceMillis(5_000L)
+        assertTrue(state.snapshot().timerRunning)
+        assertEquals(10_000L, state.snapshot().timerRemainingMillis)
+
+        state.cancelTimer()
+        assertFalse(state.snapshot().timerRunning)
+        assertEquals(15_000L, state.snapshot().timerRemainingMillis)
+        assertEquals(15_000L, state.snapshot().timerConfiguredMillis)
+
+        clock.advanceMillis(10_000L)
+        assertEquals(15_000L, state.snapshot().timerRemainingMillis)
+        assertEquals(15_000L, state.snapshot().timerConfiguredMillis)
+        assertFalse(state.snapshot().timerRunning)
+    }
+
+    @Test
+    fun `plus fifteen while running adds to remaining and configured`() {
+        state.adjustTimerSeconds(30L)
+        state.startTimer()
+        clock.advanceMillis(20_000L)
+        state.adjustTimerSeconds(15L)
+        val snapshot = state.snapshot()
+        assertEquals(25_000L, snapshot.timerRemainingMillis)
+        assertEquals(45_000L, snapshot.timerConfiguredMillis)
+        assertTrue(snapshot.timerRunning)
+    }
+
+    @Test
+    fun `minus fifteen while running removes from remaining and configured`() {
+        state.adjustTimerSeconds(30L)
+        state.startTimer()
+        clock.advanceMillis(10_000L)
+        state.adjustTimerSeconds(-15L)
+        val snapshot = state.snapshot()
+        assertEquals(5_000L, snapshot.timerRemainingMillis)
+        assertEquals(15_000L, snapshot.timerConfiguredMillis)
+        assertTrue(snapshot.timerRunning)
+    }
+
+    @Test
+    fun `minus fifteen while running never goes below zero and stops the timer`() {
+        state.adjustTimerSeconds(15L)
+        state.startTimer()
+        clock.advanceMillis(5_000L)
+        state.adjustTimerSeconds(-15L)
+        val snapshot = state.snapshot()
+        assertEquals(0L, snapshot.timerRemainingMillis)
+        assertFalse(snapshot.timerRunning)
+
+        clock.advanceMillis(1_000L)
+        assertEquals(0L, state.snapshot().timerRemainingMillis)
+        assertFalse(state.snapshot().timerRunning)
+    }
+
+    @Test
+    fun `adjustments while running keep the circular progress within zero one`() {
+        state.adjustTimerSeconds(120L)
+        state.startTimer()
+        clock.advanceMillis(25_000L)
+        state.adjustTimerSeconds(15L)
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        val snapshot = state.snapshot()
+        val progress = timerProgress(snapshot.timerRemainingMillis, snapshot.timerConfiguredMillis)
+        assertTrue(progress in 0f..1f)
+
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        state.adjustTimerSeconds(-15L)
+        val exhausted = state.snapshot()
+        val exhaustedProgress = timerProgress(exhausted.timerRemainingMillis, exhausted.timerConfiguredMillis)
+        assertTrue(exhaustedProgress in 0f..1f)
+        assertEquals(0L, exhausted.timerRemainingMillis)
+        assertFalse(exhausted.timerRunning)
+    }
+
+    @Test
+    fun `stopwatch is not affected by timer adjustments or cancellation`() {
+        state.adjustTimerSeconds(15L)
+        state.startTimer()
+        state.startStopwatch()
+        clock.advanceMillis(2_500L)
+        state.adjustTimerSeconds(15L)
+        state.adjustTimerSeconds(-15L)
+        state.cancelTimer()
+        assertEquals(2_500L, state.snapshot().stopwatchElapsedMillis)
+        assertEquals(StopwatchStatus.Running, state.snapshot().stopwatchStatus)
+    }
 }
 
 private class MutableClock(

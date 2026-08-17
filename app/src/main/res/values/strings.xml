@@ -154,7 +154,9 @@
     <string name="workout_no_exercises">Este entrenamiento no contiene ejercicios.</string>
     <string name="workout_add_exercises">Añadir ejercicios</string>
     <string name="workout_add_set">Añadir serie</string>
-    <string name="workout_exercise_notes_label">Notas del ejercicio</string>
+    <string name="workout_exercise_notes_hint">Añadir notas…</string>
+    <string name="workout_rest_off">Descanso: Apagado</string>
+    <string name="workout_rest_time">Descanso: %1$s</string>
     <string name="workout_result_reps">Repeticiones realizadas</string>
     <string name="workout_result_weight">Peso realizado</string>
     <string name="workout_result_duration">Duración realizada (segundos)</string>
@@ -440,6 +442,7 @@
     <string name="workout_clock_minus_fifteen">-15 s</string>
     <string name="workout_clock_plus_fifteen">+15 s</string>
     <string name="workout_clock_start">Empezar</string>
+    <string name="workout_clock_cancel">Cancelar</string>
     <string name="workout_clock_stop">Stop</string>
     <string name="workout_clock_reset">Reiniciar</string>
     <string name="workout_unsaved_badge">Sin guardar</string>
