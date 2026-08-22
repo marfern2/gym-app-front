@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#FF8C9AFF</color>
+    <color name="notification_progress_track">#FF464B5E</color>
+    <color name="notification_thumbnail_background">#FF232735</color>
+</resources>

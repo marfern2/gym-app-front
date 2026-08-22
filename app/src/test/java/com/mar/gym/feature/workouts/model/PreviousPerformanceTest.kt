@@ -42,6 +42,40 @@ class PreviousPerformanceTest {
     }
 
     @Test
+    fun `matches template occurrence when current exercise order differs from previous workout`() {
+        val draft = draft(
+            exercise("b", TEMPLATE_B, ExerciseType.BodyweightReps, "b1"),
+            exercise("a", TEMPLATE_A, ExerciseType.WeightReps, "a1"),
+        )
+        val history = listOf(
+            item(TEMPLATE_B, set(2, 1, reps = 12)),
+            item(TEMPLATE_A, set(1, 1, reps = 8)),
+        )
+
+        assertEquals(12, previousSetFor(draft, history, "b", "b1")?.reps)
+        assertEquals(8, previousSetFor(draft, history, "a", "a1")?.reps)
+    }
+
+    @Test
+    fun `matches available repeated occurrences when workout repetition counts differ`() {
+        val fewerCurrent = draft(
+            exercise("a1", TEMPLATE_A, ExerciseType.WeightReps, "a11"),
+        )
+        val morePrevious = listOf(
+            item(TEMPLATE_A, set(1, 1, reps = 8), set(3, 1, reps = 4)),
+        )
+        assertEquals(8, previousSetFor(fewerCurrent, morePrevious, "a1", "a11")?.reps)
+
+        val moreCurrent = draft(
+            exercise("a1", TEMPLATE_A, ExerciseType.WeightReps, "a11"),
+            exercise("a2", TEMPLATE_A, ExerciseType.WeightReps, "a21"),
+        )
+        val fewerPrevious = listOf(item(TEMPLATE_A, set(2, 1, reps = 6)))
+        assertNull(previousSetFor(moreCurrent, fewerPrevious, "a1", "a11"))
+        assertEquals(6, previousSetFor(moreCurrent, fewerPrevious, "a2", "a21")?.reps)
+    }
+
+    @Test
     fun `formats every exercise type from actual values only`() {
         assertEquals("80 kg × 8", formatPreviousPerformance(ExerciseType.WeightReps, set(1, 1, 8, "80")))
         assertEquals("12 reps", formatPreviousPerformance(ExerciseType.BodyweightReps, set(1, 1, 12)))

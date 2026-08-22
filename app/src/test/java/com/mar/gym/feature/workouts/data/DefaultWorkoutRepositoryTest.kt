@@ -10,6 +10,8 @@ import com.mar.gym.feature.workouts.model.WorkoutEtag
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -111,6 +113,53 @@ class DefaultWorkoutRepositoryTest {
         assertFalse(body.contains("targetWeight"))
         assertEquals(8, result.value.etag.version)
         assertEquals(NEW_SET_ID, result.value.detail.exercises.single().sets.last().id)
+    }
+
+    @Test
+    fun `update sends only the actual metrics for every exercise type`() = runBlocking {
+        server.enqueue(jsonResponse(detailJson(version = 8), etag = "\"8\""))
+        val setsByType = linkedMapOf(
+            ExerciseType.WeightReps to WorkoutSetDraft("s0", null, reps = "8", weight = "80", rpe = "8", completed = true),
+            ExerciseType.BodyweightReps to WorkoutSetDraft("s1", null, reps = "12", rpe = "8", completed = true),
+            ExerciseType.WeightedBodyweight to WorkoutSetDraft("s2", null, reps = "6", weight = "20", rpe = "8", completed = true),
+            ExerciseType.AssistedBodyweight to WorkoutSetDraft("s3", null, reps = "10", weight = "30", rpe = "8", completed = true),
+            ExerciseType.Duration to WorkoutSetDraft("s4", null, durationSeconds = "90", rpe = "8", completed = true),
+            ExerciseType.DistanceDuration to WorkoutSetDraft(
+                "s5", null, durationSeconds = "120", distanceMeters = "500", rpe = "8", completed = true,
+            ),
+            ExerciseType.WeightDistance to WorkoutSetDraft(
+                "s6", null, weight = "25", distanceMeters = "40", rpe = "8", completed = true,
+            ),
+        )
+        val draft = WorkoutDraft(
+            WORKOUT_ID,
+            "Workout",
+            exercises = setsByType.entries.mapIndexed { index, (type, set) ->
+                WorkoutExerciseDraft(
+                    "exercise-$index", null,
+                    "00000000-0000-4000-8000-${(index + 20).toString().padStart(12, '0')}",
+                    type.name, type, Equipment.None, restSeconds = "90", sets = listOf(set),
+                )
+            },
+        )
+
+        repository().updateWorkout(WORKOUT_ID, draft, WorkoutEtag.fromVersion(7)!!)
+        val payload = NetworkJson.instance.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val serializedSets = payload.getValue("exercises").jsonArray.map { exercise ->
+            exercise.jsonObject.getValue("sets").jsonArray.single().jsonObject
+        }
+        val actualKeys = setOf("reps", "weight", "durationSeconds", "distanceMeters", "rpe")
+        val expectedKeys = listOf(
+            setOf("reps", "weight", "rpe"),
+            setOf("reps", "rpe"),
+            setOf("reps", "weight", "rpe"),
+            setOf("reps", "weight", "rpe"),
+            setOf("durationSeconds", "rpe"),
+            setOf("durationSeconds", "distanceMeters", "rpe"),
+            setOf("weight", "distanceMeters", "rpe"),
+        )
+
+        assertEquals(expectedKeys, serializedSets.map { it.keys.intersect(actualKeys) })
     }
 
     @Test

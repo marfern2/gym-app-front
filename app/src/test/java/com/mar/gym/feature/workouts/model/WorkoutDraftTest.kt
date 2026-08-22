@@ -135,6 +135,32 @@ class WorkoutDraftTest {
     }
 
     @Test
+    fun `changing exercise type retains only compatible actuals and valid completion`() {
+        val original = WorkoutSetDraft(
+            "set", null, SetType.Drop,
+            reps = "8", weight = "20", durationSeconds = "60", distanceMeters = "500",
+            rpe = "8.5", completed = true,
+        )
+
+        val bodyweight = original.retainActualsSupportedBy(ExerciseType.BodyweightReps)
+        assertEquals("8", bodyweight.reps)
+        assertEquals("", bodyweight.weight)
+        assertEquals("", bodyweight.durationSeconds)
+        assertEquals("", bodyweight.distanceMeters)
+        assertEquals("8.5", bodyweight.rpe)
+        assertEquals(SetType.Drop, bodyweight.setType)
+        assertTrue(bodyweight.completed)
+
+        val duration = original.retainActualsSupportedBy(ExerciseType.Duration)
+        assertEquals("60", duration.durationSeconds)
+        assertTrue(duration.completed)
+
+        val missingDuration = original.copy(durationSeconds = "")
+            .retainActualsSupportedBy(ExerciseType.Duration)
+        assertFalse(missingDuration.completed)
+    }
+
+    @Test
     fun `completed sets progress derives from completed over total and reacts to toggles`() {
         val draft = WorkoutDraft(
             WORKOUT_ID,

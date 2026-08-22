@@ -16,6 +16,14 @@ interface AnalyticsApi {
     suspend fun calendar(@Query("month") month: String, @Query("timezone") timezone: String): Response<CalendarDto>
 
     @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
+    @GET("api/v1/analytics/calendar")
+    suspend fun calendarRange(
+        @Query("from") from: String,
+        @Query("to") to: String,
+        @Query("timezone") timezone: String,
+    ): Response<CalendarDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
     @GET("api/v1/analytics/summary")
     suspend fun summary(@Query("period") period: String, @Query("timezone") timezone: String): Response<SummaryDto>
 

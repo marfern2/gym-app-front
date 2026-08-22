@@ -16,10 +16,28 @@ fun previousSetFor(
     val exercise = draft.exercises[exerciseIndex]
     val setPosition = exercise.sets.indexOfFirst { it.localId == setLocalId } + 1
     if (setPosition <= 0) return null
-    return performances.firstOrNull { it.exerciseTemplateId == exercise.exerciseTemplateId }
-        ?.previousPerformance?.sets?.firstOrNull {
-            it.workoutExercisePosition == exerciseIndex + 1 && it.setPosition == setPosition
+    val previousSets = performances.firstOrNull { it.exerciseTemplateId == exercise.exerciseTemplateId }
+        ?.previousPerformance?.sets.orEmpty()
+    val currentOccurrences = draft.exercises.withIndex().filter {
+        it.value.exerciseTemplateId == exercise.exerciseTemplateId
+    }
+    val previousPositions = previousSets.map { it.workoutExercisePosition }.distinct()
+    val exactPositions = currentOccurrences.map { it.index + 1 }.intersect(previousPositions.toSet())
+    val unmatchedPrevious = previousPositions.filterNot(exactPositions::contains).iterator()
+    val previousPositionByCurrentId = currentOccurrences.associate { current ->
+        val currentPosition = current.index + 1
+        current.value.localId to if (currentPosition in exactPositions) {
+            currentPosition
+        } else if (unmatchedPrevious.hasNext()) {
+            unmatchedPrevious.next()
+        } else {
+            null
         }
+    }
+    val previousExercisePosition = previousPositionByCurrentId[exerciseLocalId] ?: return null
+    return previousSets.firstOrNull {
+        it.workoutExercisePosition == previousExercisePosition && it.setPosition == setPosition
+    }
 }
 
 fun formatPreviousPerformance(type: ExerciseType, set: PreviousPerformanceSet?): String {

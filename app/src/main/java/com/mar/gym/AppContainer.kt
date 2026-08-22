@@ -39,6 +39,10 @@ import com.mar.gym.feature.workouts.data.DefaultWorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutApi
 import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutMutationSession
+import com.mar.gym.feature.workouts.rest.AndroidRestTimerNotifier
+import com.mar.gym.feature.workouts.rest.HandlerRestTimerScheduler
+import com.mar.gym.feature.workouts.rest.RestTimerAction
+import com.mar.gym.feature.workouts.rest.RestTimerController
 import java.time.Clock
 
 object AppContainer {
@@ -124,6 +128,22 @@ object AppContainer {
             workoutApi,
             WorkoutMutationSession(sessionStore, refreshCoordinator, clock),
         )
+    }
+
+    val restTimerController: RestTimerController by lazy {
+        check(::applicationContext.isInitialized) { "AppContainer must be initialized first" }
+        RestTimerController(
+            clock = clock,
+            scheduler = HandlerRestTimerScheduler(),
+            notifier = AndroidRestTimerNotifier(applicationContext, exerciseMediaImageLoader),
+        )
+    }
+
+    /** Returns false when a receiver was recreated after the process-local timer was lost. */
+    fun handleRestTimerAction(action: RestTimerAction): Boolean {
+        if (restTimerController.active.value == null) return false
+        restTimerController.handle(action)
+        return true
     }
 
     private val analyticsApi: AnalyticsApi by lazy { protectedApi(AnalyticsApi::class.java) }

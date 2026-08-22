@@ -14,6 +14,7 @@ import com.mar.gym.feature.measurements.model.BodyMeasurementDocument
 import com.mar.gym.feature.measurements.model.BodyMeasurementDraft
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
 import com.mar.gym.feature.measurements.model.validate
+import com.mar.gym.feature.progress.model.HistoryRange
 import java.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +25,8 @@ import kotlinx.coroutines.launch
 data class MeasurementUiState(
     val loading: Boolean = true,
     val items: List<BodyMeasurement> = emptyList(),
-    val filter: BodyMeasurementType? = null,
+    val filter: BodyMeasurementType = BodyMeasurementType.BodyWeight,
+    val selectedRange: HistoryRange = HistoryRange.ThreeMonths,
     val nextPage: Int = 0,
     val hasMore: Boolean = true,
     val loadingMore: Boolean = false,
@@ -55,10 +57,14 @@ class MeasurementViewModel(
         loadPage(0)
     }
 
-    fun selectFilter(type: BodyMeasurementType?) {
+    fun selectFilter(type: BodyMeasurementType) {
         if (type == _uiState.value.filter) return
         _uiState.value = _uiState.value.copy(filter = type)
         refresh()
+    }
+
+    fun selectRange(range: HistoryRange) {
+        _uiState.value = _uiState.value.copy(selectedRange = range)
     }
 
     fun loadMore() {
@@ -74,7 +80,7 @@ class MeasurementViewModel(
         else _uiState.value.copy(loadingMore = true, listError = null)
         val filter = _uiState.value.filter
         listJob = viewModelScope.launch {
-            when (val result = repository.list(filter, page)) {
+            when (val result = repository.list(filter, page, PAGE_SIZE)) {
                 is MeasurementResult.Failure -> _uiState.value = _uiState.value.copy(
                     loading = false, loadingMore = false, listError = result.error,
                 )
@@ -90,6 +96,7 @@ class MeasurementViewModel(
                             loading = false, loadingMore = false, items = items,
                             nextPage = page + 1, hasMore = !result.value.last,
                         )
+                        if (!result.value.last) loadPage(page + 1)
                     }
                 }
             }
@@ -202,3 +209,5 @@ class MeasurementViewModelFactory(
         return MeasurementViewModel(repository, clock) as T
     }
 }
+
+private const val PAGE_SIZE = 100

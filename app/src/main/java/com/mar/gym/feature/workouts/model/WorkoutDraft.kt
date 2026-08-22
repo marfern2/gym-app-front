@@ -198,6 +198,27 @@ data class WorkoutSetDraft(
     val completed: Boolean = false,
 )
 
+internal fun WorkoutSetDraft.retainActualsSupportedBy(type: ExerciseType): WorkoutSetDraft {
+    val compatible = copy(
+        reps = reps.takeIf { type in REP_TYPES }.orEmpty(),
+        weight = weight.takeIf { type in WEIGHT_TYPES }.orEmpty(),
+        durationSeconds = durationSeconds.takeIf { type in DURATION_TYPES }.orEmpty(),
+        distanceMeters = distanceMeters.takeIf { type in DISTANCE_TYPES }.orEmpty(),
+    )
+    if (!compatible.completed) return compatible
+    val hasRequiredActuals = when (type) {
+        ExerciseType.WeightReps,
+        ExerciseType.WeightedBodyweight,
+        ExerciseType.AssistedBodyweight -> compatible.weight.isNotBlank() && compatible.reps.isNotBlank()
+        ExerciseType.BodyweightReps -> compatible.reps.isNotBlank()
+        ExerciseType.Duration -> compatible.durationSeconds.isNotBlank()
+        ExerciseType.DistanceDuration ->
+            compatible.distanceMeters.isNotBlank() && compatible.durationSeconds.isNotBlank()
+        ExerciseType.WeightDistance -> compatible.weight.isNotBlank() && compatible.distanceMeters.isNotBlank()
+    }
+    return compatible.copy(completed = hasRequiredActuals)
+}
+
 data class WorkoutDraftValidation(val fieldErrors: Map<String, String>) {
     val isValid: Boolean get() = fieldErrors.isEmpty()
 }

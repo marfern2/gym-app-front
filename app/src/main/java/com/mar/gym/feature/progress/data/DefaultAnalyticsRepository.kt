@@ -32,6 +32,11 @@ class DefaultAnalyticsRepository(private val api: AnalyticsApi) : AnalyticsRepos
         validateZone(timezone)?.let { { api.calendar(month.toString(), it) } },
     ) { dto -> dto.toDomain() }
 
+    override suspend fun calendar(from: LocalDate, to: LocalDate, timezone: String) = request(
+        validateZone(timezone)?.takeIf { !to.isBefore(from) && java.time.temporal.ChronoUnit.DAYS.between(from, to) < 366 }
+            ?.let { { api.calendarRange(from.toString(), to.toString(), it) } },
+    ) { dto -> dto.toDomain() }
+
     override suspend fun summary(period: AnalyticsPeriod, timezone: String) = request(
         validateZone(timezone)?.let { { api.summary(period.apiValue, it) } },
     ) { it.toDomain() }

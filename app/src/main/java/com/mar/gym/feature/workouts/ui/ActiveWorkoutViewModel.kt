@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.exercises.model.ExerciseMediaRole
+import com.mar.gym.feature.exercises.model.ExerciseMediaType
+import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.isSelectable
 import com.mar.gym.feature.routines.model.LocalIdSource
 import com.mar.gym.feature.routines.model.RandomLocalIdSource
@@ -18,8 +21,13 @@ import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.retainActualsSupportedBy
 import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.feature.workouts.model.validate
+import com.mar.gym.feature.workouts.rest.RestTimerAction
+import com.mar.gym.feature.workouts.rest.RestTimerController
+import com.mar.gym.feature.workouts.rest.RestTimerSetContext
+import java.math.BigDecimal
 import java.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,11 +40,13 @@ class ActiveWorkoutViewModel(
     private val exerciseRepository: ExerciseTemplateRepository,
     private val analyticsRepository: AnalyticsRepository,
     val clock: Clock = Clock.systemUTC(),
+    private val restTimerController: RestTimerController,
     private val ids: LocalIdSource = RandomLocalIdSource,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<ActiveWorkoutUiState>(ActiveWorkoutUiState.Loading())
     val uiState: StateFlow<ActiveWorkoutUiState> = _uiState.asStateFlow()
     internal val manualClockState = ManualWorkoutClockState(clock)
+    val restTimer = restTimerController.active
     private var baseline: WorkoutDraft? = null
     private var loadJob: Job? = null
     private var previousJob: Job? = null
@@ -56,6 +66,7 @@ class ActiveWorkoutViewModel(
                     _uiState.value = if (result.error.isNoActiveWorkout()) {
                         baseline = null
                         manualClockState.clear()
+                        restTimerController.bindWorkout(null)
                         ActiveWorkoutUiState.NoActiveWorkout()
                     } else ActiveWorkoutUiState.Error(retained, result.error.toWorkoutUiError())
                 }
@@ -118,8 +129,80 @@ class ActiveWorkoutViewModel(
         exerciseId: String,
         setId: String,
         transform: (WorkoutSetDraft) -> WorkoutSetDraft,
-    ) = updateExercise(exerciseId) { exercise ->
-        exercise.copy(sets = exercise.sets.map { if (it.localId == setId) transform(it) else it })
+    ) {
+        val state = _uiState.value as? ActiveWorkoutUiState.Active ?: return
+        val draft = state.data.draft ?: return
+        val exercise = draft.exercises.firstOrNull { it.localId == exerciseId } ?: return
+        val previous = exercise.sets.firstOrNull { it.localId == setId } ?: return
+        val updated = transform(previous)
+        if (updated == previous) return
+
+        val updatedDraft = draft.copy(
+            exercises = draft.exercises.map { item ->
+                if (item.localId != exerciseId) item else item.copy(
+                    sets = item.sets.map { set -> if (set.localId == setId) updated else set },
+                )
+            },
+        )
+        publishDraft(updatedDraft)
+
+        when {
+            !previous.completed && updated.completed -> {
+                val completedSet = updatedDraft.restTimerSetContext(exercise.localId, previous.localId)
+                val upcomingSet = updatedDraft.nextRestTimerSetContext(exercise.localId, previous.localId)
+                val restDurationSeconds = exercise.restSeconds.toIntOrNull().orZero()
+                restTimerController.replaceFromCompletedSet(
+                    workoutId = draft.workoutId,
+                    exerciseLocalId = exercise.localId,
+                    exerciseName = exercise.exerciseNameSnapshot,
+                    setLocalId = previous.localId,
+                    durationSeconds = restDurationSeconds,
+                    completedSet = completedSet,
+                    upcomingSet = upcomingSet,
+                )
+                (upcomingSet ?: completedSet)?.takeIf { restDurationSeconds > 0 }?.let { context ->
+                    loadRestTimerThumbnail(
+                        workoutId = draft.workoutId,
+                        originExerciseLocalId = exercise.localId,
+                        originSetLocalId = previous.localId,
+                        exerciseTemplateId = context.exerciseTemplateId,
+                    )
+                }
+            }
+            previous.completed && !updated.completed -> restTimerController.cancelIfOrigin(
+                workoutId = draft.workoutId,
+                exerciseLocalId = exercise.localId,
+                setLocalId = previous.localId,
+            )
+        }
+    }
+
+    fun adjustRestTimerSeconds(deltaSeconds: Int) = restTimerController.adjustSeconds(deltaSeconds)
+    fun skipRestTimer() = restTimerController.handle(RestTimerAction.Skip)
+    fun refreshRestTimerNotification() = restTimerController.refreshNotification()
+
+    private fun loadRestTimerThumbnail(
+        workoutId: String,
+        originExerciseLocalId: String,
+        originSetLocalId: String,
+        exerciseTemplateId: String,
+    ) {
+        viewModelScope.launch {
+            val result = exerciseRepository.getExerciseTemplate(exerciseTemplateId)
+            if (result !is ExerciseRepositoryResult.Success) return@launch
+            val media = result.value.detail.media.firstOrNull {
+                it.role == ExerciseMediaRole.Thumbnail && it.type != ExerciseMediaType.Video
+            } ?: result.value.detail.media.firstOrNull { it.type == ExerciseMediaType.Image }
+                ?: result.value.detail.media.firstOrNull { it.type == ExerciseMediaType.AnimatedGif }
+                ?: return@launch
+            restTimerController.updateThumbnailIfOrigin(
+                workoutId = workoutId,
+                exerciseLocalId = originExerciseLocalId,
+                setLocalId = originSetLocalId,
+                exerciseTemplateId = exerciseTemplateId,
+                thumbnailUrl = media.url.value,
+            )
+        }
     }
 
     fun addSelectedExercises(selectedIds: Set<String>) {
@@ -184,6 +267,9 @@ class ActiveWorkoutViewModel(
                                 exerciseNameSnapshot = detail.name,
                                 exerciseTypeSnapshot = detail.exerciseType,
                                 equipmentSnapshot = detail.equipment,
+                                sets = item.sets.map { set ->
+                                    set.retainActualsSupportedBy(detail.exerciseType)
+                                },
                             )
                         },
                     )
@@ -268,6 +354,7 @@ class ActiveWorkoutViewModel(
                     previousJob?.cancel()
                     retryAction = null
                     manualClockState.clear()
+                    restTimerController.cancel()
                     _uiState.value = ActiveWorkoutUiState.Completed(summary = detail.toSummary())
                 }
             }
@@ -279,6 +366,7 @@ class ActiveWorkoutViewModel(
         baseline = null
         retryAction = null
         manualClockState.clear()
+        restTimerController.cancel()
         _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
     }
 
@@ -294,6 +382,7 @@ class ActiveWorkoutViewModel(
                     baseline = null
                     retryAction = null
                     manualClockState.clear()
+                    restTimerController.cancel()
                     _uiState.value = ActiveWorkoutUiState.NoActiveWorkout()
                 }
                 is WorkoutRepositoryResult.Failure -> publishFailure(data, draft, result)
@@ -381,6 +470,7 @@ class ActiveWorkoutViewModel(
         }
         val draft = WorkoutDraft.from(document, ids)
         manualClockState.bindWorkout(draft.workoutId)
+        restTimerController.bindWorkout(draft.workoutId)
         baseline = draft
         retryAction = null
         _uiState.value = ActiveWorkoutUiState.Active(
@@ -439,10 +529,114 @@ class ActiveWorkoutViewModelFactory(
     private val exerciseRepository: ExerciseTemplateRepository,
     private val analyticsRepository: AnalyticsRepository,
     private val clock: Clock,
+    private val restTimerController: RestTimerController,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ActiveWorkoutViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return ActiveWorkoutViewModel(repository, exerciseRepository, analyticsRepository, clock) as T
+        return ActiveWorkoutViewModel(
+            repository,
+            exerciseRepository,
+            analyticsRepository,
+            clock,
+            restTimerController,
+        ) as T
+    }
+}
+
+private fun Int?.orZero(): Int = this ?: 0
+
+internal fun WorkoutDraft.nextRestTimerSetContext(
+    originExerciseLocalId: String,
+    originSetLocalId: String,
+): RestTimerSetContext? {
+    val originExerciseIndex = exercises.indexOfFirst { it.localId == originExerciseLocalId }
+    if (originExerciseIndex < 0) return null
+    val originSetIndex = exercises[originExerciseIndex].sets.indexOfFirst { it.localId == originSetLocalId }
+    if (originSetIndex < 0) return null
+
+    val ordered = buildList {
+        exercises.forEachIndexed { exerciseIndex, exercise ->
+            exercise.sets.forEachIndexed { setIndex, set ->
+                add(Triple(exerciseIndex, setIndex, set))
+            }
+        }
+    }
+    val originIndex = ordered.indexOfFirst { (exerciseIndex, setIndex) ->
+        exerciseIndex == originExerciseIndex && setIndex == originSetIndex
+    }
+    val next = ordered.drop(originIndex + 1).firstOrNull { !it.third.completed }
+        ?: ordered.take(originIndex).firstOrNull { !it.third.completed }
+        ?: return null
+    return restTimerSetContext(
+        exerciseLocalId = exercises[next.first].localId,
+        setLocalId = next.third.localId,
+    )
+}
+
+internal fun WorkoutDraft.restTimerSetContext(
+    exerciseLocalId: String,
+    setLocalId: String,
+): RestTimerSetContext? {
+    val exercise = exercises.firstOrNull { it.localId == exerciseLocalId } ?: return null
+    val setIndex = exercise.sets.indexOfFirst { it.localId == setLocalId }
+    if (setIndex < 0) return null
+    return RestTimerSetContext(
+        exerciseTemplateId = exercise.exerciseTemplateId,
+        exerciseName = exercise.exerciseNameSnapshot,
+        setNumber = setIndex + 1,
+        totalSets = exercise.sets.size,
+        metricSummary = exercise.sets[setIndex].restTimerMetricSummary(exercise.exerciseTypeSnapshot),
+    )
+}
+
+internal fun WorkoutSetDraft.restTimerMetricSummary(type: ExerciseType): String? {
+    val weightValue = weight.trim().takeIf(String::isNotEmpty)
+        ?: targets.targetWeight.displayDecimal()
+    val repsValue = reps.trim().takeIf(String::isNotEmpty) ?: targets.repsDisplay()
+    val durationValue = durationSeconds.trim().takeIf(String::isNotEmpty)
+        ?: targets.targetDurationSeconds?.toString()
+    val distanceValue = distanceMeters.trim().takeIf(String::isNotEmpty)
+        ?: targets.targetDistanceMeters.displayDecimal()
+    return when (type) {
+        ExerciseType.WeightReps -> joinMetric(weightValue?.let { "$it kg" }, repsValue?.let { "$it reps" })
+        ExerciseType.BodyweightReps -> repsValue?.let { "$it reps" }
+        ExerciseType.WeightedBodyweight -> joinMetric(weightValue?.let { "+$it kg" }, repsValue?.let { "$it reps" })
+        ExerciseType.AssistedBodyweight -> joinMetric(
+            weightValue?.let { "$it kg asistencia" },
+            repsValue?.let { "$it reps" },
+        )
+        ExerciseType.Duration -> durationValue?.toLongOrNull()?.let(::formatRestMetricDuration)
+            ?: durationValue
+        ExerciseType.DistanceDuration -> joinMetric(
+            distanceValue?.let { "$it m" },
+            durationValue?.toLongOrNull()?.let(::formatRestMetricDuration) ?: durationValue,
+            separator = " / ",
+        )
+        ExerciseType.WeightDistance -> joinMetric(
+            weightValue?.let { "$it kg" },
+            distanceValue?.let { "$it m" },
+            separator = " / ",
+        )
+    }
+}
+
+private fun joinMetric(first: String?, second: String?, separator: String = " x "): String? =
+    listOfNotNull(first, second).joinToString(separator).takeIf(String::isNotEmpty)
+
+private fun com.mar.gym.feature.workouts.model.WorkoutSetTargets.repsDisplay(): String? = when {
+    targetRepsMin != null && targetRepsMax != null && targetRepsMin != targetRepsMax ->
+        "$targetRepsMin–$targetRepsMax"
+    else -> (targetRepsMin ?: targetRepsMax)?.toString()
+}
+
+private fun BigDecimal?.displayDecimal(): String? = this?.stripTrailingZeros()?.toPlainString()
+
+private fun formatRestMetricDuration(seconds: Long): String {
+    val safe = seconds.coerceAtLeast(0L)
+    return if (safe >= 3_600L) {
+        "%d:%02d:%02d".format(safe / 3_600L, (safe % 3_600L) / 60L, safe % 60L)
+    } else {
+        "%d:%02d".format(safe / 60L, safe % 60L)
     }
 }

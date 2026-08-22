@@ -5,23 +5,26 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.core.network.NetworkFailure
-import com.mar.gym.feature.measurements.data.MeasurementRepository
-import com.mar.gym.feature.measurements.data.MeasurementResult
-import com.mar.gym.feature.measurements.model.BodyMeasurement
 import com.mar.gym.feature.profile.data.ProfileRepository
 import com.mar.gym.feature.profile.data.ProfileResult
 import com.mar.gym.feature.profile.model.PrivateProfileDocument
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
+import com.mar.gym.feature.profile.model.ProfileActivityMetric
+import com.mar.gym.feature.profile.model.ProfileActivityPoint
 import com.mar.gym.feature.profile.model.validate
+import com.mar.gym.feature.profile.model.workoutActivityPoints
 import com.mar.gym.feature.progress.data.AnalyticsRepository
 import com.mar.gym.feature.progress.data.AnalyticsResult
 import com.mar.gym.feature.progress.data.TimeZoneProvider
 import com.mar.gym.feature.progress.model.AnalyticsPeriod
+import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.progress.model.MuscleDistribution
 import com.mar.gym.feature.progress.model.ProgressSummary
-import com.mar.gym.feature.progress.model.TrainingCalendar
+import com.mar.gym.feature.workouts.data.WorkoutRepository
+import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
+import com.mar.gym.feature.workouts.model.WorkoutDetail
+import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import java.time.Clock
-import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,57 +50,50 @@ data class ProfileUiState(
     val saving: Boolean = false,
     val conflict: Boolean = false,
     val usernameUnavailable: Boolean = false,
-    val selectedPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
-    val month: YearMonth,
-    val minMonth: YearMonth,
-    val maxMonth: YearMonth,
-    val calendar: ProfileSection<TrainingCalendar> = ProfileSection.Loading,
+    val selectedActivityMetric: ProfileActivityMetric = ProfileActivityMetric.Duration,
+    val selectedActivityRange: HistoryRange = HistoryRange.ThreeMonths,
+    val activity: ProfileSection<List<ProfileActivityPoint>> = ProfileSection.Loading,
+    val workouts: ProfileSection<List<WorkoutHistoryItem>> = ProfileSection.Loading,
+    val selectedStatsPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
     val summary: ProfileSection<ProgressSummary> = ProfileSection.Loading,
     val distribution: ProfileSection<MuscleDistribution> = ProfileSection.Loading,
-    val latestMeasurements: ProfileSection<List<BodyMeasurement>> = ProfileSection.Loading,
 )
 
 class ProfileViewModel(
     private val profileRepository: ProfileRepository,
     private val analyticsRepository: AnalyticsRepository,
-    private val measurementRepository: MeasurementRepository,
+    private val workoutRepository: WorkoutRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
 ) : ViewModel() {
     private val zone = ZoneId.of(timeZoneProvider.zoneId())
-    private val currentMonth = YearMonth.from(clock.instant().atZone(zone))
-    private val _uiState = MutableStateFlow(
-        ProfileUiState(
-            month = currentMonth,
-            minMonth = currentMonth.minusYears(10),
-            maxMonth = currentMonth,
-        )
-    )
+    private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
-    private var calendarJob: Job? = null
+    private var activityJob: Job? = null
     private var analyticsJob: Job? = null
+    private val workoutDetails = mutableMapOf<String, WorkoutDetail>()
 
     init { refresh() }
 
     fun refresh() {
         loadProfile()
-        loadCalendar()
+        loadWorkoutsAndActivity()
         loadAnalytics()
-        loadLatest()
     }
 
-    fun previousMonth() = changeMonth(_uiState.value.month.minusMonths(1))
-    fun nextMonth() = changeMonth(_uiState.value.month.plusMonths(1))
-
-    private fun changeMonth(month: YearMonth) {
-        if (month !in _uiState.value.minMonth.._uiState.value.maxMonth) return
-        _uiState.update { it.copy(month = month) }
-        loadCalendar()
+    fun selectActivityMetric(metric: ProfileActivityMetric) {
+        _uiState.update { it.copy(selectedActivityMetric = metric) }
     }
 
-    fun selectPeriod(period: AnalyticsPeriod) {
-        if (period == _uiState.value.selectedPeriod) return
-        _uiState.update { it.copy(selectedPeriod = period) }
+    fun selectActivityRange(range: HistoryRange) {
+        if (range == _uiState.value.selectedActivityRange) return
+        _uiState.update { it.copy(selectedActivityRange = range) }
+        loadWorkoutsAndActivity()
+    }
+
+    fun selectStatsPeriod(period: AnalyticsPeriod) {
+        if (period == _uiState.value.selectedStatsPeriod) return
+        _uiState.update { it.copy(selectedStatsPeriod = period) }
         loadAnalytics()
     }
 
@@ -188,68 +184,100 @@ class ProfileViewModel(
         }
     }
 
-    private fun loadCalendar() {
-        calendarJob?.cancel()
-        val month = _uiState.value.month
-        _uiState.update { it.copy(calendar = ProfileSection.Loading) }
-        calendarJob = viewModelScope.launch {
-            val section = when (val result = analyticsRepository.calendar(month, timeZoneProvider.zoneId())) {
-                is AnalyticsResult.Failure -> ProfileSection.Error(result.error)
-                is AnalyticsResult.Success -> if (result.value.days.isEmpty()) ProfileSection.Empty(result.value)
-                else ProfileSection.Content(result.value)
+    private fun loadWorkoutsAndActivity() {
+        activityJob?.cancel()
+        val range = _uiState.value.selectedActivityRange
+        _uiState.update { it.copy(activity = ProfileSection.Loading, workouts = ProfileSection.Loading) }
+        activityJob = viewModelScope.launch {
+            val today = clock.instant().atZone(zone).toLocalDate()
+            val cutoff = range.startDate(today)
+            val history = mutableListOf<WorkoutHistoryItem>()
+            var pageIndex = 0
+            var finished = false
+            while (!finished) {
+                when (val result = workoutRepository.getWorkoutHistory(pageIndex, HISTORY_PAGE_SIZE)) {
+                    is WorkoutRepositoryResult.Failure -> {
+                        val error = ProfileSection.Error(result.error)
+                        _uiState.update {
+                            it.copy(
+                                workouts = if (history.isEmpty()) error else section(history.take(RECENT_WORKOUT_COUNT)),
+                                activity = error,
+                            )
+                        }
+                        return@launch
+                    }
+                    is WorkoutRepositoryResult.Success -> {
+                        val page = result.value
+                        history += page.content
+                        if (pageIndex == 0) {
+                            _uiState.update { it.copy(workouts = section(history.take(RECENT_WORKOUT_COUNT))) }
+                        }
+                        val oldest = page.content.lastOrNull()?.completedAt?.atZone(zone)?.toLocalDate()
+                        finished = page.last || page.content.isEmpty() || (cutoff != null && oldest != null && oldest < cutoff)
+                        pageIndex += 1
+                    }
+                }
             }
-            _uiState.update { it.copy(calendar = section) }
+            _uiState.update { it.copy(workouts = section(history.take(RECENT_WORKOUT_COUNT))) }
+            val relevant = history.filter { item ->
+                val date = item.completedAt.atZone(zone).toLocalDate()
+                date <= today && (cutoff == null || date >= cutoff)
+            }
+            val details = mutableListOf<WorkoutDetail>()
+            for (item in relevant) {
+                val detail = workoutDetails[item.id] ?: when (val result = workoutRepository.getWorkout(item.id)) {
+                    is WorkoutRepositoryResult.Failure -> {
+                        _uiState.update { it.copy(activity = ProfileSection.Error(result.error)) }
+                        return@launch
+                    }
+                    is WorkoutRepositoryResult.Success -> result.value.detail.also { workoutDetails[item.id] = it }
+                }
+                details += detail
+            }
+            val points = workoutActivityPoints(details, zone, range, today)
+            _uiState.update { it.copy(activity = section(points)) }
         }
     }
 
     private fun loadAnalytics() {
         analyticsJob?.cancel()
-        val period = _uiState.value.selectedPeriod
-        _uiState.update {
-            it.copy(summary = ProfileSection.Loading, distribution = ProfileSection.Loading)
-        }
+        val period = _uiState.value.selectedStatsPeriod
+        _uiState.update { it.copy(summary = ProfileSection.Loading, distribution = ProfileSection.Loading) }
         analyticsJob = viewModelScope.launch {
             val summary = analyticsRepository.summary(period, timeZoneProvider.zoneId())
-            val summarySection = when (summary) {
+            _uiState.update { state -> state.copy(summary = when (summary) {
                 is AnalyticsResult.Failure -> ProfileSection.Error(summary.error)
                 is AnalyticsResult.Success -> if (summary.value.workoutCount == 0L) ProfileSection.Empty(summary.value)
                 else ProfileSection.Content(summary.value)
-            }
-            _uiState.update { it.copy(summary = summarySection) }
-
+            }) }
             val distribution = analyticsRepository.muscleDistribution(period, timeZoneProvider.zoneId())
-            val distributionSection = when (distribution) {
+            _uiState.update { state -> state.copy(distribution = when (distribution) {
                 is AnalyticsResult.Failure -> ProfileSection.Error(distribution.error)
                 is AnalyticsResult.Success -> if (distribution.value.items.isEmpty()) ProfileSection.Empty(distribution.value)
                 else ProfileSection.Content(distribution.value)
-            }
-            _uiState.update { it.copy(distribution = distributionSection) }
+            }) }
         }
     }
 
-    private fun loadLatest() {
-        _uiState.update { it.copy(latestMeasurements = ProfileSection.Loading) }
-        viewModelScope.launch {
-            val section = when (val result = measurementRepository.latest()) {
-                is MeasurementResult.Failure -> ProfileSection.Error(result.error)
-                is MeasurementResult.Success -> if (result.value.isEmpty()) ProfileSection.Empty(result.value)
-                else ProfileSection.Content(result.value)
-            }
-            _uiState.update { it.copy(latestMeasurements = section) }
-        }
+    private fun <T> section(value: List<T>): ProfileSection<List<T>> =
+        if (value.isEmpty()) ProfileSection.Empty(value) else ProfileSection.Content(value)
+
+    private companion object {
+        const val HISTORY_PAGE_SIZE = 100
+        const val RECENT_WORKOUT_COUNT = 20
     }
 }
 
 class ProfileViewModelFactory(
     private val profileRepository: ProfileRepository,
     private val analyticsRepository: AnalyticsRepository,
-    private val measurementRepository: MeasurementRepository,
+    private val workoutRepository: WorkoutRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ProfileViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return ProfileViewModel(profileRepository, analyticsRepository, measurementRepository, timeZoneProvider, clock) as T
+        return ProfileViewModel(profileRepository, analyticsRepository, workoutRepository, timeZoneProvider, clock) as T
     }
 }

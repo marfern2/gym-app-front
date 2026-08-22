@@ -7,4 +7,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="brand_primary">#FF0602A1</color>
+    <color name="notification_progress_track">#FFC8CBE0</color>
+    <color name="notification_thumbnail_background">#FFE4E6F2</color>
+    <!-- Android RemoteViews cannot read Compose's MaterialTheme; these mirror its dark tokens. -->
+    <color name="brand_primary_dark">#FF8C9AFF</color>
+    <color name="ink_dark_surface">#FF161924</color>
+    <color name="ink_dark_surface_variant">#FF232735</color>
+    <color name="ink_dark_on_surface_variant">#FFC1C5D6</color>
+    <color name="ink_dark_progress_track">#FF464B5E</color>
 </resources>

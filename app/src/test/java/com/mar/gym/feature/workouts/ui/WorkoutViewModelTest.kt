@@ -34,10 +34,20 @@ import com.mar.gym.feature.workouts.model.WorkoutDetail
 import com.mar.gym.feature.workouts.model.WorkoutDocument
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
+import com.mar.gym.feature.workouts.model.WorkoutExercise
+import com.mar.gym.feature.workouts.model.WorkoutSet
+import com.mar.gym.feature.workouts.model.WorkoutSetDraft
+import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.rest.RestTimer
+import com.mar.gym.feature.workouts.rest.RestTimerController
+import com.mar.gym.feature.workouts.rest.RestTimerNotifier
+import com.mar.gym.feature.workouts.rest.RestTimerScheduler
+import com.mar.gym.feature.workouts.rest.ScheduledRestTimerTask
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.math.BigDecimal
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -268,6 +278,39 @@ class WorkoutViewModelTest {
     }
 
     @Test
+    fun `replacement clears hidden incompatible actuals and uncompletes invalid set`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(setDocument())
+        }
+        val exercises = FakeExerciseRepository(
+            template = FakeExerciseRepository.exerciseDetail().copy(
+                exerciseType = ExerciseType.Duration,
+            ),
+        )
+        val viewModel = viewModel(repository, exercises)
+        advanceUntilIdle()
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) {
+            it.copy(
+                setType = SetType.Drop,
+                reps = "8",
+                weight = "80",
+                rpe = "8.5",
+                completed = true,
+            )
+        }
+
+        viewModel.replaceExercise(FIRST_EXERCISE_ID, THIRD_TEMPLATE_ID)
+        advanceUntilIdle()
+
+        val set = viewModel.uiState.value.data.draft!!.exercises.first().sets.single()
+        assertEquals("", set.reps)
+        assertEquals("", set.weight)
+        assertEquals("8.5", set.rpe)
+        assertEquals(SetType.Drop, set.setType)
+        assertFalse(set.completed)
+    }
+
+    @Test
     fun `workout accepts active custom and rejects archived custom`() = runTest {
         val active = viewModel(
             FakeWorkoutRepository(),
@@ -299,12 +342,244 @@ class WorkoutViewModelTest {
         assertTrue(archived.uiState.value.data.draft?.exercises.orEmpty().isEmpty())
     }
 
+    @Test
+    fun `user incomplete to completed starts rest with current exercise and set origin`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply { activeResult = WorkoutRepositoryResult.Success(setDocument()) }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+
+        val timer = rest.active.value!!
+        assertEquals(WORKOUT_ID, timer.workoutId)
+        assertEquals(FIRST_EXERCISE_ID, timer.exerciseLocalId)
+        assertEquals(FIRST_SET_ID, timer.setLocalId)
+        assertEquals("Press", timer.exerciseName)
+        assertEquals(90, timer.configuredDurationSeconds)
+        assertEquals("Press", timer.completedSet?.exerciseName)
+        assertEquals(1, timer.completedSet?.setNumber)
+        assertEquals("Remo", timer.upcomingSet?.exerciseName)
+        assertEquals(1, timer.upcomingSet?.setNumber)
+        assertEquals(1, timer.upcomingSet?.totalSets)
+        assertEquals("70 kg x 7 reps", timer.upcomingSet?.metricSummary)
+    }
+
+    @Test
+    fun `rest notification metrics adapt to exercise type and target fallback`() {
+        val targets = WorkoutSetTargets(
+            targetRepsMin = 8,
+            targetRepsMax = 10,
+            targetWeight = BigDecimal("60.000"),
+            targetDurationSeconds = 75,
+            targetDistanceMeters = BigDecimal("500.0"),
+            targetRpe = null,
+        )
+        val set = com.mar.gym.feature.workouts.model.WorkoutSetDraft(
+            localId = "set",
+            serverId = null,
+            targets = targets,
+        )
+
+        assertEquals("60 kg x 8–10 reps", set.restTimerMetricSummary(ExerciseType.WeightReps))
+        assertEquals("8–10 reps", set.restTimerMetricSummary(ExerciseType.BodyweightReps))
+        assertEquals("1:15", set.restTimerMetricSummary(ExerciseType.Duration))
+        assertEquals("500 m / 1:15", set.restTimerMetricSummary(ExerciseType.DistanceDuration))
+        assertEquals("60 kg / 500 m", set.restTimerMetricSummary(ExerciseType.WeightDistance))
+    }
+
+    @Test
+    fun `zero rest completion starts nothing and replaces an existing rest with none`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(setDocument(secondRestSeconds = 0))
+        }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+        assertTrue(rest.active.value != null)
+
+        viewModel.updateSet(SECOND_EXERCISE_ID, SECOND_SET_ID) { it.copy(completed = true) }
+
+        assertEquals(null, rest.active.value)
+    }
+
+    @Test
+    fun `loaded completed data and completed to incomplete never start rest`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(
+                setDocument(firstCompleted = true, secondCompleted = true),
+            )
+        }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        assertEquals(null, rest.active.value)
+
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = false) }
+
+        assertEquals(null, rest.active.value)
+    }
+
+    @Test
+    fun `completing another set replaces timer with that exercise rest`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply { activeResult = WorkoutRepositoryResult.Success(setDocument()) }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+
+        viewModel.updateSet(SECOND_EXERCISE_ID, SECOND_SET_ID) { it.copy(completed = true) }
+
+        assertEquals(SECOND_EXERCISE_ID, rest.active.value?.exerciseLocalId)
+        assertEquals(SECOND_SET_ID, rest.active.value?.setLocalId)
+        assertEquals(45, rest.active.value?.configuredDurationSeconds)
+    }
+
+    @Test
+    fun `unchecking origin cancels but unchecking another set does not`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(setDocument(firstCompleted = true))
+        }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        rest.replaceFromCompletedSet(WORKOUT_ID, FIRST_EXERCISE_ID, "Press", FIRST_SET_ID, 90)
+
+        viewModel.updateSet(SECOND_EXERCISE_ID, SECOND_SET_ID) { it.copy(completed = false) }
+        assertEquals(FIRST_SET_ID, rest.active.value?.setLocalId)
+
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = false) }
+        assertEquals(null, rest.active.value)
+    }
+
+    @Test
+    fun `superset and set type do not alter rest trigger`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(setDocument(grouped = true, firstSetType = SetType.Drop))
+        }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+
+        assertEquals(90, rest.active.value?.configuredDurationSeconds)
+        assertEquals(FIRST_SET_ID, rest.active.value?.setLocalId)
+        assertEquals(SetType.Drop, viewModel.uiState.value.data.draft!!.exercises.first().sets.first().setType)
+    }
+
+    @Test
+    fun `automatic rest trigger is independent from every exercise type`() = runTest {
+        ExerciseType.entries.forEach { type ->
+            val rest = restController()
+            val repository = FakeWorkoutRepository().apply {
+                activeResult = WorkoutRepositoryResult.Success(setDocument(firstExerciseType = type))
+            }
+            val viewModel = viewModel(repository, restTimerController = rest)
+            advanceUntilIdle()
+
+            viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+
+            assertEquals(type.name, FIRST_SET_ID, rest.active.value?.setLocalId)
+            assertEquals(type.name, 90, rest.active.value?.configuredDurationSeconds)
+        }
+    }
+
+    @Test
+    fun `completing and uncompleting preserves actuals and set type for every exercise type`() = runTest {
+        val actualsByType = mapOf(
+            ExerciseType.WeightReps to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop, reps = "8", weight = "80", rpe = "8.5",
+            ),
+            ExerciseType.BodyweightReps to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop, reps = "12", rpe = "8.5",
+            ),
+            ExerciseType.WeightedBodyweight to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop, reps = "6", weight = "20", rpe = "8.5",
+            ),
+            ExerciseType.AssistedBodyweight to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop, reps = "10", weight = "30", rpe = "8.5",
+            ),
+            ExerciseType.Duration to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop, durationSeconds = "90", rpe = "8.5",
+            ),
+            ExerciseType.DistanceDuration to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop,
+                durationSeconds = "120", distanceMeters = "500", rpe = "8.5",
+            ),
+            ExerciseType.WeightDistance to WorkoutSetDraft(
+                FIRST_SET_ID, FIRST_SET_ID, SetType.Drop,
+                weight = "25", distanceMeters = "40", rpe = "8.5",
+            ),
+        )
+
+        actualsByType.forEach { (type, actuals) ->
+            val repository = FakeWorkoutRepository().apply {
+                activeResult = WorkoutRepositoryResult.Success(
+                    setDocument(firstExerciseType = type, firstSet = actuals),
+                )
+            }
+            val viewModel = viewModel(repository)
+            advanceUntilIdle()
+
+            viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+            viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = false) }
+
+            val finalSet = viewModel.uiState.value.data.draft!!.exercises.first().sets.single()
+            assertEquals(type.name, actuals, finalSet)
+        }
+    }
+
+    @Test
+    fun `automatic rest does not interact with manual workout clock`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository().apply { activeResult = WorkoutRepositoryResult.Success(setDocument()) }
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        viewModel.manualClockState.adjustTimerSeconds(30)
+        viewModel.manualClockState.startTimer()
+        val before = viewModel.manualClockState.snapshot()
+
+        viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = true) }
+
+        assertEquals(before, viewModel.manualClockState.snapshot())
+        assertEquals(FIRST_SET_ID, rest.active.value?.setLocalId)
+    }
+
+    @Test
+    fun `successful workout completion cleans active rest`() = runTest {
+        val rest = restController()
+        val repository = FakeWorkoutRepository()
+        val viewModel = viewModel(repository, restTimerController = rest)
+        advanceUntilIdle()
+        rest.replaceFromCompletedSet(WORKOUT_ID, FIRST_EXERCISE_ID, "Press", FIRST_SET_ID, 90)
+
+        viewModel.complete()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Completed)
+        assertEquals(null, rest.active.value)
+    }
+
     private fun viewModel(
         repository: FakeWorkoutRepository,
         exercises: ExerciseTemplateRepository = FakeExerciseRepository(),
+        restTimerController: RestTimerController = restController(),
     ) = ActiveWorkoutViewModel(
         repository, exercises, FakeAnalyticsRepository(),
         Clock.fixed(Instant.parse("2026-08-08T10:20:00Z"), ZoneOffset.UTC),
+        restTimerController,
+    )
+
+    private fun restController() = RestTimerController(
+        Clock.fixed(Instant.parse("2026-08-08T10:20:00Z"), ZoneOffset.UTC),
+        RestTimerScheduler { _, _ -> ScheduledRestTimerTask {} },
+        object : RestTimerNotifier {
+            override fun showActive(timer: RestTimer, remainingMillis: Long) = Unit
+            override fun hideActive() = Unit
+            override fun showFinished(timer: RestTimer) = Unit
+        },
     )
 
     private class FakeAnalyticsRepository : AnalyticsRepository {
@@ -393,6 +668,8 @@ class WorkoutViewModelTest {
         const val THIRD_TEMPLATE_ID = "00000000-0000-4000-8000-000000000007"
         const val FIRST_EXERCISE_ID = "00000000-0000-4000-8000-000000000005"
         const val SECOND_EXERCISE_ID = "00000000-0000-4000-8000-000000000006"
+        const val FIRST_SET_ID = "00000000-0000-4000-8000-000000000008"
+        const val SECOND_SET_ID = "00000000-0000-4000-8000-000000000009"
 
         fun document(
             version: Long = 0,
@@ -418,6 +695,56 @@ class WorkoutViewModelTest {
                 com.mar.gym.feature.workouts.model.WorkoutExercise(
                     SECOND_EXERCISE_ID, SECOND_TEMPLATE_ID, "Remo", ExerciseType.WeightReps,
                     Equipment.Barbell, 2, null, 90, emptyList(), supersetGroup = 1,
+                ),
+            )
+            return base.copy(detail = base.detail.copy(exercises = exercises))
+        }
+
+        fun setDocument(
+            firstCompleted: Boolean = false,
+            secondCompleted: Boolean = false,
+            secondRestSeconds: Int = 45,
+            grouped: Boolean = false,
+            firstSetType: SetType = SetType.Normal,
+            firstExerciseType: ExerciseType = ExerciseType.WeightReps,
+            firstSet: WorkoutSetDraft? = null,
+        ): WorkoutDocument {
+            val base = document()
+            val targets = WorkoutSetTargets(null, null, null, null, null, null)
+            val canonicalFirstSet = firstSet?.let { set ->
+                WorkoutSet(
+                    id = FIRST_SET_ID,
+                    position = 1,
+                    setType = set.setType,
+                    targets = set.targets,
+                    completed = set.completed,
+                    reps = set.reps.toIntOrNull(),
+                    weight = set.weight.toBigDecimalOrNull(),
+                    durationSeconds = set.durationSeconds.toIntOrNull(),
+                    distanceMeters = set.distanceMeters.toBigDecimalOrNull(),
+                    rpe = set.rpe.toBigDecimalOrNull(),
+                )
+            } ?: WorkoutSet(
+                FIRST_SET_ID, 1, firstSetType, targets, firstCompleted,
+                null, null, null, null, null,
+            )
+            val exercises = listOf(
+                WorkoutExercise(
+                    FIRST_EXERCISE_ID, TEMPLATE_ID, "Press", firstExerciseType,
+                    Equipment.Barbell, 1, null, 90,
+                    listOf(canonicalFirstSet),
+                    supersetGroup = if (grouped) 1 else null,
+                ),
+                WorkoutExercise(
+                    SECOND_EXERCISE_ID, SECOND_TEMPLATE_ID, "Remo", ExerciseType.WeightReps,
+                    Equipment.Barbell, 2, null, secondRestSeconds,
+                    listOf(
+                        WorkoutSet(
+                            SECOND_SET_ID, 1, SetType.Warmup, targets, secondCompleted,
+                            7, BigDecimal("70"), null, null, null,
+                        ),
+                    ),
+                    supersetGroup = if (grouped) 1 else null,
                 ),
             )
             return base.copy(detail = base.detail.copy(exercises = exercises))

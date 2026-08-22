@@ -31,6 +31,7 @@ import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.toSummary
+import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.feature.progress.model.PreviousExercisePerformance
 import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import com.mar.gym.feature.progress.model.PreviousPerformanceSet
@@ -48,6 +49,51 @@ import org.junit.Test
 
 class WorkoutScreensTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun activeRestTimerShowsMinimalControlsAndRoutesActions() {
+        val now = Instant.parse("2026-08-17T10:00:00Z")
+        val timer = RestTimer(
+            workoutId = "workout",
+            exerciseLocalId = "exercise",
+            exerciseName = "Press de banca",
+            setLocalId = "set",
+            configuredDurationSeconds = 90,
+            deadline = now.plusSeconds(90),
+        )
+        val adjustments = mutableListOf<Int>()
+        var skipped = false
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(
+                        ActiveWorkoutData(draft = WorkoutDraft("workout", "Fuerza")),
+                    ),
+                    clock = Clock.fixed(now, ZoneOffset.UTC),
+                    restTimer = timer,
+                    onAdjustRestTimer = adjustments::add,
+                    onSkipRestTimer = { skipped = true },
+                    onBack = {}, onOpenPicker = {}, onStartEmpty = {},
+                    onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {}, onDiscard = {},
+                    onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("active_rest_timer").assertIsDisplayed()
+        composeRule.onNodeWithTag("active_rest_timer_progress").assertIsDisplayed()
+        composeRule.onNodeWithText("Press de banca").assertDoesNotExist()
+        composeRule.onNodeWithText("1:30").assertIsDisplayed()
+        composeRule.onNodeWithTag("active_rest_timer_minus").performClick()
+        composeRule.onNodeWithTag("active_rest_timer_plus").performClick()
+        composeRule.onNodeWithTag("active_rest_timer_skip").performClick()
+
+        assertEquals(listOf(-15, 15), adjustments)
+        assertTrue(skipped)
+    }
 
     @Test
     fun activeEditorHidesTargetsAndKeepsCompactPreviousAndInputs() {
@@ -85,6 +131,67 @@ class WorkoutScreensTest {
         composeRule.onNodeWithTag("previous_set").assertIsDisplayed()
         composeRule.onNodeWithText("—").assertIsDisplayed()
         composeRule.onNodeWithTag("complete_workout").assertIsDisplayed()
+    }
+
+    @Test
+    fun activeEditorExposesOnlyEditableActualsSupportedByEveryExerciseType() {
+        val supportedFields = mapOf(
+            ExerciseType.WeightReps to setOf("weight", "reps"),
+            ExerciseType.BodyweightReps to setOf("reps"),
+            ExerciseType.WeightedBodyweight to setOf("weight", "reps"),
+            ExerciseType.AssistedBodyweight to setOf("weight", "reps"),
+            ExerciseType.Duration to setOf("durationSeconds"),
+            ExerciseType.DistanceDuration to setOf("durationSeconds", "distanceMeters"),
+            ExerciseType.WeightDistance to setOf("weight", "distanceMeters"),
+        )
+        val exercises = supportedFields.keys.mapIndexed { index, type ->
+            val exerciseId = "exercise-$index"
+            val setId = "set-$index"
+            WorkoutExerciseDraft(
+                exerciseId, exerciseId, "template-$index", type.name, type, Equipment.None,
+                sets = listOf(
+                    WorkoutSetDraft(
+                        localId = setId,
+                        serverId = setId,
+                        targets = WorkoutSetTargets(
+                            876, 877, BigDecimal("9876"), 5432, BigDecimal("6543"), BigDecimal("9.5"),
+                        ),
+                    ),
+                ),
+            )
+        }
+        val draft = WorkoutDraft("workout", "Tipos", exercises = exercises)
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        val allFields = setOf("weight", "reps", "durationSeconds", "distanceMeters")
+        exercises.forEach { exercise ->
+            val setId = exercise.sets.single().localId
+            allFields.forEach { field ->
+                val tag = "exercise.${exercise.localId}.set.$setId.${field}_$setId"
+                if (field in supportedFields.getValue(exercise.exerciseTypeSnapshot)) {
+                    composeRule.onNodeWithTag(tag).assert(
+                        SemanticsMatcher("editable actual $field for ${exercise.exerciseTypeSnapshot}") { node ->
+                            node.config.contains(SemanticsActions.SetText)
+                        },
+                    )
+                } else {
+                    composeRule.onNodeWithTag(tag).assertDoesNotExist()
+                }
+            }
+        }
+        composeRule.onNodeWithText("9876 kg · 876–877 reps · 5432 s · 6543 m · RPE 9.5")
+            .assertDoesNotExist()
     }
 
     @Test

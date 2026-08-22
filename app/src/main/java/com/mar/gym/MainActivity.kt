@@ -1,6 +1,7 @@
 package com.mar.gym
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -51,6 +52,12 @@ import com.mar.gym.feature.measurements.ui.MeasurementRoute
 import com.mar.gym.feature.measurements.ui.MeasurementViewModel
 import com.mar.gym.feature.measurements.ui.MeasurementViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileRoute
+import com.mar.gym.feature.profile.ui.ProfileCalendarRoute
+import com.mar.gym.feature.profile.ui.ProfileCalendarViewModel
+import com.mar.gym.feature.profile.ui.ProfileCalendarViewModelFactory
+import com.mar.gym.feature.profile.ui.ProfileEditRoute
+import com.mar.gym.feature.profile.ui.ProfileSettingsScreen
+import com.mar.gym.feature.profile.ui.ProfileStatsRoute
 import com.mar.gym.feature.profile.ui.ProfileViewModel
 import com.mar.gym.feature.profile.ui.ProfileViewModelFactory
 import com.mar.gym.feature.progress.data.DeviceTimeZoneProvider
@@ -204,6 +211,15 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                         null
                     }
+                    DEEP_PROFILE_EDIT -> {
+                        profileViewModel().cancelEditing()
+                        tab = TAB_PROFILE
+                        null
+                    }
+                    DEEP_PROFILE_SETTINGS, DEEP_PROFILE_STATS, DEEP_PROFILE_CALENDAR -> {
+                        tab = TAB_PROFILE
+                        null
+                    }
                     else -> {
                         tab = TAB_TRAINING
                         null
@@ -286,12 +302,16 @@ class MainActivity : ComponentActivity() {
                         )
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = profileViewModel(),
+                            onOpenEdit = { deep = DEEP_PROFILE_EDIT },
+                            onShare = { identity -> shareProfile(identity) },
+                            onOpenSettings = { deep = DEEP_PROFILE_SETTINGS },
+                            onOpenStatistics = { deep = DEEP_PROFILE_STATS },
                             onOpenMeasurements = { deep = DEEP_MEASUREMENTS },
                             onOpenExercises = {
                                 catalogOrigin = TAB_PROFILE
                                 deep = DEEP_CATALOG
                             },
-                            onLogout = { authViewModel.logout() },
+                            onOpenCalendar = { deep = DEEP_PROFILE_CALENDAR },
                         )
                     }
                 }
@@ -560,6 +580,34 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                     },
                 )
+                DEEP_PROFILE_EDIT -> ProfileEditRoute(
+                    viewModel = profileViewModel(),
+                    onBack = {
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                )
+                DEEP_PROFILE_SETTINGS -> ProfileSettingsScreen(
+                    onBack = {
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                    onLogout = { authViewModel.logout() },
+                )
+                DEEP_PROFILE_STATS -> ProfileStatsRoute(
+                    viewModel = profileViewModel(),
+                    onBack = {
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                )
+                DEEP_PROFILE_CALENDAR -> ProfileCalendarRoute(
+                    viewModel = remember { profileCalendarViewModel() },
+                    onBack = {
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                )
             }
         }
     }
@@ -638,6 +686,7 @@ class MainActivity : ComponentActivity() {
             AppContainer.exerciseTemplateRepository,
             AppContainer.analyticsRepository,
             AppContainer.applicationClock,
+            AppContainer.restTimerController,
         ),
     )[ActiveWorkoutViewModel::class.java]
 
@@ -668,11 +717,29 @@ class MainActivity : ComponentActivity() {
         ProfileViewModelFactory(
             AppContainer.profileRepository,
             AppContainer.analyticsRepository,
-            AppContainer.measurementRepository,
+            AppContainer.workoutRepository,
             DeviceTimeZoneProvider,
             AppContainer.applicationClock,
         ),
     )[ProfileViewModel::class.java]
+
+    private fun profileCalendarViewModel(): ProfileCalendarViewModel = ViewModelProvider(
+        this,
+        ProfileCalendarViewModelFactory(
+            AppContainer.analyticsRepository,
+            AppContainer.workoutRepository,
+            DeviceTimeZoneProvider,
+            AppContainer.applicationClock,
+        ),
+    )[ProfileCalendarViewModel::class.java]
+
+    private fun shareProfile(identity: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, "Mi perfil en GYm: $identity")
+        }
+        startActivity(Intent.createChooser(intent, "Compartir perfil"))
+    }
 
     private fun exerciseProgressViewModel(exerciseTemplateId: String): ExerciseProgressViewModel = ViewModelProvider(
         this,
@@ -706,5 +773,9 @@ class MainActivity : ComponentActivity() {
         const val DEEP_WORKOUT_CONGRATS = "workout_congrats"
         const val DEEP_EXERCISE_PROGRESS = "exercise_progress"
         const val DEEP_MEASUREMENTS = "measurements"
+        const val DEEP_PROFILE_EDIT = "profile_edit"
+        const val DEEP_PROFILE_SETTINGS = "profile_settings"
+        const val DEEP_PROFILE_STATS = "profile_stats"
+        const val DEEP_PROFILE_CALENDAR = "profile_calendar"
     }
 }

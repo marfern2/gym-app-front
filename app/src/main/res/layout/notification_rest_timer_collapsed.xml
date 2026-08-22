@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="64dp"
+    android:background="@android:color/transparent"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp">
+
+    <ImageView
+        android:id="@+id/rest_timer_brand"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:contentDescription="@string/app_name"
+        android:scaleType="centerInside"
+        android:src="@mipmap/ic_launcher_round" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <Chronometer
+            android:id="@+id/rest_timer_chronometer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <ProgressBar
+            android:id="@+id/rest_timer_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="7dp"
+            android:progressDrawable="@drawable/notification_rest_progress" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/rest_timer_thumbnail"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:background="@drawable/notification_thumbnail_background"
+        android:contentDescription="@null"
+        android:padding="10dp"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_rest_timer_notification" />
+</LinearLayout>

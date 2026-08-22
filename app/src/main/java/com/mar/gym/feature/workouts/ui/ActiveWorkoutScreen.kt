@@ -1,6 +1,11 @@
 package com.mar.gym.feature.workouts.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -46,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -62,6 +68,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -93,6 +101,7 @@ import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.formatPreviousPerformance
 import com.mar.gym.feature.workouts.model.previousSetFor
+import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.ui.components.ExerciseNameLink
 import com.mar.gym.ui.components.ExerciseThumbnail
 import com.mar.gym.ui.components.LoadingState
@@ -108,6 +117,8 @@ import com.mar.gym.ui.theme.CompletedRowContainerLight
 import com.mar.gym.ui.theme.SetDrop
 import com.mar.gym.ui.theme.SetFailure
 import com.mar.gym.ui.theme.SetWarmup
+import com.mar.gym.ui.theme.InkDarkSurface
+import com.mar.gym.ui.theme.InkDarkSurfaceVariant
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -124,9 +135,15 @@ fun ActiveWorkoutRoute(
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val restTimer by viewModel.restTimer.collectAsState()
+    RestTimerNotificationPermissionEffect(
+        timerActive = restTimer != null,
+        onPermissionGranted = viewModel::refreshRestTimerNotification,
+    )
     ActiveWorkoutScreen(
         state = state,
         clock = viewModel.clock,
+        restTimer = restTimer,
         onBack = onBack,
         onOpenExercise = onOpenExercise,
         onOpenPicker = {
@@ -153,6 +170,8 @@ fun ActiveWorkoutRoute(
         onReload = viewModel::reloadDiscardingLocalChanges,
         onRetry = viewModel::retry,
         onRetryPrevious = viewModel::retryPreviousPerformance,
+        onAdjustRestTimer = viewModel::adjustRestTimerSeconds,
+        onSkipRestTimer = viewModel::skipRestTimer,
         manualClockState = viewModel.manualClockState,
     )
 }
@@ -185,6 +204,9 @@ fun ActiveWorkoutScreen(
     onRetry: () -> Unit,
     onRetryPrevious: () -> Unit = {},
     onOpenExercise: (String) -> Unit = {},
+    restTimer: RestTimer? = null,
+    onAdjustRestTimer: (Int) -> Unit = {},
+    onSkipRestTimer: () -> Unit = {},
     manualClockState: ManualWorkoutClockState? = null,
 ) {
     var confirmDiscard by remember { mutableStateOf(false) }
@@ -210,6 +232,11 @@ fun ActiveWorkoutScreen(
                         modifier = Modifier.testTag("workout_progress"),
                     )
                 }
+            }
+        },
+        bottomBar = {
+            restTimer?.let { timer ->
+                ActiveRestTimerDock(timer, clock, onAdjustRestTimer, onSkipRestTimer)
             }
         },
         containerColor = Color.Black,
@@ -330,6 +357,136 @@ fun ActiveWorkoutScreen(
             state = clockState,
             onDismiss = { clockSheetOpen = false },
         )
+    }
+}
+
+@Composable
+private fun RestTimerNotificationPermissionEffect(
+    timerActive: Boolean,
+    onPermissionGranted: () -> Unit,
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val context = LocalContext.current
+    var requested by rememberSaveable { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) onPermissionGranted()
+    }
+    LaunchedEffect(timerActive) {
+        if (
+            timerActive &&
+            !requested &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requested = true
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
+@Composable
+private fun ActiveRestTimerDock(
+    timer: RestTimer,
+    clock: Clock,
+    onAdjust: (Int) -> Unit,
+    onSkip: () -> Unit,
+) {
+    var refresh by remember(timer.deadline) { mutableLongStateOf(0L) }
+    val remainingMillis = remember(timer.deadline, clock, refresh) {
+        timer.remainingMillis(clock.instant())
+    }
+    val progress = timerProgress(
+        remainingMillis = remainingMillis,
+        configuredMillis = timer.configuredDurationSeconds * 1_000L,
+    )
+    LaunchedEffect(timer.deadline, clock) {
+        while (timer.remainingMillis(clock.instant()) > 0L) {
+            delay(250L)
+            refresh += 1L
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(InkDarkSurface)
+            .navigationBarsPadding()
+            .testTag("active_rest_timer"),
+    ) {
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .testTag("active_rest_timer_progress"),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RestTimerAdjustmentButton(
+                text = stringResource(R.string.rest_timer_minus_fifteen_compact),
+                onClick = { onAdjust(-15) },
+                modifier = Modifier.testTag("active_rest_timer_minus"),
+            )
+            Text(
+                text = formatRestTimer(remainingMillis),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("active_rest_timer_remaining"),
+                color = Color.White,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
+            RestTimerAdjustmentButton(
+                text = stringResource(R.string.rest_timer_plus_fifteen_compact),
+                onClick = { onAdjust(15) },
+                modifier = Modifier.testTag("active_rest_timer_plus"),
+            )
+            Button(
+                onClick = onSkip,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("active_rest_timer_skip"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp),
+            ) {
+                Text(stringResource(R.string.rest_timer_skip), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RestTimerAdjustmentButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .width(60.dp)
+            .heightIn(min = 48.dp),
+        shape = RoundedCornerShape(9.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = InkDarkSurfaceVariant,
+            contentColor = Color.White,
+        ),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+    ) {
+        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -688,6 +845,11 @@ private fun ClockActionButton(
 internal fun formatTimer(milliseconds: Long): String {
     val totalSeconds = (milliseconds.coerceAtLeast(0L) + 999L) / 1_000L
     return "%02d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+}
+
+internal fun formatRestTimer(milliseconds: Long): String {
+    val totalSeconds = (milliseconds.coerceAtLeast(0L) + 999L) / 1_000L
+    return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
 }
 
 internal fun timerProgress(remainingMillis: Long, configuredMillis: Long): Float =
