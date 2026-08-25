@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.workouts.ui.CompletedWorkoutCard
@@ -34,6 +37,9 @@ fun ProfileRoute(
     onOpenMeasurements: () -> Unit,
     onOpenExercises: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onSearchPeople: () -> Unit,
+    onOpenFollowers: (String) -> Unit,
+    onOpenFollowing: (String) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
     ProfileScreen(
@@ -51,6 +57,9 @@ fun ProfileRoute(
         onOpenMeasurements = onOpenMeasurements,
         onOpenExercises = onOpenExercises,
         onOpenCalendar = onOpenCalendar,
+        onSearchPeople = onSearchPeople,
+        onOpenFollowers = onOpenFollowers,
+        onOpenFollowing = onOpenFollowing,
         onRetry = viewModel::refresh,
     )
 }
@@ -69,6 +78,9 @@ fun ProfileScreen(
     onOpenCalendar: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onSearchPeople: () -> Unit = {},
+    onOpenFollowers: (String) -> Unit = {},
+    onOpenFollowing: (String) -> Unit = {},
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("profile_screen"),
@@ -84,6 +96,25 @@ fun ProfileScreen(
                     onEdit = onEditProfile,
                     onShare = onShare,
                     onSettings = onSettings,
+                    onSearch = onSearchPeople,
+                )
+            }
+        }
+        val social = state.socialProfile
+        if (social is ProfileSection.Content) {
+            item {
+                OwnSocialHeader(
+                    profile = social.value,
+                    onFollowers = { onOpenFollowers(social.value.username) },
+                    onFollowing = { onOpenFollowing(social.value.username) },
+                )
+            }
+        } else if (social is ProfileSection.Error) {
+            item {
+                Text(
+                    "No se pudieron cargar los datos sociales.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
@@ -128,6 +159,34 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OwnSocialHeader(
+    profile: PublicProfile,
+    onFollowers: () -> Unit,
+    onFollowing: () -> Unit,
+) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().testTag("profile_social_header"),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        OwnSocialStat(profile.completedWorkoutsCount, "Entrenos")
+        OwnSocialStat(profile.followersCount, "Seguidores", onFollowers)
+        OwnSocialStat(profile.followingCount, "Siguiendo", onFollowing)
+    }
+}
+
+@Composable
+private fun OwnSocialStat(value: Long, label: String, onClick: (() -> Unit)? = null) {
+    Column(
+        Modifier.then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(value.toString(), fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ fun ProfileHeader(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onSettings: () -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val identity = profile.username?.let { "@$it" } ?: profile.displayName.ifBlank { "Perfil" }
@@ -52,6 +54,9 @@ fun ProfileHeader(
             }
             IconButton(onClick = onSettings, modifier = Modifier.testTag("profile_settings")) {
                 Icon(Icons.Default.Settings, contentDescription = "Ajustes")
+            }
+            IconButton(onClick = onSearch, modifier = Modifier.testTag("profile_search_people")) {
+                Icon(Icons.Default.Search, contentDescription = "Buscar personas")
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

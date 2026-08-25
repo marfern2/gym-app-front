@@ -11,6 +11,7 @@ import com.mar.gym.feature.profile.model.PrivateProfileDocument
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfileActivityPoint
+import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.profile.model.validate
 import com.mar.gym.feature.profile.model.workoutActivityPoints
 import com.mar.gym.feature.progress.data.AnalyticsRepository
@@ -20,6 +21,9 @@ import com.mar.gym.feature.progress.model.AnalyticsPeriod
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.progress.model.MuscleDistribution
 import com.mar.gym.feature.progress.model.ProgressSummary
+import com.mar.gym.feature.social.data.SocialRepository
+import com.mar.gym.feature.social.data.SocialResult
+import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
 import com.mar.gym.feature.workouts.model.WorkoutDetail
@@ -50,6 +54,7 @@ data class ProfileUiState(
     val saving: Boolean = false,
     val conflict: Boolean = false,
     val usernameUnavailable: Boolean = false,
+    val socialProfile: ProfileSection<PublicProfile>? = null,
     val selectedActivityMetric: ProfileActivityMetric = ProfileActivityMetric.Duration,
     val selectedActivityRange: HistoryRange = HistoryRange.ThreeMonths,
     val activity: ProfileSection<List<ProfileActivityPoint>> = ProfileSection.Loading,
@@ -63,6 +68,7 @@ class ProfileViewModel(
     private val profileRepository: ProfileRepository,
     private val analyticsRepository: AnalyticsRepository,
     private val workoutRepository: WorkoutRepository,
+    private val socialRepository: SocialRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
 ) : ViewModel() {
@@ -71,6 +77,7 @@ class ProfileViewModel(
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
     private var activityJob: Job? = null
     private var analyticsJob: Job? = null
+    private var socialJob: Job? = null
     private val workoutDetails = mutableMapOf<String, WorkoutDetail>()
 
     init { refresh() }
@@ -114,6 +121,7 @@ class ProfileViewModel(
 
     fun updateDisplayName(value: String) = updateDraft { copy(displayName = value) }
     fun updateUsername(value: String) = updateDraft { copy(username = value) }
+    fun updatePrivacy(value: ProfilePrivacy) = updateDraft { copy(privacy = value) }
 
     private fun updateDraft(transform: PrivateProfileDraft.() -> PrivateProfileDraft) {
         val draft = _uiState.value.draft ?: return
@@ -136,14 +144,15 @@ class ProfileViewModel(
         }
         viewModelScope.launch {
             when (val result = profileRepository.updateProfile(draft, current)) {
-                is ProfileResult.Success -> _uiState.update {
-                    it.copy(
+                is ProfileResult.Success -> {
+                    _uiState.update { it.copy(
                         profile = result.value,
                         profileLoading = false,
                         saving = false,
                         editing = false,
                         draft = null,
-                    )
+                    ) }
+                    loadOwnSocial(result.value.value)
                 }
                 is ProfileResult.Failure -> {
                     val code = (result.error as? NetworkFailure.HttpProblem)?.problem?.errorCode
@@ -169,16 +178,37 @@ class ProfileViewModel(
         _uiState.update { it.copy(profileLoading = true, profileError = null) }
         viewModelScope.launch {
             when (val result = profileRepository.getProfile()) {
-                is ProfileResult.Success -> _uiState.update {
-                    it.copy(
+                is ProfileResult.Success -> {
+                    _uiState.update { it.copy(
                         profile = result.value,
                         profileLoading = false,
                         conflict = false,
                         draft = if (keepDraft) it.draft else it.draft,
-                    )
+                    ) }
+                    loadOwnSocial(result.value.value)
                 }
                 is ProfileResult.Failure -> _uiState.update {
                     it.copy(profileLoading = false, profileError = result.error)
+                }
+            }
+        }
+    }
+
+    private fun loadOwnSocial(profile: com.mar.gym.feature.profile.model.PrivateProfile) {
+        socialJob?.cancel()
+        val username = profile.username
+        if (profile.privacy != ProfilePrivacy.Public || username == null) {
+            _uiState.update { it.copy(socialProfile = null) }
+            return
+        }
+        _uiState.update { it.copy(socialProfile = ProfileSection.Loading) }
+        socialJob = viewModelScope.launch {
+            when (val result = socialRepository.profile(username)) {
+                is SocialResult.Success -> _uiState.update {
+                    it.copy(socialProfile = ProfileSection.Content(result.value))
+                }
+                is SocialResult.Failure -> _uiState.update {
+                    it.copy(socialProfile = ProfileSection.Error(result.error))
                 }
             }
         }
@@ -272,12 +302,15 @@ class ProfileViewModelFactory(
     private val profileRepository: ProfileRepository,
     private val analyticsRepository: AnalyticsRepository,
     private val workoutRepository: WorkoutRepository,
+    private val socialRepository: SocialRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ProfileViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return ProfileViewModel(profileRepository, analyticsRepository, workoutRepository, timeZoneProvider, clock) as T
+        return ProfileViewModel(
+            profileRepository, analyticsRepository, workoutRepository, socialRepository, timeZoneProvider, clock,
+        ) as T
     }
 }

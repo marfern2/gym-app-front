@@ -13,6 +13,7 @@ import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.feature.profile.model.PrivateProfile
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfileActivityPoint
+import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import com.mar.gym.ui.theme.GYmAppTheme
@@ -91,7 +92,9 @@ class ProfileScreenTest {
 
     private fun contentState() = ProfileUiState(
         profile = VersionedDocument(
-            PrivateProfile(ID, "Mar", "mar.gym", Instant.EPOCH, NOW, 0), EntityTag.fromVersion(0)!!,
+            PrivateProfile(
+                ID, "Mar", "mar.gym", Instant.EPOCH, NOW, 0, ProfilePrivacy.Public,
+            ), EntityTag.fromVersion(0)!!,
         ),
         profileLoading = false,
         activity = ProfileSection.Content(listOf(ProfileActivityPoint(LocalDate.parse("2026-08-09"), 3_600, BigDecimal.TEN, 10))),

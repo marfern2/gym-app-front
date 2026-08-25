@@ -9,6 +9,11 @@ import kotlinx.serialization.Serializable
     val createdAt: String,
     val updatedAt: String,
     val version: Long,
+    val privacy: String,
 )
 
-@Serializable data class UpdatePrivateProfileDto(val displayName: String?, val username: String?)
+@Serializable data class UpdatePrivateProfileDto(
+    val displayName: String?,
+    val username: String?,
+    val privacy: String,
+)

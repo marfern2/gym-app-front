@@ -75,6 +75,16 @@ import com.mar.gym.feature.routines.ui.RoutineViewerViewModel
 import com.mar.gym.feature.routines.ui.RoutineViewerViewModelFactory
 import com.mar.gym.feature.system.SystemViewModel
 import com.mar.gym.feature.system.SystemViewModelFactory
+import com.mar.gym.feature.social.ui.PublicProfileRoute
+import com.mar.gym.feature.social.ui.PublicProfileViewModel
+import com.mar.gym.feature.social.ui.PublicProfileViewModelFactory
+import com.mar.gym.feature.social.ui.SocialListRoute
+import com.mar.gym.feature.social.ui.SocialListType
+import com.mar.gym.feature.social.ui.SocialListViewModel
+import com.mar.gym.feature.social.ui.SocialListViewModelFactory
+import com.mar.gym.feature.social.ui.UserSearchRoute
+import com.mar.gym.feature.social.ui.UserSearchViewModel
+import com.mar.gym.feature.social.ui.UserSearchViewModelFactory
 import com.mar.gym.feature.training.ui.TrainingScreen
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModel
@@ -138,6 +148,12 @@ class MainActivity : ComponentActivity() {
         var pendingRoutineWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
         var catalogOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var detailOrigin by rememberSaveable { mutableStateOf(DEEP_CATALOG) }
+        var publicUsername by rememberSaveable { mutableStateOf<String?>(null) }
+        var socialListUsername by rememberSaveable { mutableStateOf<String?>(null) }
+        var publicProfileOrigin by rememberSaveable { mutableStateOf(DEEP_USER_SEARCH) }
+        var socialListOrigin by rememberSaveable { mutableStateOf(TAB_PROFILE) }
+        var socialListParentUsername by rememberSaveable { mutableStateOf<String?>(null) }
+        var socialListType by rememberSaveable { mutableStateOf(SocialListType.Followers.name) }
 
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
         val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
@@ -219,6 +235,24 @@ class MainActivity : ComponentActivity() {
                     DEEP_PROFILE_SETTINGS, DEEP_PROFILE_STATS, DEEP_PROFILE_CALENDAR -> {
                         tab = TAB_PROFILE
                         null
+                    }
+                    DEEP_USER_SEARCH -> {
+                        tab = TAB_PROFILE
+                        null
+                    }
+                    DEEP_PUBLIC_PROFILE -> {
+                        if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
+                        if (publicProfileOrigin == TAB_PROFILE) {
+                            tab = TAB_PROFILE
+                            null
+                        } else publicProfileOrigin
+                    }
+                    DEEP_SOCIAL_LIST -> if (socialListOrigin == TAB_PROFILE) {
+                        tab = TAB_PROFILE
+                        null
+                    } else {
+                        publicUsername = socialListParentUsername
+                        socialListOrigin
                     }
                     else -> {
                         tab = TAB_TRAINING
@@ -312,6 +346,21 @@ class MainActivity : ComponentActivity() {
                                 deep = DEEP_CATALOG
                             },
                             onOpenCalendar = { deep = DEEP_PROFILE_CALENDAR },
+                            onSearchPeople = { deep = DEEP_USER_SEARCH },
+                            onOpenFollowers = { username ->
+                                socialListUsername = username
+                                socialListType = SocialListType.Followers.name
+                                socialListOrigin = TAB_PROFILE
+                                socialListParentUsername = null
+                                deep = DEEP_SOCIAL_LIST
+                            },
+                            onOpenFollowing = { username ->
+                                socialListUsername = username
+                                socialListType = SocialListType.Following.name
+                                socialListOrigin = TAB_PROFILE
+                                socialListParentUsername = null
+                                deep = DEEP_SOCIAL_LIST
+                            },
                         )
                     }
                 }
@@ -608,6 +657,64 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                     },
                 )
+                DEEP_USER_SEARCH -> UserSearchRoute(
+                    viewModel = remember { userSearchViewModel() },
+                    onBack = {
+                        deep = null
+                        tab = TAB_PROFILE
+                    },
+                    onOpenProfile = { username ->
+                        publicUsername = username
+                        publicProfileOrigin = DEEP_USER_SEARCH
+                        deep = DEEP_PUBLIC_PROFILE
+                    },
+                )
+                DEEP_PUBLIC_PROFILE -> publicUsername?.let { username ->
+                    PublicProfileRoute(
+                        viewModel = remember(username) { publicProfileViewModel(username, user.id) },
+                        onBack = {
+                            if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
+                            deep = publicProfileOrigin.takeUnless { it == TAB_PROFILE }
+                        },
+                        onOpenOwnProfile = {
+                            profileViewModel().refresh()
+                            deep = null
+                            tab = TAB_PROFILE
+                        },
+                        onOpenFollowers = {
+                            socialListUsername = it
+                            socialListType = SocialListType.Followers.name
+                            socialListOrigin = DEEP_PUBLIC_PROFILE
+                            socialListParentUsername = username
+                            deep = DEEP_SOCIAL_LIST
+                        },
+                        onOpenFollowing = {
+                            socialListUsername = it
+                            socialListType = SocialListType.Following.name
+                            socialListOrigin = DEEP_PUBLIC_PROFILE
+                            socialListParentUsername = username
+                            deep = DEEP_SOCIAL_LIST
+                        },
+                    )
+                }
+                DEEP_SOCIAL_LIST -> socialListUsername?.let { username ->
+                    val type = SocialListType.valueOf(socialListType)
+                    SocialListRoute(
+                        viewModel = remember(username, type) { socialListViewModel(username, type) },
+                        type = type,
+                        onBack = {
+                            if (socialListOrigin == DEEP_PUBLIC_PROFILE) {
+                                publicUsername = socialListParentUsername
+                            }
+                            deep = socialListOrigin.takeUnless { it == TAB_PROFILE }
+                        },
+                        onOpenProfile = { selectedUsername ->
+                            publicUsername = selectedUsername
+                            publicProfileOrigin = DEEP_SOCIAL_LIST
+                            deep = DEEP_PUBLIC_PROFILE
+                        },
+                    )
+                }
             }
         }
     }
@@ -718,10 +825,28 @@ class MainActivity : ComponentActivity() {
             AppContainer.profileRepository,
             AppContainer.analyticsRepository,
             AppContainer.workoutRepository,
+            AppContainer.socialRepository,
             DeviceTimeZoneProvider,
             AppContainer.applicationClock,
         ),
     )[ProfileViewModel::class.java]
+
+    private fun userSearchViewModel(): UserSearchViewModel = ViewModelProvider(
+        this,
+        UserSearchViewModelFactory(AppContainer.socialRepository),
+    )[UserSearchViewModel::class.java]
+
+    private fun publicProfileViewModel(username: String, currentUserId: String): PublicProfileViewModel =
+        ViewModelProvider(
+            this,
+            PublicProfileViewModelFactory(username, currentUserId, AppContainer.socialRepository),
+        )["public-profile-$username", PublicProfileViewModel::class.java]
+
+    private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
+        ViewModelProvider(
+            this,
+            SocialListViewModelFactory(username, type, AppContainer.socialRepository),
+        )["social-list-$username-${type.name}", SocialListViewModel::class.java]
 
     private fun profileCalendarViewModel(): ProfileCalendarViewModel = ViewModelProvider(
         this,
@@ -777,5 +902,8 @@ class MainActivity : ComponentActivity() {
         const val DEEP_PROFILE_SETTINGS = "profile_settings"
         const val DEEP_PROFILE_STATS = "profile_stats"
         const val DEEP_PROFILE_CALENDAR = "profile_calendar"
+        const val DEEP_USER_SEARCH = "user_search"
+        const val DEEP_PUBLIC_PROFILE = "public_profile"
+        const val DEEP_SOCIAL_LIST = "social_list"
     }
 }

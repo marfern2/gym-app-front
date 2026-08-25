@@ -11,6 +11,7 @@ import com.mar.gym.feature.profile.model.PrivateProfile
 import com.mar.gym.feature.profile.model.PrivateProfileDocument
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
+import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.progress.data.AnalyticsRepository
 import com.mar.gym.feature.progress.data.AnalyticsResult
 import com.mar.gym.feature.progress.data.TimeZoneProvider
@@ -24,6 +25,10 @@ import com.mar.gym.feature.progress.model.ProgressSummary
 import com.mar.gym.feature.progress.model.TrainingCalendar
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.feature.system.MainDispatcherRule
+import com.mar.gym.feature.social.data.SocialRepository
+import com.mar.gym.feature.social.data.SocialResult
+import com.mar.gym.feature.social.model.PublicProfile
+import com.mar.gym.feature.social.model.SocialProfilePage
 import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
 import com.mar.gym.feature.workouts.model.WorkoutDetail
@@ -116,6 +121,15 @@ class ProfileViewModelTest {
         assertFalse(viewModel.uiState.value.editing)
     }
 
+    @Test fun `privacy loads and can be changed in the draft`() = runTest {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+        assertEquals(ProfilePrivacy.Public, viewModel.uiState.value.profile?.value?.privacy)
+        viewModel.startEditing()
+        viewModel.updatePrivacy(ProfilePrivacy.Private)
+        assertEquals(ProfilePrivacy.Private, viewModel.uiState.value.draft?.privacy)
+    }
+
     private fun viewModel(
         profiles: FakeProfileRepository = FakeProfileRepository(),
         workouts: FakeWorkoutRepository = FakeWorkoutRepository(),
@@ -123,6 +137,7 @@ class ProfileViewModelTest {
         profiles,
         FakeAnalyticsRepository(),
         workouts,
+        FakeSocialRepository(),
         TimeZoneProvider { "Europe/Madrid" },
         Clock.fixed(NOW, ZoneOffset.UTC),
     )
@@ -170,6 +185,18 @@ class ProfileViewModelTest {
         private fun <T> fail(): AnalyticsResult<T> = AnalyticsResult.Failure(NetworkFailure.Network())
     }
 
+    private class FakeSocialRepository : SocialRepository {
+        override suspend fun profile(username: String) = SocialResult.Success(
+            PublicProfile(PROFILE_ID, username, "Mar", null, 1, 2, 3, false, ProfilePrivacy.Public),
+        )
+        override suspend fun search(query: String, page: Int, size: Int): SocialResult<SocialProfilePage> = fail()
+        override suspend fun follow(username: String): SocialResult<Unit> = fail()
+        override suspend fun unfollow(username: String): SocialResult<Unit> = fail()
+        override suspend fun followers(username: String, page: Int, size: Int): SocialResult<SocialProfilePage> = fail()
+        override suspend fun following(username: String, page: Int, size: Int): SocialResult<SocialProfilePage> = fail()
+        private fun <T> fail(): SocialResult<T> = SocialResult.Failure(NetworkFailure.Network())
+    }
+
     private companion object {
         const val PROFILE_ID = "00000000-0000-4000-8000-000000000001"
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000002"
@@ -178,7 +205,9 @@ class ProfileViewModelTest {
         const val SET_ID = "00000000-0000-4000-8000-000000000005"
         val NOW: Instant = Instant.parse("2026-08-09T10:00:00Z")
         fun document(name: String = "Mar", username: String? = "mar.gym") = VersionedDocument(
-            PrivateProfile(PROFILE_ID, name, username, Instant.EPOCH, NOW, 0), EntityTag.fromVersion(0)!!,
+            PrivateProfile(
+                PROFILE_ID, name, username, Instant.EPOCH, NOW, 0, ProfilePrivacy.Public,
+            ), EntityTag.fromVersion(0)!!,
         )
         fun historyItem() = WorkoutHistoryItem(WORKOUT_ID, "Entreno real", NOW.minusSeconds(3_600), NOW, 3_600, 1, 1)
         fun workoutDetail() = WorkoutDetail(

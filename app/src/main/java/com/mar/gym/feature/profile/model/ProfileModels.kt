@@ -3,6 +3,15 @@ package com.mar.gym.feature.profile.model
 import com.mar.gym.core.network.VersionedDocument
 import java.time.Instant
 
+enum class ProfilePrivacy(val apiValue: String) {
+    Public("PUBLIC"),
+    Private("PRIVATE");
+
+    companion object {
+        fun fromApiValue(value: String): ProfilePrivacy? = entries.find { it.apiValue == value }
+    }
+}
+
 data class PrivateProfile(
     val userId: String,
     val displayName: String,
@@ -10,6 +19,7 @@ data class PrivateProfile(
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
+    val privacy: ProfilePrivacy,
 )
 
 typealias PrivateProfileDocument = VersionedDocument<PrivateProfile>
@@ -17,11 +27,13 @@ typealias PrivateProfileDocument = VersionedDocument<PrivateProfile>
 data class PrivateProfileDraft(
     val displayName: String,
     val username: String,
+    val privacy: ProfilePrivacy,
 ) {
     companion object {
         fun from(profile: PrivateProfile) = PrivateProfileDraft(
             displayName = profile.displayName,
             username = profile.username.orEmpty(),
+            privacy = profile.privacy,
         )
     }
 }

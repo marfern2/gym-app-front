@@ -32,6 +32,9 @@ import com.mar.gym.feature.progress.data.DefaultAnalyticsRepository
 import com.mar.gym.feature.routines.data.DefaultRoutineRepository
 import com.mar.gym.feature.routines.data.RoutineApi
 import com.mar.gym.feature.routines.data.RoutineRepository
+import com.mar.gym.feature.social.data.DefaultSocialRepository
+import com.mar.gym.feature.social.data.SocialApi
+import com.mar.gym.feature.social.data.SocialRepository
 import com.mar.gym.feature.system.DefaultSystemRepository
 import com.mar.gym.feature.system.SystemApi
 import com.mar.gym.feature.system.SystemRepository
@@ -151,6 +154,9 @@ object AppContainer {
 
     private val profileApi: ProfileApi by lazy { protectedApi(ProfileApi::class.java) }
     val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
+
+    private val socialApi: SocialApi by lazy { protectedApi(SocialApi::class.java) }
+    val socialRepository: SocialRepository by lazy { DefaultSocialRepository(socialApi) }
 
     private val measurementApi: MeasurementApi by lazy { protectedApi(MeasurementApi::class.java) }
     val measurementRepository: MeasurementRepository by lazy { DefaultMeasurementRepository(measurementApi) }

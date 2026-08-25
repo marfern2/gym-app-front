@@ -10,6 +10,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -19,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.feature.profile.model.ProfilePrivacy
 
 @Composable
 fun ProfileEditRoute(viewModel: ProfileViewModel, onBack: () -> Unit) {
@@ -31,6 +33,7 @@ fun ProfileEditRoute(viewModel: ProfileViewModel, onBack: () -> Unit) {
         onBack = { viewModel.cancelEditing(); onBack() },
         onDisplayNameChange = viewModel::updateDisplayName,
         onUsernameChange = viewModel::updateUsername,
+        onPrivacyChange = viewModel::updatePrivacy,
         onSave = viewModel::saveProfile,
         onReload = viewModel::reloadProfileKeepingDraft,
         onSaved = onBack,
@@ -43,6 +46,7 @@ fun ProfileEditScreen(
     onBack: () -> Unit,
     onDisplayNameChange: (String) -> Unit,
     onUsernameChange: (String) -> Unit,
+    onPrivacyChange: (ProfilePrivacy) -> Unit,
     onSave: () -> Unit,
     onReload: () -> Unit,
     onSaved: () -> Unit,
@@ -67,6 +71,29 @@ fun ProfileEditScreen(
                     supportingText = state.fieldErrors["displayName"]?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().testTag("profile_privacy_control"),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Perfil público", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (draft.privacy == ProfilePrivacy.Public) {
+                                "Otros usuarios pueden encontrarte y seguirte."
+                            } else {
+                                "Tu perfil no aparece en búsqueda pública y no admite nuevos follows."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = draft.privacy == ProfilePrivacy.Public,
+                        onCheckedChange = {
+                            onPrivacyChange(if (it) ProfilePrivacy.Public else ProfilePrivacy.Private)
+                        },
+                    )
+                }
                 OutlinedTextField(
                     value = draft.username,
                     onValueChange = onUsernameChange,
