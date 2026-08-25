@@ -1,9 +1,11 @@
 package com.mar.gym.feature.exercises.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,29 +13,40 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +54,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -167,7 +182,26 @@ fun ExerciseCatalogScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { AppTopBar(title = title, onBack = onBack) },
+        topBar = {
+            AppTopBar(
+                title = title,
+                onBack = onBack,
+                actions = {
+                    if (!pickerMode) {
+                        TextButton(
+                            onClick = onCreateCustom,
+                            modifier = Modifier.testTag("exercise-create-custom"),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.exercise_create_short),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                },
+            )
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -176,61 +210,60 @@ fun ExerciseCatalogScreen(
                 .padding(horizontal = 16.dp),
         ) {
             if (!pickerMode) {
-                Text(
-                    text = stringResource(R.string.exercise_catalog_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
+                Spacer(Modifier.height(4.dp))
             }
 
-            OutlinedTextField(
+            CatalogSearchField(
                 value = data.searchText,
                 onValueChange = onSearchTextChanged,
-                label = { Text(stringResource(R.string.exercise_search_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = if (data.searchText.isBlank()) null else {
-                    {
-                        TextButton(onClick = { onSearchTextChanged("") }) {
-                            Text(stringResource(R.string.exercise_clear_search))
-                        }
-                    }
-                },
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
+                CatalogFilterButton(
+                    label = data.filters.equipment
+                        ?.let { stringResource(it.labelResource()) }
+                        ?: stringResource(R.string.exercise_filter_all_equipment),
                     onClick = { filtersVisible = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp),
-                ) {
-                    Text(
-                        if (data.filters.activeCount == 0) {
-                            stringResource(R.string.exercise_filters)
-                        } else {
-                            stringResource(
+                    modifier = Modifier.weight(1f),
+                )
+                CatalogFilterButton(
+                    label = data.filters.primaryMuscleGroup
+                        ?.let { stringResource(it.labelResource()) }
+                        ?: stringResource(R.string.exercise_filter_all_muscles),
+                    onClick = { filtersVisible = true },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!pickerMode && data.filters.activeCount > 0) {
+                    TextButton(onClick = { filtersVisible = true }) {
+                        Text(
+                            text = stringResource(
                                 R.string.exercise_filters_count,
                                 data.filters.activeCount,
-                            )
-                        }
-                    )
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
                 }
-                Box(modifier = Modifier.weight(1f)) {
-                    OutlinedButton(
-                        onClick = { sortVisible = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                    ) {
+                Box {
+                    TextButton(onClick = { sortVisible = true }) {
                         Text(
-                            text = stringResource(data.sort.labelResource()),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            text = stringResource(R.string.exercise_sort),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     DropdownMenu(
@@ -246,6 +279,15 @@ fun ExerciseCatalogScreen(
                                 },
                             )
                         }
+                    }
+                }
+                if (!pickerMode) {
+                    TextButton(onClick = onOpenPicker) {
+                        Text(
+                            text = stringResource(R.string.exercise_open_picker),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -273,26 +315,6 @@ fun ExerciseCatalogScreen(
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) {
                         Text(stringResource(R.string.exercise_confirm))
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(
-                        onClick = onCreateCustom,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("exercise-create-custom"),
-                    ) {
-                        Text(stringResource(R.string.exercise_create_custom))
-                    }
-                    TextButton(
-                        onClick = onOpenPicker,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Text(stringResource(R.string.exercise_open_picker))
                     }
                 }
             }
@@ -353,10 +375,10 @@ private fun CatalogBody(
         }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
             items(data.items, key = ExerciseTemplateSummary::id) { exercise ->
-                ExerciseSummaryCard(
+                ExerciseSummaryRow(
                     exercise = exercise,
                     pickerMode = pickerMode,
                     selectionMode = data.selectionMode,
@@ -407,24 +429,24 @@ private fun CatalogBody(
 }
 
 @Composable
-private fun ExerciseSummaryCard(
+private fun ExerciseSummaryRow(
     exercise: ExerciseTemplateSummary,
     pickerMode: Boolean,
     selectionMode: ExerciseSelectionMode?,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 72.dp)
-            .testTag("exercise-item-${exercise.id}")
-            .clickable(onClick = onClick),
+            .testTag("exercise-item-${exercise.id}"),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .heightIn(min = 76.dp)
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (pickerMode) {
@@ -433,44 +455,133 @@ private fun ExerciseSummaryCard(
                 } else {
                     Checkbox(checked = selected, onCheckedChange = null)
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
             }
+            ExerciseRowThumbnail()
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = exercise.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    text = stringResource(
-                        R.string.exercise_row_summary,
-                        stringResource(exercise.primaryMuscleGroup.labelResource()),
-                        stringResource(exercise.equipment.labelResource()),
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = stringResource(exercise.exerciseType.labelResource()),
+                    text = stringResource(exercise.primaryMuscleGroup.labelResource()),
                     style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    text = buildString {
-                        append(stringResource(exercise.source.labelResource()))
-                        if (exercise.archived) {
-                            append(" · ")
-                            append(stringResource(R.string.exercise_archived_badge))
-                        }
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (exercise.archived) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+            modifier = Modifier.padding(start = 84.dp),
+        )
+    }
+}
+
+@Composable
+private fun ExerciseRowThumbnail(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Default.FitnessCenter,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CatalogSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        placeholder = {
+            Text(
+                text = stringResource(R.string.exercise_search_label),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = stringResource(R.string.exercise_search_action),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        trailingIcon = if (value.isBlank()) {
+            null
+        } else {
+            {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.exercise_clear_search),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .testTag("exercise-search-field"),
+    )
+}
+
+@Composable
+private fun CatalogFilterButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+        ),
+        modifier = modifier.heightIn(min = 52.dp),
+    ) {
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -96,7 +96,7 @@ class ExerciseScreensTest {
             onSearch = { query = it },
         )
 
-        composeRule.onNodeWithText("Buscar ejercicios").performTextInput("press")
+        composeRule.onNodeWithTag("exercise-search-field").performTextInput("press")
         assertEquals("press", query)
     }
 

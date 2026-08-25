@@ -224,7 +224,7 @@
 
     <string name="exercise_catalog_title">Ejercicios</string>
     <string name="exercise_catalog_subtitle">Catálogo de plantillas</string>
-    <string name="exercise_search_label">Buscar ejercicios</string>
+    <string name="exercise_search_label">Buscar ejercicio</string>
     <string name="exercise_search_action">Buscar</string>
     <string name="exercise_clear_search">Limpiar búsqueda</string>
     <string name="exercise_filters">Filtros</string>
@@ -232,6 +232,9 @@
     <string name="exercise_sort">Ordenar</string>
     <string name="exercise_open_picker">Seleccionar ejercicios</string>
     <string name="exercise_create_custom">Crear personalizado</string>
+    <string name="exercise_create_short">Crear</string>
+    <string name="exercise_filter_all_equipment">Todo el Equipamiento</string>
+    <string name="exercise_filter_all_muscles">Todos los Músculos</string>
     <string name="exercise_loading">Cargando ejercicios…</string>
     <string name="exercise_loading_more">Cargando más ejercicios…</string>
     <string name="exercise_empty_title">No hay ejercicios</string>
