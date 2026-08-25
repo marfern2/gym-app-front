@@ -47,11 +47,16 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -130,22 +135,155 @@ class ProfileViewModelTest {
         assertEquals(ProfilePrivacy.Private, viewModel.uiState.value.draft?.privacy)
     }
 
+    @Test fun `PUBLIC profile loads when optional social profile fails`() = runTest {
+        val social = FakeSocialRepository().apply {
+            profileResult = SocialResult.Failure(NetworkFailure.Network())
+        }
+
+        val viewModel = viewModel(socials = social)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("Mar", state.profile?.value?.displayName)
+        assertEquals("mar.gym", state.profile?.value?.username)
+        assertNull(state.profileError)
+        assertTrue(state.socialProfile is ProfileSection.Error)
+    }
+
+    @Test fun `social failure does not replace main profile or analytics state`() = runTest {
+        val social = FakeSocialRepository().apply {
+            profileResult = SocialResult.Failure(NetworkFailure.InvalidResponse())
+        }
+
+        val viewModel = viewModel(socials = social)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(ProfilePrivacy.Public, state.profile?.value?.privacy)
+        assertNull(state.profileError)
+        assertTrue(state.summary is ProfileSection.Content)
+        assertTrue(state.activity is ProfileSection.Content)
+    }
+
+    @Test fun `real own profile failure exposes main profile error`() = runTest {
+        val profiles = FakeProfileRepository().apply {
+            getResult = ProfileResult.Failure(NetworkFailure.Network())
+        }
+
+        val viewModel = viewModel(profiles = profiles)
+        advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.profile)
+        assertTrue(viewModel.uiState.value.profileError is NetworkFailure.Network)
+        assertFalse(viewModel.uiState.value.profileLoading)
+    }
+
+    @Test fun `retry reloads own profile after its failure`() = runTest {
+        val profiles = FakeProfileRepository().apply {
+            getResult = ProfileResult.Failure(NetworkFailure.Network())
+        }
+        val viewModel = viewModel(profiles = profiles)
+        advanceUntilIdle()
+        profiles.getResult = ProfileResult.Success(document(name = "Recuperado"))
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, profiles.getCalls)
+        assertEquals("Recuperado", viewModel.uiState.value.profile?.value?.displayName)
+        assertNull(viewModel.uiState.value.profileError)
+    }
+
+    @Test fun `PRIVATE profile does not depend on public endpoint`() = runTest {
+        val profiles = FakeProfileRepository().apply {
+            getResult = ProfileResult.Success(document(privacy = ProfilePrivacy.Private))
+        }
+        val social = FakeSocialRepository().apply {
+            profileResult = SocialResult.Failure(NetworkFailure.Network())
+        }
+
+        val viewModel = viewModel(profiles = profiles, socials = social)
+        advanceUntilIdle()
+
+        assertEquals(ProfilePrivacy.Private, viewModel.uiState.value.profile?.value?.privacy)
+        assertEquals(0, social.profileCalls)
+        assertNull(viewModel.uiState.value.socialProfile)
+    }
+
+    @Test fun `stale profile load cannot overwrite newer retry result`() = runTest {
+        val profiles = RacingProfileRepository()
+        val viewModel = viewModel(profiles = profiles)
+        runCurrent()
+        assertTrue(profiles.firstStarted.isCompleted)
+
+        viewModel.refresh()
+        runCurrent()
+        assertEquals("Nuevo", viewModel.uiState.value.profile?.value?.displayName)
+
+        profiles.releaseFirst.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("Nuevo", viewModel.uiState.value.profile?.value?.displayName)
+        assertNull(viewModel.uiState.value.profileError)
+    }
+
     private fun viewModel(
         profiles: FakeProfileRepository = FakeProfileRepository(),
         workouts: FakeWorkoutRepository = FakeWorkoutRepository(),
+        socials: FakeSocialRepository = FakeSocialRepository(),
     ) = ProfileViewModel(
         profiles,
         FakeAnalyticsRepository(),
         workouts,
-        FakeSocialRepository(),
+        socials,
+        TimeZoneProvider { "Europe/Madrid" },
+        Clock.fixed(NOW, ZoneOffset.UTC),
+    )
+
+    private fun viewModel(
+        profiles: ProfileRepository,
+        workouts: FakeWorkoutRepository = FakeWorkoutRepository(),
+        socials: FakeSocialRepository = FakeSocialRepository(),
+    ) = ProfileViewModel(
+        profiles,
+        FakeAnalyticsRepository(),
+        workouts,
+        socials,
         TimeZoneProvider { "Europe/Madrid" },
         Clock.fixed(NOW, ZoneOffset.UTC),
     )
 
     private class FakeProfileRepository : ProfileRepository {
+        var getCalls = 0
+        var getResult: ProfileResult<PrivateProfileDocument> = ProfileResult.Success(document())
         var updateResult: ProfileResult<PrivateProfileDocument> = ProfileResult.Success(document())
-        override suspend fun getProfile() = ProfileResult.Success(document())
+        override suspend fun getProfile(): ProfileResult<PrivateProfileDocument> {
+            getCalls += 1
+            return getResult
+        }
         override suspend fun updateProfile(draft: PrivateProfileDraft, current: PrivateProfileDocument) = updateResult
+    }
+
+    private class RacingProfileRepository : ProfileRepository {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        private var getCalls = 0
+
+        override suspend fun getProfile(): ProfileResult<PrivateProfileDocument> {
+            getCalls += 1
+            return if (getCalls == 1) {
+                firstStarted.complete(Unit)
+                withContext(NonCancellable) { releaseFirst.await() }
+                ProfileResult.Success(document(name = "Antiguo"))
+            } else {
+                ProfileResult.Success(document(name = "Nuevo"))
+            }
+        }
+
+        override suspend fun updateProfile(
+            draft: PrivateProfileDraft,
+            current: PrivateProfileDocument,
+        ): ProfileResult<PrivateProfileDocument> = ProfileResult.Failure(NetworkFailure.Network())
     }
 
     private class FakeWorkoutRepository : WorkoutRepository {
@@ -186,9 +324,15 @@ class ProfileViewModelTest {
     }
 
     private class FakeSocialRepository : SocialRepository {
-        override suspend fun profile(username: String) = SocialResult.Success(
-            PublicProfile(PROFILE_ID, username, "Mar", null, 1, 2, 3, false, ProfilePrivacy.Public),
-        )
+        var profileCalls = 0
+        var profileResult: SocialResult<PublicProfile> = SocialResult.Success(publicProfile())
+        override suspend fun profile(username: String): SocialResult<PublicProfile> {
+            profileCalls += 1
+            return when (val result = profileResult) {
+                is SocialResult.Failure -> result
+                is SocialResult.Success -> SocialResult.Success(result.value.copy(username = username))
+            }
+        }
         override suspend fun search(query: String, page: Int, size: Int): SocialResult<SocialProfilePage> = fail()
         override suspend fun follow(username: String): SocialResult<Unit> = fail()
         override suspend fun unfollow(username: String): SocialResult<Unit> = fail()
@@ -204,10 +348,17 @@ class ProfileViewModelTest {
         const val TEMPLATE_ID = "00000000-0000-4000-8000-000000000004"
         const val SET_ID = "00000000-0000-4000-8000-000000000005"
         val NOW: Instant = Instant.parse("2026-08-09T10:00:00Z")
-        fun document(name: String = "Mar", username: String? = "mar.gym") = VersionedDocument(
+        fun document(
+            name: String = "Mar",
+            username: String? = "mar.gym",
+            privacy: ProfilePrivacy = ProfilePrivacy.Public,
+        ) = VersionedDocument(
             PrivateProfile(
-                PROFILE_ID, name, username, Instant.EPOCH, NOW, 0, ProfilePrivacy.Public,
+                PROFILE_ID, name, username, Instant.EPOCH, NOW, 0, privacy,
             ), EntityTag.fromVersion(0)!!,
+        )
+        fun publicProfile() = PublicProfile(
+            PROFILE_ID, "mar.gym", "Mar", null, 1, 2, 3, false, ProfilePrivacy.Public,
         )
         fun historyItem() = WorkoutHistoryItem(WORKOUT_ID, "Entreno real", NOW.minusSeconds(3_600), NOW, 3_600, 1, 1)
         fun workoutDetail() = WorkoutDetail(

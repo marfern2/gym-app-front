@@ -75,6 +75,8 @@ class ProfileViewModel(
     private val zone = ZoneId.of(timeZoneProvider.zoneId())
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+    private var profileJob: Job? = null
+    private var profileGeneration = 0L
     private var activityJob: Job? = null
     private var analyticsJob: Job? = null
     private var socialJob: Job? = null
@@ -175,20 +177,26 @@ class ProfileViewModel(
     fun reloadProfileKeepingDraft() = loadProfile(keepDraft = true)
 
     private fun loadProfile(keepDraft: Boolean = false) {
+        profileJob?.cancel()
+        val generation = ++profileGeneration
         _uiState.update { it.copy(profileLoading = true, profileError = null) }
-        viewModelScope.launch {
+        profileJob = viewModelScope.launch {
             when (val result = profileRepository.getProfile()) {
                 is ProfileResult.Success -> {
+                    if (generation != profileGeneration) return@launch
                     _uiState.update { it.copy(
                         profile = result.value,
                         profileLoading = false,
+                        profileError = null,
                         conflict = false,
                         draft = if (keepDraft) it.draft else it.draft,
                     ) }
                     loadOwnSocial(result.value.value)
                 }
-                is ProfileResult.Failure -> _uiState.update {
-                    it.copy(profileLoading = false, profileError = result.error)
+                is ProfileResult.Failure -> if (generation == profileGeneration) {
+                    _uiState.update {
+                        it.copy(profileLoading = false, profileError = result.error)
+                    }
                 }
             }
         }

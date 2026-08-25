@@ -48,6 +48,17 @@ class DefaultProfileRepositoryTest {
         assertEquals(ProfilePrivacy.Private, result.value.value.privacy)
     }
 
+    @Test fun `profile response without privacy defaults safely to private`() = runTest {
+        enqueue(
+            """{"userId":"$ID","displayName":"Mar","username":"alice","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":0}""",
+            etag = "\"0\"",
+        )
+
+        val result = repository.getProfile() as ProfileResult.Success
+
+        assertEquals(ProfilePrivacy.Private, result.value.value.privacy)
+    }
+
     @Test fun `update sends If-Match and accepts canonical normalized username`() = runTest {
         enqueue(profile(version = 0, username = null), etag = "\"0\"")
         val current = (repository.getProfile() as ProfileResult.Success).value
@@ -95,7 +106,7 @@ class DefaultProfileRepositoryTest {
         server.enqueue(MockResponse().setResponseCode(status).setHeader("Content-Type", "application/problem+json")
             .setBody("""{"status":$status,"errorCode":"$code"}"""))
     }
-    private fun profile(version: Int, username: String?, privacy: String = "PUBLIC") = """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version,"privacy":"$privacy"}"""
+    private fun profile(version: Int, username: String?, privacy: String = "PUBLIC") = """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"privacy":"$privacy","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version}"""
 
     private companion object { const val ID = "00000000-0000-4000-8000-000000000001" }
 }
