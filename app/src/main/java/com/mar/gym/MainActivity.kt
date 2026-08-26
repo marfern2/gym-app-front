@@ -47,7 +47,9 @@ import com.mar.gym.feature.exercises.ui.ExerciseDetailViewModel
 import com.mar.gym.feature.exercises.ui.ExerciseDetailViewModelFactory
 import com.mar.gym.feature.exercises.ui.ExercisePickerRoute
 import com.mar.gym.feature.exercises.ui.openHttpsUrl
-import com.mar.gym.feature.home.ui.HomeScreen
+import com.mar.gym.feature.home.ui.HomeRoute
+import com.mar.gym.feature.home.ui.HomeViewModel
+import com.mar.gym.feature.home.ui.HomeViewModelFactory
 import com.mar.gym.feature.measurements.ui.MeasurementRoute
 import com.mar.gym.feature.measurements.ui.MeasurementViewModel
 import com.mar.gym.feature.measurements.ui.MeasurementViewModelFactory
@@ -82,6 +84,9 @@ import com.mar.gym.feature.social.ui.SocialListRoute
 import com.mar.gym.feature.social.ui.SocialListType
 import com.mar.gym.feature.social.ui.SocialListViewModel
 import com.mar.gym.feature.social.ui.SocialListViewModelFactory
+import com.mar.gym.feature.social.ui.SocialWorkoutDetailRoute
+import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModel
+import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModelFactory
 import com.mar.gym.feature.social.ui.UserSearchRoute
 import com.mar.gym.feature.social.ui.UserSearchViewModel
 import com.mar.gym.feature.social.ui.UserSearchViewModelFactory
@@ -149,6 +154,9 @@ class MainActivity : ComponentActivity() {
         var catalogOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var detailOrigin by rememberSaveable { mutableStateOf(DEEP_CATALOG) }
         var publicUsername by rememberSaveable { mutableStateOf<String?>(null) }
+        var socialWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
+        var socialWorkoutOrigin by rememberSaveable { mutableStateOf(TAB_HOME) }
+        var userSearchOrigin by rememberSaveable { mutableStateOf(TAB_PROFILE) }
         var socialListUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var publicProfileOrigin by rememberSaveable { mutableStateOf(DEEP_USER_SEARCH) }
         var socialListOrigin by rememberSaveable { mutableStateOf(TAB_PROFILE) }
@@ -237,16 +245,21 @@ class MainActivity : ComponentActivity() {
                         null
                     }
                     DEEP_USER_SEARCH -> {
-                        tab = TAB_PROFILE
+                        tab = userSearchOrigin
                         null
                     }
                     DEEP_PUBLIC_PROFILE -> {
                         if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
-                        if (publicProfileOrigin == TAB_PROFILE) {
-                            tab = TAB_PROFILE
+                        if (publicProfileOrigin == TAB_PROFILE || publicProfileOrigin == TAB_HOME) {
+                            tab = publicProfileOrigin
+                            if (tab == TAB_HOME) homeViewModel().refresh()
                             null
                         } else publicProfileOrigin
                     }
+                    DEEP_SOCIAL_WORKOUT -> if (socialWorkoutOrigin == TAB_HOME || socialWorkoutOrigin == TAB_PROFILE) {
+                        tab = socialWorkoutOrigin
+                        null
+                    } else socialWorkoutOrigin
                     DEEP_SOCIAL_LIST -> if (socialListOrigin == TAB_PROFILE) {
                         tab = TAB_PROFILE
                         null
@@ -290,12 +303,22 @@ class MainActivity : ComponentActivity() {
             ) { innerPadding ->
                 Box(modifier = Modifier.padding(innerPadding)) {
                     when (tab) {
-                        TAB_HOME -> HomeScreen(
-                            user = user,
-                            activeWorkout = activeWorkoutState,
-                            clock = AppContainer.applicationClock,
-                            onContinueWorkout = { deep = DEEP_WORKOUT },
-                            onOpenTraining = { tab = TAB_TRAINING },
+                        TAB_HOME -> HomeRoute(
+                            viewModel = homeViewModel(),
+                            onSearchPeople = {
+                                userSearchOrigin = TAB_HOME
+                                deep = DEEP_USER_SEARCH
+                            },
+                            onOpenProfile = { username ->
+                                publicUsername = username
+                                publicProfileOrigin = TAB_HOME
+                                deep = DEEP_PUBLIC_PROFILE
+                            },
+                            onOpenWorkout = { workoutId ->
+                                socialWorkoutId = workoutId
+                                socialWorkoutOrigin = TAB_HOME
+                                deep = DEEP_SOCIAL_WORKOUT
+                            },
                         )
                         TAB_TRAINING -> TrainingScreen(
                             activeWorkout = activeWorkoutState,
@@ -346,7 +369,10 @@ class MainActivity : ComponentActivity() {
                                 deep = DEEP_CATALOG
                             },
                             onOpenCalendar = { deep = DEEP_PROFILE_CALENDAR },
-                            onSearchPeople = { deep = DEEP_USER_SEARCH },
+                            onSearchPeople = {
+                                userSearchOrigin = TAB_PROFILE
+                                deep = DEEP_USER_SEARCH
+                            },
                             onOpenFollowers = { username ->
                                 socialListUsername = username
                                 socialListType = SocialListType.Followers.name
@@ -661,7 +687,7 @@ class MainActivity : ComponentActivity() {
                     viewModel = remember { userSearchViewModel() },
                     onBack = {
                         deep = null
-                        tab = TAB_PROFILE
+                        tab = userSearchOrigin
                     },
                     onOpenProfile = { username ->
                         publicUsername = username
@@ -674,7 +700,9 @@ class MainActivity : ComponentActivity() {
                         viewModel = remember(username) { publicProfileViewModel(username, user.id) },
                         onBack = {
                             if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
-                            deep = publicProfileOrigin.takeUnless { it == TAB_PROFILE }
+                            if (publicProfileOrigin == TAB_HOME) homeViewModel().refresh()
+                            deep = publicProfileOrigin.takeUnless { it == TAB_PROFILE || it == TAB_HOME }
+                            if (deep == null) tab = publicProfileOrigin
                         },
                         onOpenOwnProfile = {
                             profileViewModel().refresh()
@@ -694,6 +722,25 @@ class MainActivity : ComponentActivity() {
                             socialListOrigin = DEEP_PUBLIC_PROFILE
                             socialListParentUsername = username
                             deep = DEEP_SOCIAL_LIST
+                        },
+                        onOpenWorkout = { workoutId ->
+                            socialWorkoutId = workoutId
+                            socialWorkoutOrigin = DEEP_PUBLIC_PROFILE
+                            deep = DEEP_SOCIAL_WORKOUT
+                        },
+                    )
+                }
+                DEEP_SOCIAL_WORKOUT -> socialWorkoutId?.let { workoutId ->
+                    SocialWorkoutDetailRoute(
+                        viewModel = remember(workoutId) { socialWorkoutDetailViewModel(workoutId) },
+                        onBack = {
+                            deep = socialWorkoutOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
+                            if (deep == null) tab = socialWorkoutOrigin
+                        },
+                        onOpenProfile = { username ->
+                            publicUsername = username
+                            publicProfileOrigin = DEEP_SOCIAL_WORKOUT
+                            deep = DEEP_PUBLIC_PROFILE
                         },
                     )
                 }
@@ -836,11 +883,27 @@ class MainActivity : ComponentActivity() {
         UserSearchViewModelFactory(AppContainer.socialRepository),
     )[UserSearchViewModel::class.java]
 
+    private fun homeViewModel(): HomeViewModel = ViewModelProvider(
+        this,
+        HomeViewModelFactory(AppContainer.socialFeedRepository, AppContainer.socialRepository),
+    )[HomeViewModel::class.java]
+
     private fun publicProfileViewModel(username: String, currentUserId: String): PublicProfileViewModel =
         ViewModelProvider(
             this,
-            PublicProfileViewModelFactory(username, currentUserId, AppContainer.socialRepository),
+            PublicProfileViewModelFactory(
+                username,
+                currentUserId,
+                AppContainer.socialRepository,
+                AppContainer.socialFeedRepository,
+            ),
         )["public-profile-$username", PublicProfileViewModel::class.java]
+
+    private fun socialWorkoutDetailViewModel(workoutId: String): SocialWorkoutDetailViewModel =
+        ViewModelProvider(
+            this,
+            SocialWorkoutDetailViewModelFactory(workoutId, AppContainer.socialFeedRepository),
+        )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 
     private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
         ViewModelProvider(
@@ -905,5 +968,6 @@ class MainActivity : ComponentActivity() {
         const val DEEP_USER_SEARCH = "user_search"
         const val DEEP_PUBLIC_PROFILE = "public_profile"
         const val DEEP_SOCIAL_LIST = "social_list"
+        const val DEEP_SOCIAL_WORKOUT = "social_workout"
     }
 }

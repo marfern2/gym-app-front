@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,6 +37,7 @@ fun PublicProfileRoute(
     onOpenOwnProfile: () -> Unit,
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
+    onOpenWorkout: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     LaunchedEffect(state) {
@@ -45,6 +49,8 @@ fun PublicProfileRoute(
         onFollow = viewModel::toggleFollow,
         onOpenFollowers = onOpenFollowers,
         onOpenFollowing = onOpenFollowing,
+        onOpenWorkout = onOpenWorkout,
+        onLoadMoreWorkouts = viewModel::loadMoreWorkouts,
         onRetry = viewModel::retry,
     )
 }
@@ -57,6 +63,8 @@ fun PublicProfileScreen(
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
     onRetry: () -> Unit,
+    onOpenWorkout: (String) -> Unit = {},
+    onLoadMoreWorkouts: () -> Unit = {},
 ) {
     Scaffold(topBar = { AppTopBar("Perfil", onBack = onBack) }) { padding ->
         when (state) {
@@ -69,7 +77,8 @@ fun PublicProfileScreen(
                 onRetry = onRetry,
             )
             is PublicProfileUiState.Content -> PublicProfileContent(
-                state, onFollow, onOpenFollowers, onOpenFollowing,
+                state, onFollow, onOpenFollowers, onOpenFollowing, onOpenWorkout,
+                onLoadMoreWorkouts, onRetry,
                 Modifier.padding(padding),
             )
         }
@@ -82,37 +91,103 @@ private fun PublicProfileContent(
     onFollow: () -> Unit,
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
+    onOpenWorkout: (String) -> Unit,
+    onLoadMoreWorkouts: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier,
 ) {
     val profile = state.profile
-    Column(
-        modifier.fillMaxSize().padding(20.dp).testTag("public_profile_screen"),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    LazyColumn(
+        modifier.fillMaxSize().testTag("public_profile_screen"),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        SocialAvatar(profile.avatarUrl, profile.displayName, profile.username, size = 88.dp)
-        Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            SocialStat(profile.completedWorkoutsCount, "Entrenos")
-            SocialStat(profile.followersCount, "Seguidores") { onOpenFollowers(profile.username) }
-            SocialStat(profile.followingCount, "Siguiendo") { onOpenFollowing(profile.username) }
-        }
-        if (!state.isOwnProfile) {
-            if (profile.isFollowing) {
-                SecondaryButton("Siguiendo", onFollow, enabled = !state.followInFlight)
-            } else {
-                PrimaryButton("Seguir", onFollow, enabled = !state.followInFlight)
+        item("profile_header") {
+            Column(
+                Modifier.fillMaxWidth().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                SocialAvatar(profile.avatarUrl, profile.displayName, profile.username, size = 88.dp)
+                Text(profile.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    SocialStat(profile.completedWorkoutsCount, "Entrenos")
+                    SocialStat(profile.followersCount, "Seguidores") { onOpenFollowers(profile.username) }
+                    SocialStat(profile.followingCount, "Siguiendo") { onOpenFollowing(profile.username) }
+                }
+                if (!state.isOwnProfile) {
+                    if (profile.isFollowing) {
+                        SecondaryButton("Siguiendo", onFollow, enabled = !state.followInFlight)
+                    } else {
+                        PrimaryButton("Seguir", onFollow, enabled = !state.followInFlight)
+                    }
+                }
+                state.actionError?.let {
+                    Text(
+                        it.userMessage(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("follow_error"),
+                    )
+                }
             }
         }
-        state.actionError?.let {
+        item("workouts_title") {
             Text(
-                it.userMessage(),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.testTag("follow_error"),
+                "Entrenamientos",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 20.dp),
             )
+        }
+        when {
+            state.workoutsLoading && state.workouts.isEmpty() -> item("workouts_loading") {
+                Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            state.workoutsError != null && state.workouts.isEmpty() -> item("workouts_error") {
+                ErrorState(
+                    title = "No se pudieron cargar los entrenamientos",
+                    message = state.workoutsError.userMessage(),
+                    retryLabel = "Reintentar",
+                    onRetry = onRetry,
+                )
+            }
+            state.workouts.isEmpty() -> item("workouts_empty") {
+                Text(
+                    "Todavía no hay entrenamientos visibles.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp)
+                        .testTag("public_profile_workouts_empty"),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        itemsIndexed(state.workouts, key = { _, workout -> workout.workoutId }) { index, workout ->
+            SocialWorkoutCard(
+                workout = workout,
+                onAuthorClick = {},
+                onWorkoutClick = onOpenWorkout,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            if (index == state.workouts.lastIndex && state.workoutsHasMore && !state.workoutsLoadingMore) {
+                LaunchedEffect(state.workoutsNextCursor, state.workouts.size) { onLoadMoreWorkouts() }
+            }
+        }
+        if (state.workoutsLoadingMore) item("workouts_loading_more") {
+            Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        state.workoutsLoadMoreError?.let { error -> item("workouts_load_more_error") {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error.userMessage(), color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                androidx.compose.material3.TextButton(onClick = onRetry) { Text("Reintentar") }
+            }
+        } }
+        item("bottom_spacing") {
+            androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 8.dp))
         }
     }
 }

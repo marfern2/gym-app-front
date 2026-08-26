@@ -4,9 +4,15 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.social.data.SocialRepository
+import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialResult
 import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.social.model.SocialProfilePage
+import com.mar.gym.feature.social.model.SocialWorkoutDetail
+import com.mar.gym.feature.social.model.SocialWorkoutPage
+import com.mar.gym.feature.social.model.SocialWorkoutSummary
+import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SuggestedAthletePage
 import com.mar.gym.feature.system.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -14,6 +20,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.math.BigDecimal
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -60,7 +68,7 @@ class SocialViewModelTest {
         val repository = FakeSocialRepository()
         val gate = CompletableDeferred<SocialResult<Unit>>()
         repository.followGate = gate
-        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository)
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository, FakeSocialFeedRepository())
         advanceUntilIdle()
 
         viewModel.toggleFollow()
@@ -80,7 +88,7 @@ class SocialViewModelTest {
         val repository = FakeSocialRepository().apply {
             followResult = failure(409, "PRIVATE_PROFILE_NOT_FOLLOWABLE")
         }
-        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository)
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository, FakeSocialFeedRepository())
         advanceUntilIdle()
         viewModel.toggleFollow()
         advanceUntilIdle()
@@ -95,7 +103,7 @@ class SocialViewModelTest {
         val repository = FakeSocialRepository().apply {
             profileResult = SocialResult.Success(profile("alice", ID).copy(isFollowing = true, followersCount = 0))
         }
-        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository)
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, repository, FakeSocialFeedRepository())
         advanceUntilIdle()
         viewModel.toggleFollow()
         advanceUntilIdle()
@@ -110,7 +118,7 @@ class SocialViewModelTest {
         val ownRepository = FakeSocialRepository().apply {
             profileResult = SocialResult.Success(profile("me", CURRENT_ID))
         }
-        val own = PublicProfileViewModel("me", CURRENT_ID, ownRepository)
+        val own = PublicProfileViewModel("me", CURRENT_ID, ownRepository, FakeSocialFeedRepository())
         advanceUntilIdle()
         assertTrue((own.uiState.value as PublicProfileUiState.Content).isOwnProfile)
         own.toggleFollow()
@@ -118,7 +126,7 @@ class SocialViewModelTest {
         assertEquals(0, ownRepository.followCalls)
 
         val missingRepository = FakeSocialRepository().apply { profileResult = failure(404, "NOT_FOUND") }
-        val missing = PublicProfileViewModel("missing", CURRENT_ID, missingRepository)
+        val missing = PublicProfileViewModel("missing", CURRENT_ID, missingRepository, FakeSocialFeedRepository())
         advanceUntilIdle()
         assertEquals(SocialUiError.NotFound, (missing.uiState.value as PublicProfileUiState.Error).error)
     }
@@ -137,6 +145,63 @@ class SocialViewModelTest {
         assertEquals(1, repository.followingCalls)
     }
 
+    @Test fun `public profile header survives workouts failure and retry reloads workouts only`() = runTest {
+        val social = FakeSocialRepository()
+        val feed = FakeSocialFeedRepository().apply {
+            userWorkoutsResult = SocialResult.Failure(NetworkFailure.Network())
+        }
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, social, feed)
+        advanceUntilIdle()
+
+        val failed = viewModel.uiState.value as PublicProfileUiState.Content
+        assertEquals("alice", failed.profile.username)
+        assertEquals(SocialUiError.Network, failed.workoutsError)
+        assertEquals(1, feed.userWorkoutCalls)
+
+        feed.userWorkoutsResult = SocialResult.Success(SocialWorkoutPage(listOf(workout()), null, false))
+        viewModel.retry()
+        advanceUntilIdle()
+        assertEquals(1, (viewModel.uiState.value as PublicProfileUiState.Content).workouts.size)
+        assertEquals(1, social.profileCalls)
+        assertEquals(2, feed.userWorkoutCalls)
+    }
+
+    @Test fun `public workouts paginate without duplicates`() = runTest {
+        val feed = FakeSocialFeedRepository().apply {
+            userWorkoutsResult = SocialResult.Success(SocialWorkoutPage(listOf(workout()), "next", true))
+            cursorResults["next"] = SocialResult.Success(
+                SocialWorkoutPage(listOf(workout(), workout(ID_2)), null, false),
+            )
+        }
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, FakeSocialRepository(), feed)
+        advanceUntilIdle()
+        viewModel.loadMoreWorkouts()
+        viewModel.loadMoreWorkouts()
+        advanceUntilIdle()
+
+        assertEquals(listOf(ID, ID_2), (viewModel.uiState.value as PublicProfileUiState.Content)
+            .workouts.map { it.workoutId })
+        assertEquals(listOf(null, "next"), feed.cursors)
+    }
+
+    @Test fun `concurrent follow copy never overwrites newly loaded workouts`() = runTest {
+        val social = FakeSocialRepository().apply { followGate = CompletableDeferred() }
+        val feed = FakeSocialFeedRepository().apply { userWorkoutsGate = CompletableDeferred() }
+        val viewModel = PublicProfileViewModel("alice", CURRENT_ID, social, feed)
+        runCurrent()
+        viewModel.toggleFollow()
+        runCurrent()
+
+        feed.userWorkoutsGate?.complete(SocialResult.Success(SocialWorkoutPage(listOf(workout()), null, false)))
+        runCurrent()
+        social.followGate?.complete(SocialResult.Success(Unit))
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as PublicProfileUiState.Content
+        assertTrue(state.profile.isFollowing)
+        assertEquals(1, state.workouts.size)
+    }
+
     private class FakeSocialRepository : SocialRepository {
         var profileResult: SocialResult<PublicProfile> = SocialResult.Success(profile("alice", ID))
         var followResult: SocialResult<Unit> = SocialResult.Success(Unit)
@@ -149,8 +214,12 @@ class SocialViewModelTest {
         var unfollowCalls = 0
         var followersCalls = 0
         var followingCalls = 0
+        var profileCalls = 0
 
-        override suspend fun profile(username: String) = profileResult
+        override suspend fun profile(username: String): SocialResult<PublicProfile> {
+            profileCalls++
+            return profileResult
+        }
         override suspend fun search(query: String, page: Int, size: Int): SocialResult<SocialProfilePage> {
             searchCalls++
             return SocialResult.Success(pages.getValue(page))
@@ -173,6 +242,29 @@ class SocialViewModelTest {
         }
     }
 
+    private class FakeSocialFeedRepository : SocialFeedRepository {
+        var userWorkoutsResult: SocialResult<SocialWorkoutPage> = SocialResult.Success(
+            SocialWorkoutPage(emptyList(), null, false),
+        )
+        var userWorkoutsGate: CompletableDeferred<SocialResult<SocialWorkoutPage>>? = null
+        val cursorResults = mutableMapOf<String, SocialResult<SocialWorkoutPage>>()
+        val cursors = mutableListOf<String?>()
+        var userWorkoutCalls = 0
+        override suspend fun feed(cursor: String?, size: Int) = SocialResult.Success(
+            SocialWorkoutPage(emptyList(), null, false),
+        )
+        override suspend fun suggestions(page: Int, size: Int) = SocialResult.Success(
+            SuggestedAthletePage(emptyList(), 0, size, 0, 0, true, true),
+        )
+        override suspend fun userWorkouts(username: String, cursor: String?, size: Int): SocialResult<SocialWorkoutPage> {
+            userWorkoutCalls++
+            cursors += cursor
+            return userWorkoutsGate?.await() ?: cursor?.let { cursorResults.getValue(it) } ?: userWorkoutsResult
+        }
+        override suspend fun workoutDetail(workoutId: String): SocialResult<SocialWorkoutDetail> =
+            error("Not used")
+    }
+
     private companion object {
         const val ID = "00000000-0000-4000-8000-000000000001"
         const val ID_2 = "00000000-0000-4000-8000-000000000002"
@@ -186,6 +278,10 @@ class SocialViewModelTest {
         )
         fun <T> failure(status: Int, code: String): SocialResult<T> = SocialResult.Failure(
             NetworkFailure.HttpProblem(status, ProblemDetails(status = status, errorCode = code), null),
+        )
+        fun workout(id: String = ID) = SocialWorkoutSummary(
+            id, Instant.parse("2026-08-25T10:00:00Z"), "Workout", null,
+            SocialAuthor(ID, "alice", "Alice", null), 60, BigDecimal.TEN, 1, 1, emptyList(), 0,
         )
     }
 }
