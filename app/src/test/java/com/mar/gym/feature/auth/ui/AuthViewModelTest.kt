@@ -147,6 +147,38 @@ class AuthViewModelTest {
     }
 
     @Test
+    fun secondLoginCompletelyReplacesFirstUsersSession() = runTest {
+        val userA = user()
+        val userB = AuthenticatedUser(
+            id = "7fcf5dc3-6c5a-49d9-860f-32e7fe390568",
+            displayName = "Second User",
+            accountStatus = "ACTIVE",
+        )
+        val sessionB = session("user-b-access", "user-b-refresh")
+        val fixture = fixture(initialSession = session())
+        runCurrent()
+        assertEquals(AuthUiState.Authenticated(userA), fixture.viewModel.uiState.value)
+
+        fixture.viewModel.logout()
+        runCurrent()
+        assertNull(fixture.store.currentSession())
+        fixture.repository.loginResult = { AuthResult.Success(sessionB) }
+        fixture.repository.currentUserResult = { AuthResult.Success(userB) }
+
+        fixture.viewModel.startGoogleSignIn()
+        runCurrent()
+        val effect = fixture.viewModel.effects.first()
+        fixture.viewModel.onGoogleCredentialResult(
+            effect.requestId,
+            GoogleCredentialResult.Success("second-google-id-token"),
+        )
+        runCurrent()
+
+        assertEquals(sessionB, fixture.store.currentSession())
+        assertEquals(AuthUiState.Authenticated(userB), fixture.viewModel.uiState.value)
+    }
+
+    @Test
     fun unauthorizedLogoutStillClearsLocally() = runTest {
         val fixture = fixture(initialSession = session()).apply {
             repository.logoutResult = { AuthResult.Failure(problem(401, "UNAUTHORIZED")) }

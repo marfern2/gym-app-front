@@ -28,6 +28,26 @@ class TestSessionStore(
         return saveResult
     }
 
+    override suspend fun updateIfCurrent(
+        expectedSession: AuthSession,
+        replacement: AuthSession?,
+    ): SessionUpdateResult {
+        if (session != expectedSession) return SessionUpdateResult.SessionChanged
+        if (replacement == null) {
+            clearCalls += 1
+            session = null
+            return if (clearResult == SessionStoreResult.Success) {
+                SessionUpdateResult.Updated
+            } else {
+                SessionUpdateResult.Failure
+            }
+        }
+        saveCalls += 1
+        if (saveResult == SessionStoreResult.Failure) return SessionUpdateResult.Failure
+        session = replacement
+        return SessionUpdateResult.Updated
+    }
+
     override fun currentSession(): AuthSession? = session
 
     override fun currentAccessToken(): String? = session?.accessToken

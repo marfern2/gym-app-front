@@ -103,6 +103,25 @@ class SessionRefreshCoordinatorTest {
     }
 
     @Test
+    fun refreshFromLoggedOutUserCannotOverwriteNextUsersSession() = runTest {
+        val userA = session("user-a-access", "user-a-refresh")
+        val userB = session("user-b-access", "user-b-refresh")
+        val store = TestSessionStore(userA)
+        val gate = CompletableDeferred<AuthResult<AuthSession>>()
+        val remote = FakeRefreshRemote { gate.await() }
+        val coordinator = SessionRefreshCoordinator(remote, store, clock)
+
+        val staleRefresh = async { coordinator.refresh(userA.accessToken) }
+        runCurrent()
+        store.clear()
+        store.save(userB)
+        gate.complete(AuthResult.Success(session("rotated-a-access", "rotated-a-refresh")))
+
+        assertSame(SessionRefreshResult.Rejected, staleRefresh.await())
+        assertEquals(userB, store.currentSession())
+    }
+
+    @Test
     fun requestArrivingAfterRotationReusesNewTokenWithoutAnotherRefresh() = runTest {
         val store = TestSessionStore(session())
         val remote = FakeRefreshRemote {

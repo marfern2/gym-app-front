@@ -212,7 +212,9 @@ potencialmente válida y muestra `RecoverableSessionError` con reintento.
 varias peticiones fallan con el mismo access token, una realiza refresh y las demás esperan su
 resultado; si al entrar ya existe un token nuevo, lo reutilizan. La rotación reemplaza siempre ambos
 tokens y sus expiraciones. Si no puede persistirse el par rotado, se destruye la sesión local para
-no mantener memoria y disco contradictorios.
+no mantener memoria y disco contradictorios. La escritura de una rotación es condicional sobre la
+sesión que la inició: una respuesta tardía de una cuenta anterior no puede sobrescribir un logout ni
+un login posterior.
 
 `SessionAuthenticator` actúa únicamente ante `401` de una petición marcada `retry-on-401`. Revisa
 `priorResponse`, realiza como máximo un refresh y construye como máximo una repetición con el token
@@ -225,6 +227,11 @@ públicas sin marcador nunca reciben `Authorization`.
 exige el backend. Logout está marcado `no-retry`, por lo que un `401` no inicia refresh. Un `204`
 confirma la revocación remota y después se eliminan caché, archivo y clave. Un `401` también elimina
 la sesión local porque ya no es utilizable.
+
+Todos los `ViewModel` y estados de navegación con datos autenticados viven en un `ViewModelStore`
+propio de la sesión. El store se destruye al salir y al cambiar el `userId`; también se cancela el
+temporizador de descanso en memoria. Los repositorios compartidos son stateless y el siguiente
+usuario parte de estados de carga nuevos.
 
 Ante error de red no se afirma que el servidor haya cerrado la sesión y se mantiene la copia local
 para poder elegir entre **Reintentar** o **Eliminar solo de este dispositivo**. Esta segunda acción

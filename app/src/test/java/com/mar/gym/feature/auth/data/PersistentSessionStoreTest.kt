@@ -109,6 +109,23 @@ class PersistentSessionStoreTest {
     }
 
     @Test
+    fun staleConditionalUpdateCannotReplaceANewerLogin() = runTest {
+        val store = store()
+        val userA = session(accessToken = "user-a-access")
+        val userB = session(accessToken = "user-b-access")
+        store.save(userA)
+        store.save(userB)
+
+        val result = store.updateIfCurrent(
+            expectedSession = userA,
+            replacement = session(accessToken = "rotated-user-a-access"),
+        )
+
+        assertSame(SessionUpdateResult.SessionChanged, result)
+        assertEquals(userB, store.currentSession())
+    }
+
+    @Test
     fun cacheAvoidsDiskReadsAfterRestore() = runTest {
         val storage = FakeStorage()
         val cipher = JvmAesGcmCipher()

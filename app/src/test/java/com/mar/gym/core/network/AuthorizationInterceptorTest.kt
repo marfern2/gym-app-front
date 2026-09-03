@@ -57,6 +57,24 @@ class AuthorizationInterceptorTest {
     }
 
     @Test
+    fun requestAfterAccountSwitchUsesOnlySecondUsersBearer() {
+        val store = TestSessionStore(session("user-a-access", "user-a-refresh"))
+        store.replaceSession(session("user-b-access", "user-b-refresh"))
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthorizationInterceptor(store))
+            .build()
+        server.enqueue(MockResponse().setResponseCode(200))
+
+        val request = Request.Builder()
+            .url(server.url("api/v1/users/me/profile"))
+            .header(AUTHENTICATION_REQUIRED_HEADER, AUTHENTICATION_RETRY_ON_401)
+            .build()
+        client.newCall(request).execute().close()
+
+        assertEquals("Bearer user-b-access", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
     fun unauthorizedProtectedRequestRefreshesOnceAndRetriesWithNewToken() {
         val fixture = fixture()
         server.enqueue(MockResponse().setResponseCode(401))

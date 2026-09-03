@@ -62,28 +62,33 @@ class SessionRefreshCoordinator(
 
     private suspend fun performRefresh(session: AuthSession): SessionRefreshResult {
         if (!session.hasUsableRefreshToken(clock)) {
-            sessionStore.clear()
-            return SessionRefreshResult.Rejected
+            return clearIfUnchanged(session)
         }
 
         return when (val remoteResult = remote.refresh(session.refreshToken)) {
-            is AuthResult.Success -> when (sessionStore.save(remoteResult.value)) {
-                SessionStoreResult.Success -> SessionRefreshResult.Available(
+            is AuthResult.Success -> when (
+                sessionStore.updateIfCurrent(session, remoteResult.value)
+            ) {
+                SessionUpdateResult.Updated -> SessionRefreshResult.Available(
                     remoteResult.value,
                     refreshed = true,
                 )
 
-                SessionStoreResult.Failure -> {
-                    sessionStore.clear()
+                SessionUpdateResult.SessionChanged -> SessionRefreshResult.Rejected
+                SessionUpdateResult.Failure -> {
+                    sessionStore.updateIfCurrent(session, null)
                     SessionRefreshResult.LocalStorageFailure
                 }
             }
 
-            is AuthResult.Failure -> handleFailure(remoteResult.error)
+            is AuthResult.Failure -> handleFailure(session, remoteResult.error)
         }
     }
 
-    private suspend fun handleFailure(error: NetworkFailure): SessionRefreshResult = when {
+    private suspend fun handleFailure(
+        session: AuthSession,
+        error: NetworkFailure,
+    ): SessionRefreshResult = when {
         error is NetworkFailure.Network || error is NetworkFailure.Timeout ->
             SessionRefreshResult.RecoverableFailure(error)
 
@@ -93,11 +98,16 @@ class SessionRefreshCoordinator(
         error is NetworkFailure.HttpUnknown && error.statusCode >= 500 ->
             SessionRefreshResult.RecoverableFailure(error)
 
-        else -> {
-            sessionStore.clear()
-            SessionRefreshResult.Rejected
-        }
+        else -> clearIfUnchanged(session)
     }
+
+    private suspend fun clearIfUnchanged(session: AuthSession): SessionRefreshResult =
+        when (sessionStore.updateIfCurrent(session, null)) {
+            SessionUpdateResult.Updated,
+            SessionUpdateResult.SessionChanged,
+            -> SessionRefreshResult.Rejected
+            SessionUpdateResult.Failure -> SessionRefreshResult.LocalStorageFailure
+        }
 
     private sealed interface RefreshDecision {
         data class Immediate(val result: SessionRefreshResult) : RefreshDecision

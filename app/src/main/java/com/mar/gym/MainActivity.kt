@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,6 +36,7 @@ import com.mar.gym.feature.auth.ui.AuthRoute
 import com.mar.gym.feature.auth.ui.AuthUiState
 import com.mar.gym.feature.auth.ui.AuthViewModel
 import com.mar.gym.feature.auth.ui.AuthViewModelFactory
+import com.mar.gym.feature.auth.ui.UserSessionViewModelScope
 import com.mar.gym.feature.exercises.model.ExercisePickerConfig
 import com.mar.gym.feature.exercises.model.ExercisePickerOutcome
 import com.mar.gym.feature.exercises.model.ExerciseSelectionMode
@@ -102,6 +104,8 @@ import com.mar.gym.ui.components.BarbellIcon
 import com.mar.gym.ui.theme.GYmAppTheme
 
 class MainActivity : ComponentActivity() {
+    private lateinit var userSessionViewModels: UserSessionViewModelScope
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -119,16 +123,24 @@ class MainActivity : ComponentActivity() {
             this,
             SystemViewModelFactory(AppContainer.systemRepository),
         )[SystemViewModel::class.java]
+        userSessionViewModels = ViewModelProvider(this)[UserSessionViewModelScope::class.java]
         setContent {
             GYmAppTheme {
                 val authState by authViewModel.uiState.collectAsStateWithLifecycle()
                 val authenticated = authState as? AuthUiState.Authenticated
                 if (authenticated != null) {
-                    AuthenticatedApp(
-                        user = authenticated.user,
-                        authViewModel = authViewModel,
-                    )
+                    if (userSessionViewModels.activate(authenticated.user.id)) {
+                        AppContainer.clearUserScopedState()
+                    }
+                    key(authenticated.user.id) {
+                        AuthenticatedApp(
+                            user = authenticated.user,
+                            authViewModel = authViewModel,
+                        )
+                    }
                 } else {
+                    userSessionViewModels.clearSession()
+                    AppContainer.clearUserScopedState()
                     AuthRoute(
                         authViewModel = authViewModel,
                         systemViewModel = systemViewModel,
@@ -778,14 +790,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun exerciseCatalogViewModel(): ExerciseCatalogViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseCatalogViewModelFactory(
             repository = AppContainer.exerciseTemplateRepository,
         ),
     )[ExerciseCatalogViewModel::class.java]
 
     private fun generalExercisePickerViewModel(): ExerciseCatalogViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseCatalogViewModelFactory(
             repository = AppContainer.exerciseTemplateRepository,
             pickerConfig = ExercisePickerConfig(ExerciseSelectionMode.Multiple),
@@ -793,14 +805,14 @@ class MainActivity : ComponentActivity() {
     )["catalog-exercise-picker", ExerciseCatalogViewModel::class.java]
 
     private fun exerciseDetailViewModel(): ExerciseDetailViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseDetailViewModelFactory(AppContainer.exerciseTemplateRepository),
     )[ExerciseDetailViewModel::class.java]
 
     private fun customExerciseEditorViewModel(
         exerciseTemplateId: String?,
     ): CustomExerciseEditorViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         CustomExerciseEditorViewModelFactory(
             exerciseTemplateId = exerciseTemplateId,
             repository = AppContainer.exerciseTemplateRepository,
@@ -808,12 +820,12 @@ class MainActivity : ComponentActivity() {
     )["custom-exercise-editor-${exerciseTemplateId ?: "new"}", CustomExerciseEditorViewModel::class.java]
 
     private fun routineListViewModel(): RoutineListViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         RoutineListViewModelFactory(AppContainer.routineRepository),
     )[RoutineListViewModel::class.java]
 
     private fun routineEditorViewModel(routineId: String?): RoutineEditorViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         RoutineEditorViewModelFactory(
             routineId = routineId,
             repository = AppContainer.routineRepository,
@@ -822,7 +834,7 @@ class MainActivity : ComponentActivity() {
     )["routine-editor-${routineId ?: "new"}", RoutineEditorViewModel::class.java]
 
     private fun routineViewerViewModel(routineId: String): RoutineViewerViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         RoutineViewerViewModelFactory(routineId, AppContainer.routineRepository),
     )["routine-viewer-$routineId", RoutineViewerViewModel::class.java]
 
@@ -834,7 +846,7 @@ class MainActivity : ComponentActivity() {
         initialIds: Set<String>,
         routineId: String?,
     ): ExerciseCatalogViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseCatalogViewModelFactory(
             repository = AppContainer.exerciseTemplateRepository,
             pickerConfig = ExercisePickerConfig(
@@ -845,7 +857,7 @@ class MainActivity : ComponentActivity() {
     )["routine-picker-${routineId ?: "new"}-${initialIds.hashCode()}", ExerciseCatalogViewModel::class.java]
 
     private fun activeWorkoutViewModel(): ActiveWorkoutViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ActiveWorkoutViewModelFactory(
             AppContainer.workoutRepository,
             AppContainer.exerciseTemplateRepository,
@@ -856,7 +868,7 @@ class MainActivity : ComponentActivity() {
     )[ActiveWorkoutViewModel::class.java]
 
     private fun workoutExercisePickerViewModel(initialIds: Set<String>): ExerciseCatalogViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseCatalogViewModelFactory(
             repository = AppContainer.exerciseTemplateRepository,
             pickerConfig = ExercisePickerConfig(
@@ -870,7 +882,7 @@ class MainActivity : ComponentActivity() {
         localId: String,
         request: Int,
     ): ExerciseCatalogViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseCatalogViewModelFactory(
             repository = AppContainer.exerciseTemplateRepository,
             pickerConfig = ExercisePickerConfig(ExerciseSelectionMode.Single),
@@ -878,7 +890,7 @@ class MainActivity : ComponentActivity() {
     )["workout-replacement-picker-$localId-$request", ExerciseCatalogViewModel::class.java]
 
     private fun profileViewModel(): ProfileViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ProfileViewModelFactory(
             AppContainer.profileRepository,
             AppContainer.analyticsRepository,
@@ -890,18 +902,18 @@ class MainActivity : ComponentActivity() {
     )[ProfileViewModel::class.java]
 
     private fun userSearchViewModel(): UserSearchViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         UserSearchViewModelFactory(AppContainer.socialRepository),
     )[UserSearchViewModel::class.java]
 
     private fun homeViewModel(): HomeViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         HomeViewModelFactory(AppContainer.socialFeedRepository, AppContainer.socialRepository),
     )[HomeViewModel::class.java]
 
     private fun publicProfileViewModel(username: String, currentUserId: String): PublicProfileViewModel =
         ViewModelProvider(
-            this,
+            userSessionViewModels,
             PublicProfileViewModelFactory(
                 username,
                 currentUserId,
@@ -912,18 +924,18 @@ class MainActivity : ComponentActivity() {
 
     private fun socialWorkoutDetailViewModel(workoutId: String): SocialWorkoutDetailViewModel =
         ViewModelProvider(
-            this,
+            userSessionViewModels,
             SocialWorkoutDetailViewModelFactory(workoutId, AppContainer.socialFeedRepository),
         )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 
     private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
         ViewModelProvider(
-            this,
+            userSessionViewModels,
             SocialListViewModelFactory(username, type, AppContainer.socialRepository),
         )["social-list-$username-${type.name}", SocialListViewModel::class.java]
 
     private fun profileCalendarViewModel(): ProfileCalendarViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ProfileCalendarViewModelFactory(
             AppContainer.analyticsRepository,
             AppContainer.workoutRepository,
@@ -941,12 +953,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun exerciseProgressViewModel(exerciseTemplateId: String): ExerciseProgressViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         ExerciseProgressViewModelFactory(exerciseTemplateId, AppContainer.analyticsRepository),
     )["exercise-progress-$exerciseTemplateId", ExerciseProgressViewModel::class.java]
 
     private fun measurementViewModel(): MeasurementViewModel = ViewModelProvider(
-        this,
+        userSessionViewModels,
         MeasurementViewModelFactory(AppContainer.measurementRepository, AppContainer.applicationClock),
     )[MeasurementViewModel::class.java]
 

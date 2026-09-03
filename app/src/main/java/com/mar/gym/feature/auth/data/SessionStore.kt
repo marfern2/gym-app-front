@@ -3,12 +3,19 @@ package com.mar.gym.feature.auth.data
 import com.mar.gym.feature.auth.model.AuthSession
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 interface SessionStore {
     suspend fun restore(): SessionRestoreResult
 
     suspend fun save(session: AuthSession): SessionStoreResult
+
+    suspend fun updateIfCurrent(
+        expectedSession: AuthSession,
+        replacement: AuthSession?,
+    ): SessionUpdateResult
 
     fun currentSession(): AuthSession?
 
@@ -33,6 +40,14 @@ sealed interface SessionStoreResult {
     data object Failure : SessionStoreResult
 }
 
+sealed interface SessionUpdateResult {
+    data object Updated : SessionUpdateResult
+
+    data object SessionChanged : SessionUpdateResult
+
+    data object Failure : SessionUpdateResult
+}
+
 class PersistentSessionStore(
     private val storage: SessionStorage,
     private val cipher: SessionCipher,
@@ -41,35 +56,61 @@ class PersistentSessionStore(
 ) : SessionStore {
     @Volatile
     private var cachedSession: AuthSession? = null
+    private val mutationMutex = Mutex()
 
     override suspend fun restore(): SessionRestoreResult = withContext(ioDispatcher) {
-        val encrypted = try {
-            storage.read()
-        } catch (_: Exception) {
-            invalidateStoredSession()
-            return@withContext SessionRestoreResult.Invalidated
-        } ?: run {
-            cachedSession = null
-            return@withContext SessionRestoreResult.Missing
-        }
+        mutationMutex.withLock {
+            val encrypted = try {
+                storage.read()
+            } catch (_: Exception) {
+                invalidateStoredSession()
+                return@withLock SessionRestoreResult.Invalidated
+            } ?: run {
+                cachedSession = null
+                return@withLock SessionRestoreResult.Missing
+            }
 
-        var plaintext: ByteArray? = null
-        try {
-            plaintext = cipher.decrypt(encrypted)
-            val session = codec.decode(plaintext)
-            cachedSession = session
-            SessionRestoreResult.Restored(session)
-        } catch (_: Exception) {
-            invalidateStoredSession()
-            SessionRestoreResult.Invalidated
-        } finally {
-            plaintext?.fill(0)
+            var plaintext: ByteArray? = null
+            try {
+                plaintext = cipher.decrypt(encrypted)
+                val session = codec.decode(plaintext)
+                cachedSession = session
+                SessionRestoreResult.Restored(session)
+            } catch (_: Exception) {
+                invalidateStoredSession()
+                SessionRestoreResult.Invalidated
+            } finally {
+                plaintext?.fill(0)
+            }
         }
     }
 
     override suspend fun save(session: AuthSession): SessionStoreResult = withContext(ioDispatcher) {
+        mutationMutex.withLock { persist(session) }
+    }
+
+    override suspend fun updateIfCurrent(
+        expectedSession: AuthSession,
+        replacement: AuthSession?,
+    ): SessionUpdateResult = withContext(ioDispatcher) {
+        mutationMutex.withLock {
+            if (cachedSession != expectedSession) return@withLock SessionUpdateResult.SessionChanged
+            when (replacement) {
+                null -> when (clearStoredSession()) {
+                    SessionStoreResult.Success -> SessionUpdateResult.Updated
+                    SessionStoreResult.Failure -> SessionUpdateResult.Failure
+                }
+                else -> when (persist(replacement)) {
+                    SessionStoreResult.Success -> SessionUpdateResult.Updated
+                    SessionStoreResult.Failure -> SessionUpdateResult.Failure
+                }
+            }
+        }
+    }
+
+    private fun persist(session: AuthSession): SessionStoreResult {
         var plaintext: ByteArray? = null
-        try {
+        return try {
             plaintext = codec.encode(session)
             val encrypted = cipher.encrypt(plaintext)
             storage.writeAtomically(encrypted)
@@ -87,6 +128,10 @@ class PersistentSessionStore(
     override fun currentAccessToken(): String? = cachedSession?.accessToken
 
     override suspend fun clear(): SessionStoreResult = withContext(ioDispatcher) {
+        mutationMutex.withLock { clearStoredSession() }
+    }
+
+    private fun clearStoredSession(): SessionStoreResult {
         cachedSession = null
         var failed = false
         try {
@@ -99,7 +144,7 @@ class PersistentSessionStore(
         } catch (_: Exception) {
             failed = true
         }
-        if (failed) SessionStoreResult.Failure else SessionStoreResult.Success
+        return if (failed) SessionStoreResult.Failure else SessionStoreResult.Success
     }
 
     private fun invalidateStoredSession() {

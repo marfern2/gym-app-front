@@ -136,13 +136,20 @@ object AppContainer {
         )
     }
 
-    val restTimerController: RestTimerController by lazy {
+    private val restTimerControllerDelegate = lazy {
         check(::applicationContext.isInitialized) { "AppContainer must be initialized first" }
         RestTimerController(
             clock = clock,
             scheduler = HandlerRestTimerScheduler(),
             notifier = AndroidRestTimerNotifier(applicationContext, exerciseMediaImageLoader),
         )
+    }
+    val restTimerController: RestTimerController by restTimerControllerDelegate
+
+    fun clearUserScopedState() {
+        if (restTimerControllerDelegate.isInitialized()) {
+            restTimerController.cancel()
+        }
     }
 
     /** Returns false when a receiver was recreated after the process-local timer was lost. */
