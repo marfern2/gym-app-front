@@ -143,7 +143,6 @@ fun HomeScreen(
                         workout = workout,
                         onAuthorClick = { author -> author.username?.let(onOpenProfile) },
                         onWorkoutClick = onOpenWorkout,
-                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     if (index + 1 == suggestionsInsertionIndex(state.workouts.size)) {
                         SuggestionsBlock(state, onOpenProfile, onFollow, onRetrySuggestions)

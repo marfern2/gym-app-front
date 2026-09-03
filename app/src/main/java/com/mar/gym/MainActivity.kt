@@ -7,6 +7,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -301,7 +303,16 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             ) { innerPadding ->
-                Box(modifier = Modifier.padding(innerPadding)) {
+                Box(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .consumeWindowInsets(
+                            PaddingValues(
+                                top = innerPadding.calculateTopPadding(),
+                                bottom = innerPadding.calculateBottomPadding(),
+                            ),
+                        ),
+                ) {
                     when (tab) {
                         TAB_HOME -> HomeRoute(
                             viewModel = homeViewModel(),
