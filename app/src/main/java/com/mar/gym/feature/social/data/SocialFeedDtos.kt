@@ -22,6 +22,9 @@ data class FeedWorkoutSummaryDto(
     val exercisesCount: Long,
     val exercises: List<FeedExerciseSummaryDto>,
     val remainingExercisesCount: Long,
+    val likesCount: Long = 0,
+    val isLikedByMe: Boolean = false,
+    val commentsCount: Long = 0,
 )
 
 @Serializable
@@ -73,7 +76,34 @@ data class SocialWorkoutDetailDto(
     val durationSeconds: Long,
     val author: FeedAuthorDto,
     val exercises: List<SocialWorkoutExerciseDto>,
+    val likesCount: Long = 0,
+    val isLikedByMe: Boolean = false,
+    val commentsCount: Long = 0,
 )
+
+@Serializable
+data class SocialCommentPageDto(
+    val content: List<SocialCommentDto>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int,
+    val first: Boolean,
+    val last: Boolean,
+)
+
+@Serializable
+data class SocialCommentDto(
+    val id: String,
+    val workoutId: String,
+    val author: FeedAuthorDto,
+    val text: String,
+    val createdAt: String,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+data class CreateSocialCommentDto(val text: String)
 
 @Serializable
 data class SocialWorkoutExerciseDto(

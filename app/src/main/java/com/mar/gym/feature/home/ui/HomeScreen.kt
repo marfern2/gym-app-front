@@ -38,9 +38,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.SuggestedAthlete
+import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.ui.SocialAvatar
+import com.mar.gym.feature.social.ui.SocialEngagement
+import com.mar.gym.feature.social.ui.SocialEngagementUiState
+import com.mar.gym.feature.social.ui.SocialEngagementViewModel
 import com.mar.gym.feature.social.ui.SocialWorkoutCard
 import com.mar.gym.feature.social.ui.userMessage
+import com.mar.gym.feature.social.ui.workoutActionMessage
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.EmptyState
 import com.mar.gym.ui.components.ErrorState
@@ -48,16 +53,27 @@ import com.mar.gym.ui.components.ErrorState
 @Composable
 fun HomeRoute(
     viewModel: HomeViewModel,
+    engagementViewModel: SocialEngagementViewModel,
     onSearchPeople: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenWorkout: (String) -> Unit,
+    onOpenComments: (String) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val engagementState by engagementViewModel.uiState.collectAsState()
     HomeScreen(
         state = state,
         onSearchPeople = onSearchPeople,
         onOpenProfile = onOpenProfile,
         onOpenWorkout = onOpenWorkout,
+        engagementState = engagementState,
+        onToggleLike = { workout ->
+            engagementViewModel.toggleLike(workout.workoutId, workout.engagement())
+        },
+        onOpenComments = { workout ->
+            engagementViewModel.openComments(workout.workoutId, workout.engagement())
+            onOpenComments(workout.workoutId)
+        },
         onRetry = viewModel::retry,
         onRetrySuggestions = viewModel::retrySuggestions,
         onRefresh = viewModel::refresh,
@@ -77,6 +93,9 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFollow: (String) -> Unit,
+    engagementState: SocialEngagementUiState = SocialEngagementUiState(),
+    onToggleLike: (SocialWorkoutSummary) -> Unit = {},
+    onOpenComments: (SocialWorkoutSummary) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -139,10 +158,22 @@ fun HomeScreen(
                     items = state.workouts,
                     key = { _, workout -> workout.workoutId },
                 ) { index, workout ->
+                    val socialState = engagementState.workouts[workout.workoutId]
+                    val displayedWorkout = socialState?.let {
+                        workout.copy(
+                            likesCount = it.likesCount,
+                            isLikedByMe = it.isLikedByMe,
+                            commentsCount = it.commentsCount,
+                        )
+                    } ?: workout
                     SocialWorkoutCard(
-                        workout = workout,
+                        workout = displayedWorkout,
                         onAuthorClick = { author -> author.username?.let(onOpenProfile) },
                         onWorkoutClick = onOpenWorkout,
+                        onToggleLike = { onToggleLike(displayedWorkout) },
+                        onCommentsClick = { onOpenComments(displayedWorkout) },
+                        likeInFlight = workout.workoutId in engagementState.likesInFlight,
+                        likeError = engagementState.likeErrors[workout.workoutId]?.workoutActionMessage(),
                     )
                     if (index + 1 == suggestionsInsertionIndex(state.workouts.size)) {
                         SuggestionsBlock(state, onOpenProfile, onFollow, onRetrySuggestions)
@@ -167,6 +198,8 @@ fun HomeScreen(
         }
     }
 }
+
+private fun SocialWorkoutSummary.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)
 
 private fun LazyListScope.suggestionsBlock(
     state: HomeUiState,

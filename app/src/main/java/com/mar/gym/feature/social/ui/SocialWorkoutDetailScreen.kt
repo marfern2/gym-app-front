@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.SocialWorkoutExercise
+import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetSummary
 import com.mar.gym.feature.workouts.ui.formatWorkoutSetResult
@@ -35,11 +36,27 @@ import java.util.Locale
 @Composable
 fun SocialWorkoutDetailRoute(
     viewModel: SocialWorkoutDetailViewModel,
+    engagementViewModel: SocialEngagementViewModel,
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
+    onOpenComments: (String) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
-    SocialWorkoutDetailScreen(state, onBack, onOpenProfile, viewModel::retry)
+    val engagementState by engagementViewModel.uiState.collectAsState()
+    SocialWorkoutDetailScreen(
+        state = state,
+        onBack = onBack,
+        onOpenProfile = onOpenProfile,
+        onRetry = viewModel::retry,
+        engagementState = engagementState,
+        onToggleLike = { workout ->
+            engagementViewModel.toggleLike(workout.workoutId, workout.engagement())
+        },
+        onOpenComments = { workout ->
+            engagementViewModel.openComments(workout.workoutId, workout.engagement())
+            onOpenComments(workout.workoutId)
+        },
+    )
 }
 
 @Composable
@@ -48,6 +65,9 @@ fun SocialWorkoutDetailScreen(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onRetry: () -> Unit,
+    engagementState: SocialEngagementUiState = SocialEngagementUiState(),
+    onToggleLike: (SocialWorkoutDetail) -> Unit = {},
+    onOpenComments: (SocialWorkoutDetail) -> Unit = {},
 ) {
     Scaffold(topBar = { AppTopBar("Entrenamiento", onBack = onBack) }) { padding ->
         when (state) {
@@ -57,12 +77,12 @@ fun SocialWorkoutDetailScreen(
             )
             is SocialWorkoutDetailUiState.Error -> ErrorState(
                 modifier = Modifier.fillMaxSize().padding(padding).testTag("social_workout_detail_error"),
-                title = if (state.error == SocialUiError.NotFound || state.error == SocialUiError.Unauthorized) {
+                title = if (state.error == SocialUiError.NotFound || state.error == SocialUiError.Forbidden) {
                     "Entrenamiento no disponible"
                 } else {
                     "No se pudo cargar el entrenamiento"
                 },
-                message = if (state.error == SocialUiError.NotFound || state.error == SocialUiError.Unauthorized) {
+                message = if (state.error == SocialUiError.NotFound || state.error == SocialUiError.Forbidden) {
                     "Puede que se haya eliminado o que el perfil ya no sea público."
                 } else state.error.userMessage(),
                 retryLabel = "Reintentar",
@@ -70,6 +90,14 @@ fun SocialWorkoutDetailScreen(
             )
             is SocialWorkoutDetailUiState.Content -> {
                 val workout = state.workout
+                val socialState = engagementState.workouts[workout.workoutId]
+                val displayedWorkout = socialState?.let {
+                    workout.copy(
+                        likesCount = it.likesCount,
+                        isLikedByMe = it.isLikedByMe,
+                        commentsCount = it.commentsCount,
+                    )
+                } ?: workout
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding).testTag("social_workout_detail"),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -80,22 +108,31 @@ fun SocialWorkoutDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             AuthorHeader(
-                                author = workout.author,
-                                supportingText = workout.completedAt.atZone(ZoneId.systemDefault())
+                                author = displayedWorkout.author,
+                                supportingText = displayedWorkout.completedAt.atZone(ZoneId.systemDefault())
                                     .format(detailDateFormatter()),
-                                onClick = { workout.author.username?.let(onOpenProfile) },
+                                onClick = { displayedWorkout.author.username?.let(onOpenProfile) },
                             )
-                            Text(workout.title, style = MaterialTheme.typography.headlineSmall)
-                            workout.notes?.let {
+                            Text(displayedWorkout.title, style = MaterialTheme.typography.headlineSmall)
+                            displayedWorkout.notes?.let {
                                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text(
-                                "Duración · ${compactDuration(workout.durationSeconds)}",
+                                "Duración · ${compactDuration(displayedWorkout.durationSeconds)}",
                                 style = MaterialTheme.typography.titleSmall,
+                            )
+                            SocialWorkoutActions(
+                                likesCount = displayedWorkout.likesCount,
+                                isLikedByMe = displayedWorkout.isLikedByMe,
+                                commentsCount = displayedWorkout.commentsCount,
+                                likeInFlight = displayedWorkout.workoutId in engagementState.likesInFlight,
+                                onToggleLike = { onToggleLike(displayedWorkout) },
+                                onCommentsClick = { onOpenComments(displayedWorkout) },
+                                likeError = engagementState.likeErrors[displayedWorkout.workoutId]?.workoutActionMessage(),
                             )
                         }
                     }
-                    items(workout.exercises, key = SocialWorkoutExercise::id) { exercise ->
+                    items(displayedWorkout.exercises, key = SocialWorkoutExercise::id) { exercise ->
                         SocialExerciseDetail(exercise, Modifier.padding(horizontal = 12.dp))
                     }
                     item("bottom_spacing") { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 12.dp)) }
@@ -104,6 +141,8 @@ fun SocialWorkoutDetailScreen(
         }
     }
 }
+
+private fun SocialWorkoutDetail.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)
 
 @Composable
 private fun SocialExerciseDetail(exercise: SocialWorkoutExercise, modifier: Modifier = Modifier) {

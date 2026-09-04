@@ -4,6 +4,8 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialResult
 import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SocialComment
+import com.mar.gym.feature.social.model.SocialCommentPage
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutPage
 import com.mar.gym.feature.social.model.SuggestedAthletePage
@@ -52,6 +54,14 @@ class SocialWorkoutDetailViewModelTest {
         override suspend fun userWorkouts(username: String, cursor: String?, size: Int) = SocialResult.Success(
             SocialWorkoutPage(emptyList(), null, false),
         )
+        override suspend fun like(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun unlike(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun comments(workoutId: String, page: Int, size: Int): SocialResult<SocialCommentPage> =
+            error("Not used")
+        override suspend fun createComment(workoutId: String, text: String): SocialResult<SocialComment> =
+            error("Not used")
+        override suspend fun deleteComment(workoutId: String, commentId: String): SocialResult<Unit> =
+            error("Not used")
     }
 
     private companion object {

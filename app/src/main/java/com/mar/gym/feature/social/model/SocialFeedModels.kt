@@ -32,6 +32,9 @@ data class SocialWorkoutSummary(
     val exercisesCount: Long,
     val exercises: List<SocialExerciseSummary>,
     val remainingExercisesCount: Long,
+    val likesCount: Long = 0,
+    val isLikedByMe: Boolean = false,
+    val commentsCount: Long = 0,
 )
 
 data class SocialWorkoutPage(
@@ -69,6 +72,28 @@ data class SocialWorkoutDetail(
     val durationSeconds: Long,
     val author: SocialAuthor,
     val exercises: List<SocialWorkoutExercise>,
+    val likesCount: Long = 0,
+    val isLikedByMe: Boolean = false,
+    val commentsCount: Long = 0,
+)
+
+data class SocialComment(
+    val id: String,
+    val workoutId: String,
+    val author: SocialAuthor,
+    val text: String,
+    val createdAt: Instant,
+    val updatedAt: Instant?,
+)
+
+data class SocialCommentPage(
+    val content: List<SocialComment>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int,
+    val first: Boolean,
+    val last: Boolean,
 )
 
 data class SocialWorkoutExercise(

@@ -6,6 +6,8 @@ import com.mar.gym.feature.social.data.SocialRepository
 import com.mar.gym.feature.social.data.SocialResult
 import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SocialComment
+import com.mar.gym.feature.social.model.SocialCommentPage
 import com.mar.gym.feature.social.model.SocialProfilePage
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutPage
@@ -130,6 +132,14 @@ class HomeViewModelTest {
         override suspend fun suggestions(page: Int, size: Int) = suggestionResult
         override suspend fun userWorkouts(username: String, cursor: String?, size: Int) = successPage(emptyList())
         override suspend fun workoutDetail(workoutId: String): SocialResult<SocialWorkoutDetail> = error("Not used")
+        override suspend fun like(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun unlike(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun comments(workoutId: String, page: Int, size: Int): SocialResult<SocialCommentPage> =
+            error("Not used")
+        override suspend fun createComment(workoutId: String, text: String): SocialResult<SocialComment> =
+            error("Not used")
+        override suspend fun deleteComment(workoutId: String, commentId: String): SocialResult<Unit> =
+            error("Not used")
     }
 
     private class FakeSocialRepository : SocialRepository {

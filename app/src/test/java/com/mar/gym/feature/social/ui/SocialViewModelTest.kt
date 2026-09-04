@@ -12,6 +12,8 @@ import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutPage
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SocialComment
+import com.mar.gym.feature.social.model.SocialCommentPage
 import com.mar.gym.feature.social.model.SuggestedAthletePage
 import com.mar.gym.feature.system.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
@@ -262,6 +264,14 @@ class SocialViewModelTest {
             return userWorkoutsGate?.await() ?: cursor?.let { cursorResults.getValue(it) } ?: userWorkoutsResult
         }
         override suspend fun workoutDetail(workoutId: String): SocialResult<SocialWorkoutDetail> =
+            error("Not used")
+        override suspend fun like(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun unlike(workoutId: String): SocialResult<Unit> = error("Not used")
+        override suspend fun comments(workoutId: String, page: Int, size: Int): SocialResult<SocialCommentPage> =
+            error("Not used")
+        override suspend fun createComment(workoutId: String, text: String): SocialResult<SocialComment> =
+            error("Not used")
+        override suspend fun deleteComment(workoutId: String, commentId: String): SocialResult<Unit> =
             error("Not used")
     }
 

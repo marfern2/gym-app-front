@@ -3,11 +3,14 @@ package com.mar.gym.feature.social.data
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkResponse
 import com.mar.gym.core.network.executeNetworkRequest
+import com.mar.gym.core.network.executeNetworkUnitRequest
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.HttpsUrl
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SocialComment
+import com.mar.gym.feature.social.model.SocialCommentPage
 import com.mar.gym.feature.social.model.SocialExerciseSummary
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutExercise
@@ -51,6 +54,41 @@ class DefaultSocialFeedRepository(
         return execute { api.workoutDetail(workoutId) }.map { it.toDomain() }
     }
 
+    override suspend fun like(workoutId: String): SocialResult<Unit> = mutate(workoutId, api::like)
+
+    override suspend fun unlike(workoutId: String): SocialResult<Unit> = mutate(workoutId, api::unlike)
+
+    override suspend fun comments(workoutId: String, page: Int, size: Int): SocialResult<SocialCommentPage> {
+        if (!workoutId.isUuid() || page < 0 || size !in 1..MAX_COMMENTS_SIZE) return invalid()
+        return execute { api.comments(workoutId, page, size) }.map { it.toDomain(workoutId) }
+    }
+
+    override suspend fun createComment(workoutId: String, text: String): SocialResult<SocialComment> {
+        if (!workoutId.isUuid()) return invalid()
+        val normalized = text.trim().takeIf { it.isNotEmpty() && it.length <= MAX_COMMENT_LENGTH } ?: return invalid()
+        return execute { api.createComment(workoutId, CreateSocialCommentDto(normalized)) }
+            .map { it.toDomain()?.takeIf { comment -> comment.workoutId == workoutId } }
+    }
+
+    override suspend fun deleteComment(workoutId: String, commentId: String): SocialResult<Unit> {
+        if (!workoutId.isUuid() || !commentId.isUuid()) return invalid()
+        return when (val response = executeNetworkUnitRequest { api.deleteComment(workoutId, commentId) }) {
+            is NetworkResponse.Failure -> SocialResult.Failure(response.error)
+            is NetworkResponse.Success -> SocialResult.Success(Unit)
+        }
+    }
+
+    private suspend fun mutate(
+        workoutId: String,
+        request: suspend (String) -> retrofit2.Response<Unit>,
+    ): SocialResult<Unit> {
+        if (!workoutId.isUuid()) return invalid()
+        return when (val response = executeNetworkUnitRequest { request(workoutId) }) {
+            is NetworkResponse.Failure -> SocialResult.Failure(response.error)
+            is NetworkResponse.Success -> SocialResult.Success(Unit)
+        }
+    }
+
     private suspend fun <T : Any> execute(
         request: suspend () -> retrofit2.Response<T>,
     ): SocialResult<T> = when (val response = executeNetworkRequest(request)) {
@@ -74,7 +112,8 @@ class DefaultSocialFeedRepository(
     private fun FeedWorkoutSummaryDto.toDomain(): SocialWorkoutSummary? {
         if (!workoutId.isUuid() || title.isBlank() || durationSeconds < 0 ||
             !totalVolumeKg.isFinite() || totalVolumeKg < 0 || completedSetsCount < 0 ||
-            exercisesCount < 0 || remainingExercisesCount < 0 || exercises.size > MAX_EXERCISE_PREVIEWS
+            exercisesCount < 0 || remainingExercisesCount < 0 || exercises.size > MAX_EXERCISE_PREVIEWS ||
+            likesCount < 0 || commentsCount < 0
         ) return null
         val mappedExercises = exercises.map { it.toDomain() ?: return null }
         val completion = completedAt.instant() ?: return null
@@ -90,6 +129,9 @@ class DefaultSocialFeedRepository(
             exercisesCount = exercisesCount,
             exercises = mappedExercises,
             remainingExercisesCount = remainingExercisesCount,
+            likesCount = likesCount,
+            isLikedByMe = isLikedByMe,
+            commentsCount = commentsCount,
         )
     }
 
@@ -141,7 +183,9 @@ class DefaultSocialFeedRepository(
     }
 
     private fun SocialWorkoutDetailDto.toDomain(): SocialWorkoutDetail? {
-        if (!workoutId.isUuid() || title.isBlank() || status != COMPLETED || durationSeconds < 0) return null
+        if (!workoutId.isUuid() || title.isBlank() || status != COMPLETED || durationSeconds < 0 ||
+            likesCount < 0 || commentsCount < 0
+        ) return null
         val start = startedAt.instant() ?: return null
         val completion = completedAt.instant()?.takeIf { it >= start } ?: return null
         val mappedExercises = exercises.sortedBy(SocialWorkoutExerciseDto::position).map { exercise ->
@@ -157,7 +201,28 @@ class DefaultSocialFeedRepository(
             durationSeconds = durationSeconds,
             author = author.toDomain() ?: return null,
             exercises = mappedExercises,
+            likesCount = likesCount,
+            isLikedByMe = isLikedByMe,
+            commentsCount = commentsCount,
         )
+    }
+
+    private fun SocialCommentPageDto.toDomain(expectedWorkoutId: String): SocialCommentPage? {
+        if (page < 0 || size !in 1..MAX_COMMENTS_SIZE || content.size > size || totalElements < 0 ||
+            totalPages < 0
+        ) return null
+        val comments = content.map { it.toDomain() ?: return null }
+        if (comments.any { it.workoutId != expectedWorkoutId } ||
+            comments.map(SocialComment::id).distinct().size != comments.size
+        ) return null
+        return SocialCommentPage(comments, page, size, totalElements, totalPages, first, last)
+    }
+
+    private fun SocialCommentDto.toDomain(): SocialComment? {
+        if (!id.isUuid() || !workoutId.isUuid() || text.isBlank() || text.length > MAX_COMMENT_LENGTH) return null
+        val created = createdAt.instant() ?: return null
+        val updated = updatedAt?.instant()?.takeIf { it >= created } ?: if (updatedAt == null) null else return null
+        return SocialComment(id, workoutId, author.toDomain() ?: return null, text, created, updated)
     }
 
     private fun SocialWorkoutExerciseDto.toDomain(): SocialWorkoutExercise? {
@@ -211,6 +276,8 @@ class DefaultSocialFeedRepository(
         const val MAX_SUGGESTIONS_SIZE = 50
         const val MAX_EXERCISE_PREVIEWS = 3
         const val MAX_DISPLAY_NAME_LENGTH = 100
+        const val MAX_COMMENTS_SIZE = 100
+        const val MAX_COMMENT_LENGTH = 1_000
         const val COMPLETED = "COMPLETED"
         val USERNAME = Regex("^[a-z0-9][a-z0-9._]{1,28}[a-z0-9]$")
     }

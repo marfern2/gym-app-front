@@ -2,6 +2,7 @@ package com.mar.gym.feature.social.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -16,6 +17,7 @@ import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.social.model.SocialAuthor
+import com.mar.gym.feature.social.model.SocialComment
 import com.mar.gym.feature.social.model.SocialExerciseSummary
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutExercise
@@ -26,6 +28,7 @@ import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -35,12 +38,16 @@ class SocialFeedScreensTest {
     @Test fun workoutCardRendersRealSummaryMaximumThreeExercisesAndClicks() {
         var openedAuthor: String? = null
         var openedWorkout: String? = null
+        var likedWorkout: String? = null
+        var commentsWorkout: String? = null
         composeRule.setContent {
             GYmAppTheme {
                 SocialWorkoutCard(
                     workout = workout(exerciseCount = 4, remaining = 2),
                     onAuthorClick = { openedAuthor = it.username },
                     onWorkoutClick = { openedWorkout = it },
+                    onToggleLike = { likedWorkout = it },
+                    onCommentsClick = { commentsWorkout = it },
                 )
             }
         }
@@ -51,12 +58,18 @@ class SocialFeedScreensTest {
         composeRule.onNodeWithText("Exercise 3").assertExists()
         composeRule.onNodeWithText("Exercise 4").assertDoesNotExist()
         composeRule.onNodeWithText("Ver 2 ejercicios más").assertExists()
+        composeRule.onNodeWithTag("social_likes_count", useUnmergedTree = true).assertTextEquals("7")
+        composeRule.onNodeWithTag("social_comments_count", useUnmergedTree = true).assertTextEquals("3")
 
         composeRule.onNodeWithTag("social_workout_author_alice").performClick()
+        composeRule.onNodeWithTag("social_like_action").performClick()
+        composeRule.onNodeWithTag("social_comments_action").performClick()
         composeRule.onNodeWithTag("social_workout_$WORKOUT_ID").performClick()
         composeRule.runOnIdle {
             assertEquals("alice", openedAuthor)
             assertEquals(WORKOUT_ID, openedWorkout)
+            assertEquals(WORKOUT_ID, likedWorkout)
+            assertEquals(WORKOUT_ID, commentsWorkout)
         }
     }
 
@@ -81,16 +94,62 @@ class SocialFeedScreensTest {
         composeRule.onNodeWithTag("social_avatar_fallback", useUnmergedTree = true).assertExists()
     }
 
+    @Test fun workoutCardOmitsUsernameWhenAuthorHasNone() {
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialWorkoutCard(
+                    workout = workout().copy(author = SocialAuthor(USER_ID, null, "Alice Doe", null)),
+                    onAuthorClick = {},
+                    onWorkoutClick = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Alice Doe").assertIsDisplayed()
+        composeRule.onNodeWithText("@alice").assertDoesNotExist()
+        composeRule.onNodeWithTag("social_workout_author_$USER_ID").assertExists()
+    }
+
+    @Test fun homeReusesWorkoutCardSocialActions() {
+        var liked = false
+        var comments = false
+        composeRule.setContent {
+            GYmAppTheme {
+                HomeScreen(
+                    state = HomeUiState(
+                        workouts = listOf(workout()),
+                        initialLoading = false,
+                        suggestionsLoading = false,
+                    ),
+                    onSearchPeople = {}, onOpenProfile = {}, onOpenWorkout = {}, onRetry = {},
+                    onRetrySuggestions = {}, onRefresh = {}, onLoadMore = {}, onFollow = {},
+                    onToggleLike = { liked = true },
+                    onOpenComments = { comments = true },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("social_like_action").performScrollTo().performClick()
+        composeRule.onNodeWithTag("social_comments_action").performClick()
+        composeRule.runOnIdle {
+            assertTrue(liked)
+            assertTrue(comments)
+        }
+    }
+
     @Test fun publicProfileReusesWorkoutCard() {
+        var liked = false
         composeRule.setContent {
             GYmAppTheme {
                 PublicProfileScreen(
                     state = PublicProfileUiState.Content(profile(), false, workouts = listOf(workout())),
                     onBack = {}, onFollow = {}, onOpenFollowers = {}, onOpenFollowing = {}, onRetry = {},
+                    onToggleLike = { liked = true },
                 )
             }
         }
         composeRule.onNodeWithTag("social_workout_$WORKOUT_ID").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("social_like_action").performClick()
+        composeRule.runOnIdle { assertTrue(liked) }
     }
 
     @Test fun publicProfileShowsSmallEmptyStateWithoutWorkouts() {
@@ -106,17 +165,83 @@ class SocialFeedScreensTest {
     }
 
     @Test fun detailIsReadOnlyRendersActualMetrics() {
+        var liked = false
+        var openedComments = false
         composeRule.setContent {
             GYmAppTheme {
                 SocialWorkoutDetailScreen(
                     state = SocialWorkoutDetailUiState.Content(detail()),
                     onBack = {}, onOpenProfile = {}, onRetry = {},
+                    onToggleLike = { liked = true },
+                    onOpenComments = { openedComments = true },
                 )
             }
         }
         composeRule.onNodeWithText("80 kg × 8 · RPE 8").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Editar").assertDoesNotExist()
         composeRule.onNodeWithText("Objetivo", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("social_likes_count", useUnmergedTree = true).assertTextEquals("5")
+        composeRule.onNodeWithTag("social_like_action").performClick()
+        composeRule.onNodeWithTag("social_comments_action").performClick()
+        composeRule.runOnIdle {
+            assertTrue(liked)
+            assertTrue(openedComments)
+        }
+    }
+
+    @Test fun commentsRenderOwnDeleteOnlyAndOpenAuthor() {
+        var openedUsername: String? = null
+        var requestedDelete: String? = null
+        val own = comment(COMMENT_ID, USER_ID, "Propio")
+        val foreign = comment(COMMENT_ID_2, OTHER_USER_ID, "Ajeno")
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialCommentsScreen(
+                    state = SocialCommentsUiState.Content(
+                        SocialCommentsData(WORKOUT_ID, listOf(own, foreign), 0, false, 2),
+                    ),
+                    isOwnComment = { it.author.userId == USER_ID },
+                    onBack = {},
+                    onOpenProfile = { openedUsername = it },
+                    onRetry = {},
+                    onLoadMore = {},
+                    onInputChanged = {},
+                    onSubmit = {},
+                    onRequestDelete = { requestedDelete = it.id },
+                    onCancelDelete = {},
+                    onConfirmDelete = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Propio").assertIsDisplayed()
+        composeRule.onNodeWithText("Ajeno").assertIsDisplayed()
+        composeRule.onNodeWithTag("delete_comment_$COMMENT_ID").assertExists()
+        composeRule.onNodeWithTag("delete_comment_$COMMENT_ID_2").assertDoesNotExist()
+        composeRule.onNodeWithTag("delete_comment_$COMMENT_ID").performClick()
+        composeRule.onNodeWithText("Eliminar").performClick()
+        composeRule.onNodeWithText("@alice").performClick()
+        composeRule.runOnIdle {
+            assertEquals(COMMENT_ID, requestedDelete)
+            assertEquals("alice", openedUsername)
+        }
+    }
+
+    @Test fun commentsEmptyStateAndComposerAreExplicit() {
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialCommentsScreen(
+                    state = SocialCommentsUiState.Empty(
+                        SocialCommentsData(WORKOUT_ID, emptyList(), 0, false, 0),
+                    ),
+                    isOwnComment = { false }, onBack = {}, onOpenProfile = {}, onRetry = {},
+                    onLoadMore = {}, onInputChanged = {}, onSubmit = {}, onRequestDelete = {},
+                    onCancelDelete = {}, onConfirmDelete = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag("comments_empty").assertIsDisplayed()
+        composeRule.onNodeWithText("Añadir comentario...").assertIsDisplayed()
     }
 
     @Test fun detailHiddenWorkoutShowsNotAvailableError() {
@@ -145,6 +270,9 @@ class SocialFeedScreensTest {
             SocialExerciseSummary(null, "Exercise $it", it.toLong(), null)
         },
         remainingExercisesCount = remaining,
+        likesCount = 7,
+        isLikedByMe = true,
+        commentsCount = 3,
     )
 
     private fun detail() = SocialWorkoutDetail(
@@ -172,6 +300,23 @@ class SocialFeedScreensTest {
                 ),
             ),
         ),
+        likesCount = 5,
+        isLikedByMe = false,
+        commentsCount = 4,
+    )
+
+    private fun comment(id: String, userId: String, text: String) = SocialComment(
+        id = id,
+        workoutId = WORKOUT_ID,
+        author = SocialAuthor(
+            userId,
+            if (userId == USER_ID) "alice" else "bob",
+            if (userId == USER_ID) "Alice Doe" else "Bob Doe",
+            null,
+        ),
+        text = text,
+        createdAt = Instant.parse("2026-08-25T10:05:00Z"),
+        updatedAt = null,
     )
 
     private fun author() = SocialAuthor(USER_ID, "alice", "Alice Doe", null)
@@ -185,5 +330,8 @@ class SocialFeedScreensTest {
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000010"
         const val EXERCISE_ID = "00000000-0000-4000-8000-000000000020"
         const val SET_ID = "00000000-0000-4000-8000-000000000030"
+        const val OTHER_USER_ID = "00000000-0000-4000-8000-000000000002"
+        const val COMMENT_ID = "00000000-0000-4000-8000-000000000040"
+        const val COMMENT_ID_2 = "00000000-0000-4000-8000-000000000041"
     }
 }

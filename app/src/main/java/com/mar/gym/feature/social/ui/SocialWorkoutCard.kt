@@ -15,9 +15,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +50,10 @@ fun SocialWorkoutCard(
     workout: SocialWorkoutSummary,
     onAuthorClick: (SocialAuthor) -> Unit,
     onWorkoutClick: (String) -> Unit,
+    onToggleLike: (String) -> Unit = {},
+    onCommentsClick: (String) -> Unit = {},
+    likeInFlight: Boolean = false,
+    likeError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -85,6 +93,72 @@ fun SocialWorkoutCard(
                     )
                 }
             }
+            SocialWorkoutActions(
+                likesCount = workout.likesCount,
+                isLikedByMe = workout.isLikedByMe,
+                commentsCount = workout.commentsCount,
+                likeInFlight = likeInFlight,
+                onToggleLike = { onToggleLike(workout.workoutId) },
+                onCommentsClick = { onCommentsClick(workout.workoutId) },
+                likeError = likeError,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SocialWorkoutActions(
+    likesCount: Long,
+    isLikedByMe: Boolean,
+    commentsCount: Long,
+    likeInFlight: Boolean,
+    onToggleLike: () -> Unit,
+    onCommentsClick: () -> Unit,
+    likeError: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onToggleLike,
+                enabled = !likeInFlight,
+                modifier = Modifier.testTag("social_like_action"),
+            ) {
+                Icon(
+                    imageVector = if (isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = if (isLikedByMe) "Quitar Me gusta" else "Me gusta",
+                    tint = if (isLikedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                likesCount.coerceAtLeast(0).toString(),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.testTag("social_likes_count"),
+            )
+            Spacer(Modifier.width(12.dp))
+            IconButton(
+                onClick = onCommentsClick,
+                modifier = Modifier.testTag("social_comments_action"),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = "Abrir comentarios",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                commentsCount.coerceAtLeast(0).toString(),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.testTag("social_comments_count"),
+            )
+        }
+        likeError?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.testTag("social_like_error"),
+            )
         }
     }
 }

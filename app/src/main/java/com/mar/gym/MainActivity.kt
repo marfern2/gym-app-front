@@ -88,6 +88,9 @@ import com.mar.gym.feature.social.ui.SocialListRoute
 import com.mar.gym.feature.social.ui.SocialListType
 import com.mar.gym.feature.social.ui.SocialListViewModel
 import com.mar.gym.feature.social.ui.SocialListViewModelFactory
+import com.mar.gym.feature.social.ui.SocialCommentsRoute
+import com.mar.gym.feature.social.ui.SocialEngagementViewModel
+import com.mar.gym.feature.social.ui.SocialEngagementViewModelFactory
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailRoute
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModel
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModelFactory
@@ -170,6 +173,8 @@ class MainActivity : ComponentActivity() {
         var publicUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var socialWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
         var socialWorkoutOrigin by rememberSaveable { mutableStateOf(TAB_HOME) }
+        var socialCommentsOrigin by rememberSaveable { mutableStateOf(TAB_HOME) }
+        var commentsParentUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var userSearchOrigin by rememberSaveable { mutableStateOf(TAB_PROFILE) }
         var socialListUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var publicProfileOrigin by rememberSaveable { mutableStateOf(DEEP_USER_SEARCH) }
@@ -274,6 +279,15 @@ class MainActivity : ComponentActivity() {
                         tab = socialWorkoutOrigin
                         null
                     } else socialWorkoutOrigin
+                    DEEP_SOCIAL_COMMENTS -> {
+                        if (socialCommentsOrigin == DEEP_PUBLIC_PROFILE) {
+                            publicUsername = commentsParentUsername
+                        }
+                        if (socialCommentsOrigin == TAB_HOME || socialCommentsOrigin == TAB_PROFILE) {
+                            tab = socialCommentsOrigin
+                            null
+                        } else socialCommentsOrigin
+                    }
                     DEEP_SOCIAL_LIST -> if (socialListOrigin == TAB_PROFILE) {
                         tab = TAB_PROFILE
                         null
@@ -328,6 +342,7 @@ class MainActivity : ComponentActivity() {
                     when (tab) {
                         TAB_HOME -> HomeRoute(
                             viewModel = homeViewModel(),
+                            engagementViewModel = socialEngagementViewModel(user.id),
                             onSearchPeople = {
                                 userSearchOrigin = TAB_HOME
                                 deep = DEEP_USER_SEARCH
@@ -341,6 +356,12 @@ class MainActivity : ComponentActivity() {
                                 socialWorkoutId = workoutId
                                 socialWorkoutOrigin = TAB_HOME
                                 deep = DEEP_SOCIAL_WORKOUT
+                            },
+                            onOpenComments = { workoutId ->
+                                socialWorkoutId = workoutId
+                                socialCommentsOrigin = TAB_HOME
+                                commentsParentUsername = null
+                                deep = DEEP_SOCIAL_COMMENTS
                             },
                         )
                         TAB_TRAINING -> TrainingScreen(
@@ -721,6 +742,7 @@ class MainActivity : ComponentActivity() {
                 DEEP_PUBLIC_PROFILE -> publicUsername?.let { username ->
                     PublicProfileRoute(
                         viewModel = remember(username) { publicProfileViewModel(username, user.id) },
+                        engagementViewModel = socialEngagementViewModel(user.id),
                         onBack = {
                             if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
                             if (publicProfileOrigin == TAB_HOME) homeViewModel().refresh()
@@ -751,11 +773,18 @@ class MainActivity : ComponentActivity() {
                             socialWorkoutOrigin = DEEP_PUBLIC_PROFILE
                             deep = DEEP_SOCIAL_WORKOUT
                         },
+                        onOpenComments = { workoutId ->
+                            socialWorkoutId = workoutId
+                            socialCommentsOrigin = DEEP_PUBLIC_PROFILE
+                            commentsParentUsername = username
+                            deep = DEEP_SOCIAL_COMMENTS
+                        },
                     )
                 }
                 DEEP_SOCIAL_WORKOUT -> socialWorkoutId?.let { workoutId ->
                     SocialWorkoutDetailRoute(
                         viewModel = remember(workoutId) { socialWorkoutDetailViewModel(workoutId) },
+                        engagementViewModel = socialEngagementViewModel(user.id),
                         onBack = {
                             deep = socialWorkoutOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
                             if (deep == null) tab = socialWorkoutOrigin
@@ -763,6 +792,29 @@ class MainActivity : ComponentActivity() {
                         onOpenProfile = { username ->
                             publicUsername = username
                             publicProfileOrigin = DEEP_SOCIAL_WORKOUT
+                            deep = DEEP_PUBLIC_PROFILE
+                        },
+                        onOpenComments = {
+                            socialCommentsOrigin = DEEP_SOCIAL_WORKOUT
+                            commentsParentUsername = null
+                            deep = DEEP_SOCIAL_COMMENTS
+                        },
+                    )
+                }
+                DEEP_SOCIAL_COMMENTS -> socialWorkoutId?.let { workoutId ->
+                    SocialCommentsRoute(
+                        workoutId = workoutId,
+                        viewModel = socialEngagementViewModel(user.id),
+                        onBack = {
+                            if (socialCommentsOrigin == DEEP_PUBLIC_PROFILE) {
+                                publicUsername = commentsParentUsername
+                            }
+                            deep = socialCommentsOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
+                            if (deep == null) tab = socialCommentsOrigin
+                        },
+                        onOpenProfile = { username ->
+                            publicUsername = username
+                            publicProfileOrigin = DEEP_SOCIAL_COMMENTS
                             deep = DEEP_PUBLIC_PROFILE
                         },
                     )
@@ -928,6 +980,11 @@ class MainActivity : ComponentActivity() {
             SocialWorkoutDetailViewModelFactory(workoutId, AppContainer.socialFeedRepository),
         )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 
+    private fun socialEngagementViewModel(currentUserId: String): SocialEngagementViewModel = ViewModelProvider(
+        userSessionViewModels,
+        SocialEngagementViewModelFactory(currentUserId, AppContainer.socialFeedRepository),
+    )[SocialEngagementViewModel::class.java]
+
     private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
         ViewModelProvider(
             userSessionViewModels,
@@ -992,5 +1049,6 @@ class MainActivity : ComponentActivity() {
         const val DEEP_PUBLIC_PROFILE = "public_profile"
         const val DEEP_SOCIAL_LIST = "social_list"
         const val DEEP_SOCIAL_WORKOUT = "social_workout"
+        const val DEEP_SOCIAL_COMMENTS = "social_comments"
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.PublicProfile
+import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
 import com.mar.gym.ui.components.LoadingState
@@ -33,13 +34,16 @@ import com.mar.gym.ui.components.SecondaryButton
 @Composable
 fun PublicProfileRoute(
     viewModel: PublicProfileViewModel,
+    engagementViewModel: SocialEngagementViewModel,
     onBack: () -> Unit,
     onOpenOwnProfile: () -> Unit,
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
     onOpenWorkout: (String) -> Unit = {},
+    onOpenComments: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val engagementState by engagementViewModel.uiState.collectAsState()
     LaunchedEffect(state) {
         if ((state as? PublicProfileUiState.Content)?.isOwnProfile == true) onOpenOwnProfile()
     }
@@ -50,6 +54,14 @@ fun PublicProfileRoute(
         onOpenFollowers = onOpenFollowers,
         onOpenFollowing = onOpenFollowing,
         onOpenWorkout = onOpenWorkout,
+        engagementState = engagementState,
+        onToggleLike = { workout ->
+            engagementViewModel.toggleLike(workout.workoutId, workout.engagement())
+        },
+        onOpenComments = { workout ->
+            engagementViewModel.openComments(workout.workoutId, workout.engagement())
+            onOpenComments(workout.workoutId)
+        },
         onLoadMoreWorkouts = viewModel::loadMoreWorkouts,
         onRetry = viewModel::retry,
     )
@@ -65,6 +77,9 @@ fun PublicProfileScreen(
     onRetry: () -> Unit,
     onOpenWorkout: (String) -> Unit = {},
     onLoadMoreWorkouts: () -> Unit = {},
+    engagementState: SocialEngagementUiState = SocialEngagementUiState(),
+    onToggleLike: (SocialWorkoutSummary) -> Unit = {},
+    onOpenComments: (SocialWorkoutSummary) -> Unit = {},
 ) {
     Scaffold(topBar = { AppTopBar("Perfil", onBack = onBack) }) { padding ->
         when (state) {
@@ -78,7 +93,7 @@ fun PublicProfileScreen(
             )
             is PublicProfileUiState.Content -> PublicProfileContent(
                 state, onFollow, onOpenFollowers, onOpenFollowing, onOpenWorkout,
-                onLoadMoreWorkouts, onRetry,
+                onLoadMoreWorkouts, onRetry, engagementState, onToggleLike, onOpenComments,
                 Modifier.padding(padding),
             )
         }
@@ -94,6 +109,9 @@ private fun PublicProfileContent(
     onOpenWorkout: (String) -> Unit,
     onLoadMoreWorkouts: () -> Unit,
     onRetry: () -> Unit,
+    engagementState: SocialEngagementUiState,
+    onToggleLike: (SocialWorkoutSummary) -> Unit,
+    onOpenComments: (SocialWorkoutSummary) -> Unit,
     modifier: Modifier,
 ) {
     val profile = state.profile
@@ -165,10 +183,22 @@ private fun PublicProfileContent(
             }
         }
         itemsIndexed(state.workouts, key = { _, workout -> workout.workoutId }) { index, workout ->
+            val socialState = engagementState.workouts[workout.workoutId]
+            val displayedWorkout = socialState?.let {
+                workout.copy(
+                    likesCount = it.likesCount,
+                    isLikedByMe = it.isLikedByMe,
+                    commentsCount = it.commentsCount,
+                )
+            } ?: workout
             SocialWorkoutCard(
-                workout = workout,
+                workout = displayedWorkout,
                 onAuthorClick = {},
                 onWorkoutClick = onOpenWorkout,
+                onToggleLike = { onToggleLike(displayedWorkout) },
+                onCommentsClick = { onOpenComments(displayedWorkout) },
+                likeInFlight = workout.workoutId in engagementState.likesInFlight,
+                likeError = engagementState.likeErrors[workout.workoutId]?.workoutActionMessage(),
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
             if (index == state.workouts.lastIndex && state.workoutsHasMore && !state.workoutsLoadingMore) {
@@ -191,6 +221,8 @@ private fun PublicProfileContent(
         }
     }
 }
+
+private fun SocialWorkoutSummary.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)
 
 @Composable
 private fun SocialStat(value: Long, label: String, onClick: (() -> Unit)? = null) {
