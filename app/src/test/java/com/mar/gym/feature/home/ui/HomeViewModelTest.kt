@@ -91,9 +91,12 @@ class HomeViewModelTest {
         assertTrue(viewModel.uiState.value.suggestions.single().isFollowing)
         assertEquals(1, social.followCalls)
 
+        feed.firstPage = successPage(listOf(workout("newly followed", OTHER_USER_ID)))
         social.followGate?.complete(SocialResult.Success(Unit))
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.suggestions.isEmpty())
+        assertEquals(listOf("newly followed"), viewModel.uiState.value.workouts.map { it.title })
+        assertEquals(listOf(null, null), feed.feedCursors)
     }
 
     @Test fun `follow failure rolls suggestion back without overwriting feed`() = runTest {

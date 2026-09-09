@@ -106,6 +106,7 @@ class HomeViewModel(
                         suggestions = latest.suggestions.filterNot { it.username == username },
                         followingUsernames = latest.followingUsernames - username,
                     )
+                    loadFeed(refresh = true)
                 }
                 is SocialResult.Failure -> {
                     val latest = _uiState.value

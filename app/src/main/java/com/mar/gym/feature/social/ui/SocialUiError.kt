@@ -23,7 +23,7 @@ internal fun NetworkFailure.toSocialUiError(): SocialUiError = when (this) {
     is NetworkFailure.HttpProblem -> when {
         statusCode == 401 -> SocialUiError.Unauthorized
         statusCode == 403 -> SocialUiError.Forbidden
-        statusCode == 404 -> SocialUiError.NotFound
+        statusCode == 404 && problem.errorCode in SOCIAL_NOT_FOUND_CODES -> SocialUiError.NotFound
         problem.errorCode == "PRIVATE_PROFILE_NOT_FOLLOWABLE" -> SocialUiError.PrivateProfileNotFollowable
         statusCode == 409 -> SocialUiError.SelfFollow
         statusCode >= 500 -> SocialUiError.Server
@@ -32,11 +32,12 @@ internal fun NetworkFailure.toSocialUiError(): SocialUiError = when (this) {
     is NetworkFailure.HttpUnknown -> when {
         statusCode == 401 -> SocialUiError.Unauthorized
         statusCode == 403 -> SocialUiError.Forbidden
-        statusCode == 404 -> SocialUiError.NotFound
         statusCode >= 500 -> SocialUiError.Server
         else -> SocialUiError.Unknown
     }
 }
+
+private val SOCIAL_NOT_FOUND_CODES = setOf("SOCIAL_CONTENT_NOT_FOUND", "SOCIAL_PROFILE_NOT_FOUND")
 
 internal fun SocialUiError.userMessage(): String = when (this) {
     SocialUiError.Network -> "Comprueba tu conexión e inténtalo de nuevo."

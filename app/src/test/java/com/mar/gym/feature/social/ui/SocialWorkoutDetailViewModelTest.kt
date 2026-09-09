@@ -1,6 +1,7 @@
 package com.mar.gym.feature.social.ui
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialResult
 import com.mar.gym.feature.social.model.SocialAuthor
@@ -25,7 +26,13 @@ class SocialWorkoutDetailViewModelTest {
 
     @Test fun `detail loads by id and retry recovers from hidden workout`() = runTest {
         val repository = FakeFeedRepository().apply {
-            result = SocialResult.Failure(NetworkFailure.HttpUnknown(404, null))
+            result = SocialResult.Failure(
+                NetworkFailure.HttpProblem(
+                    404,
+                    ProblemDetails(errorCode = "SOCIAL_CONTENT_NOT_FOUND"),
+                    null,
+                ),
+            )
         }
         val viewModel = SocialWorkoutDetailViewModel(WORKOUT_ID, repository)
         advanceUntilIdle()

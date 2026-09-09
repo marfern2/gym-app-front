@@ -127,7 +127,9 @@ class SocialViewModelTest {
         advanceUntilIdle()
         assertEquals(0, ownRepository.followCalls)
 
-        val missingRepository = FakeSocialRepository().apply { profileResult = failure(404, "NOT_FOUND") }
+        val missingRepository = FakeSocialRepository().apply {
+            profileResult = failure(404, "SOCIAL_PROFILE_NOT_FOUND")
+        }
         val missing = PublicProfileViewModel("missing", CURRENT_ID, missingRepository, FakeSocialFeedRepository())
         advanceUntilIdle()
         assertEquals(SocialUiError.NotFound, (missing.uiState.value as PublicProfileUiState.Error).error)

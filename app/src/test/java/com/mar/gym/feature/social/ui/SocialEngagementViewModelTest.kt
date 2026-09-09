@@ -1,6 +1,7 @@
 package com.mar.gym.feature.social.ui
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialResult
 import com.mar.gym.feature.social.model.SocialAuthor
@@ -84,10 +85,18 @@ class SocialEngagementViewModelTest {
         assertFalse(content.data.hasMore)
         assertEquals(listOf(0, 0, 1), repository.commentPageCalls)
 
-        repository.commentPages[0] = SocialResult.Failure(NetworkFailure.HttpUnknown(404, null))
+        repository.commentPages[0] = socialContentNotFound()
         viewModel.retryComments()
         advanceUntilIdle()
         assertTrue(viewModel.commentsState.value is SocialCommentsUiState.Unavailable)
+
+        repository.commentPages[0] = SocialResult.Failure(
+            NetworkFailure.HttpProblem(404, ProblemDetails(errorCode = "RESOURCE_NOT_FOUND"), null),
+        )
+        viewModel.retryComments()
+        advanceUntilIdle()
+        val genericRouteFailure = viewModel.commentsState.value as SocialCommentsUiState.Error
+        assertEquals(SocialUiError.Unknown, genericRouteFailure.error)
     }
 
     @Test fun `create validates input inserts once and increments comment count`() = runTest {
@@ -159,7 +168,7 @@ class SocialEngagementViewModelTest {
         viewModel.openComments(WORKOUT_ID, SocialEngagement(0, false, 1))
         advanceUntilIdle()
 
-        repository.deleteResult = SocialResult.Failure(NetworkFailure.HttpUnknown(404, null))
+        repository.deleteResult = socialContentNotFound()
         repository.commentPages[0] = page(emptyList(), 0, 0, last = true)
         viewModel.requestDelete(own)
         viewModel.confirmDelete()
@@ -239,6 +248,14 @@ class SocialEngagementViewModelTest {
             last: Boolean,
         ): SocialResult<SocialCommentPage> = SocialResult.Success(
             SocialCommentPage(comments, page, 30, total, if (last) page + 1 else page + 2, page == 0, last),
+        )
+
+        fun socialContentNotFound() = SocialResult.Failure(
+            NetworkFailure.HttpProblem(
+                404,
+                ProblemDetails(errorCode = "SOCIAL_CONTENT_NOT_FOUND"),
+                null,
+            ),
         )
     }
 }

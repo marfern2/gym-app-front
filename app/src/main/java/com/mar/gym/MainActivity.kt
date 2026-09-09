@@ -730,6 +730,7 @@ class MainActivity : ComponentActivity() {
                 DEEP_USER_SEARCH -> UserSearchRoute(
                     viewModel = remember { userSearchViewModel() },
                     onBack = {
+                        if (userSearchOrigin == TAB_HOME) homeViewModel().refresh()
                         deep = null
                         tab = userSearchOrigin
                     },
