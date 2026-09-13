@@ -75,6 +75,7 @@ data class SocialWorkoutDetail(
     val likesCount: Long = 0,
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
+    val shareUrl: String? = null,
 )
 
 data class SocialComment(

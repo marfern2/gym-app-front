@@ -16,8 +16,12 @@ import com.mar.gym.feature.routines.model.RoutineEtag
 import com.mar.gym.feature.routines.model.RoutineExercise
 import com.mar.gym.feature.routines.model.RoutinePage
 import com.mar.gym.feature.routines.model.RoutineSet
+import com.mar.gym.feature.routines.model.RoutineShare
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.feature.routines.model.SharedRoutine
+import com.mar.gym.feature.routines.model.SharedRoutineExercise
 import com.mar.gym.feature.routines.model.SetType
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -88,6 +92,32 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
         }
     }
 
+    override suspend fun enableSharing(
+        routineId: String,
+        etag: RoutineEtag,
+    ): RoutineRepositoryResult<RoutineShare> {
+        if (!routineId.isUuid()) return invalid()
+        return execute { api.enableSharing(routineId, etag.headerValue) }.mapShare()
+    }
+
+    override suspend fun disableSharing(
+        routineId: String,
+        etag: RoutineEtag,
+    ): RoutineRepositoryResult<Unit> {
+        if (!routineId.isUuid()) return invalid()
+        return when (val response = executeNetworkUnitRequest {
+            api.disableSharing(routineId, etag.headerValue)
+        }) {
+            is NetworkResponse.Failure -> RoutineRepositoryResult.Failure(response.error)
+            is NetworkResponse.Success -> RoutineRepositoryResult.Success(Unit)
+        }
+    }
+
+    override suspend fun sharedDetail(shareId: String): RoutineRepositoryResult<SharedRoutine> {
+        if (!shareId.isUuid()) return invalid()
+        return execute { api.sharedDetail(shareId) }.mapBody { it.toDomain(shareId) }
+    }
+
     private suspend fun mutate(
         routineId: String,
         request: suspend (String) -> Response<RoutineDetailDto>,
@@ -107,6 +137,21 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
                 RoutineRepositoryResult.Success(RoutineDocument(detail, etag))
             }
         }
+
+    private fun RawResponse<RoutineShareDto>.mapShare(): RoutineRepositoryResult<RoutineShare> {
+        return when (this) {
+            is RawResponse.Failure -> RoutineRepositoryResult.Failure(error)
+            is RawResponse.Success -> {
+                val parsedEtag = RoutineEtag.parse(etag)
+                    ?.takeIf { it.version == body.version }
+                    ?: return invalid(correlationId)
+                val url = body.shareUrl.validShareUrl("r", body.shareId)
+                    ?: return invalid(correlationId)
+                if (!body.shareId.isUuid()) return invalid(correlationId)
+                RoutineRepositoryResult.Success(RoutineShare(body.shareId, url, parsedEtag))
+            }
+        }
+    }
 
     private inline fun <T, R> RawResponse<T>.mapBody(
         mapper: (T) -> R?,
@@ -141,9 +186,83 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
             mapped.sumOf { it.sets.size } > 200 ||
             !hasValidCanonicalSupersetGroups(mapped.map { it.supersetGroup })
         ) return null
+        val visibility = RoutineShareVisibility.fromApiValue(shareVisibility) ?: return null
+        val mappedShareId = when {
+            shareId == null -> null
+            shareId.isUuid() -> shareId
+            else -> return null
+        }
+        val mappedShareUrl = when {
+            shareUrl == null -> null
+            mappedShareId != null -> shareUrl.validShareUrl("r", mappedShareId) ?: return null
+            else -> return null
+        }
+        if (visibility == RoutineShareVisibility.LinkPublic && (mappedShareId == null || mappedShareUrl == null)) {
+            return null
+        }
         return RoutineDetail(
             id, name.trim(), description?.trim()?.takeIf(String::isNotEmpty), archived, version,
             createdAt.toInstant() ?: return null, updatedAt.toInstant() ?: return null, mapped,
+            shareVisibility = visibility,
+            shareId = mappedShareId,
+            shareUrl = mappedShareUrl,
+        )
+    }
+
+    private fun SharedRoutineDto.toDomain(expectedShareId: String): SharedRoutine? {
+        if (shareId != expectedShareId || !shareId.isUuid() || name.isBlank() || exercises.size > 30) return null
+        val mapped = exercises.sortedBy { it.position }.mapIndexed { index, exercise ->
+            if (exercise.position != index + 1) return null
+            exercise.toDomain() ?: return null
+        }
+        if (mapped.map { it.exerciseTemplateId }.distinct().size != mapped.size ||
+            mapped.sumOf { it.sets.size } > 200 ||
+            !hasValidCanonicalSupersetGroups(mapped.map { it.supersetGroup })
+        ) return null
+        return SharedRoutine(
+            shareId = shareId,
+            shareUrl = shareUrl.validShareUrl("r", shareId) ?: return null,
+            name = name.trim(),
+            description = description?.trim()?.takeIf(String::isNotEmpty),
+            updatedAt = updatedAt.toInstant() ?: return null,
+            exercises = mapped,
+        )
+    }
+
+    private fun SharedRoutineExerciseDto.toDomain(): SharedRoutineExercise? {
+        if (!exerciseTemplateId.isUuid() || exerciseName.isBlank() || restSeconds !in 0..3_600 ||
+            sets.size > 20
+        ) return null
+        val mappedSets = sets.sortedBy { it.position }.mapIndexed { index, set ->
+            if (set.position != index + 1) return null
+            set.toDomain() ?: return null
+        }
+        val mappedType = exerciseType?.let { ExerciseType.fromApiValue(it) ?: return null }
+        val mappedEquipment = equipment?.let { Equipment.fromApiValue(it) ?: return null }
+        return SharedRoutineExercise(
+            exerciseTemplateId = exerciseTemplateId,
+            exerciseName = exerciseName.trim(),
+            exerciseType = mappedType,
+            equipment = mappedEquipment,
+            position = position,
+            supersetGroup = supersetGroup,
+            notes = notes?.trim()?.takeIf(String::isNotEmpty),
+            restSeconds = restSeconds,
+            sets = mappedSets,
+        )
+    }
+
+    private fun SharedRoutineSetDto.toDomain(): RoutineSet? {
+        if (position < 1) return null
+        return RoutineSet(
+            position = position,
+            setType = SetType.fromApiValue(setType) ?: return null,
+            targetRepsMin = targetRepsMin?.toString().orEmpty(),
+            targetRepsMax = targetRepsMax?.toString().orEmpty(),
+            targetWeight = targetWeight.editText(),
+            targetDurationSeconds = targetDurationSeconds?.toString().orEmpty(),
+            targetDistanceMeters = targetDistanceMeters.editText(),
+            targetRpe = targetRpe.editText(),
         )
     }
 
@@ -244,6 +363,13 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
 
     private fun String.isUuid() = runCatching { UUID.fromString(this) }.isSuccess
     private fun String.toInstant() = runCatching { Instant.parse(this) }.getOrNull()
+    private fun String.validShareUrl(kind: String, id: String): String? = runCatching {
+        java.net.URI(this)
+    }.getOrNull()?.takeIf {
+        (it.scheme == "https" || (it.scheme == "http" && it.host in LOCAL_SHARE_HOSTS)) &&
+            !it.host.isNullOrBlank() && it.userInfo == null &&
+            it.query == null && it.fragment == null && it.path.endsWith("/$kind/$id")
+    }?.toString()
     private fun Double?.editText(): String = this?.let {
         BigDecimal.valueOf(it).stripTrailingZeros().toPlainString()
     }.orEmpty()
@@ -257,5 +383,6 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
         const val ETAG = "ETag"
         const val CORRELATION_ID = "X-Correlation-ID"
         val WHITESPACE = Regex("\\s+")
+        val LOCAL_SHARE_HOSTS = setOf("10.0.2.2", "localhost", "127.0.0.1")
     }
 }

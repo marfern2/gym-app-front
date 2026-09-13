@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.home.ui.HomeScreen
+import com.mar.gym.feature.home.ui.FeedUiState
+import com.mar.gym.feature.home.ui.HomeFeedMode
 import com.mar.gym.feature.home.ui.HomeUiState
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.routines.model.SetType
@@ -40,6 +42,7 @@ class SocialFeedScreensTest {
         var openedWorkout: String? = null
         var likedWorkout: String? = null
         var commentsWorkout: String? = null
+        var sharedWorkout: String? = null
         composeRule.setContent {
             GYmAppTheme {
                 SocialWorkoutCard(
@@ -48,6 +51,7 @@ class SocialFeedScreensTest {
                     onWorkoutClick = { openedWorkout = it },
                     onToggleLike = { likedWorkout = it },
                     onCommentsClick = { commentsWorkout = it },
+                    onShare = { sharedWorkout = it },
                 )
             }
         }
@@ -64,13 +68,31 @@ class SocialFeedScreensTest {
         composeRule.onNodeWithTag("social_workout_author_alice").performClick()
         composeRule.onNodeWithTag("social_like_action").performClick()
         composeRule.onNodeWithTag("social_comments_action").performClick()
+        composeRule.onNodeWithTag("social_share_action").performClick()
         composeRule.onNodeWithTag("social_workout_$WORKOUT_ID").performClick()
         composeRule.runOnIdle {
             assertEquals("alice", openedAuthor)
             assertEquals(WORKOUT_ID, openedWorkout)
             assertEquals(WORKOUT_ID, likedWorkout)
             assertEquals(WORKOUT_ID, commentsWorkout)
+            assertEquals(WORKOUT_ID, sharedWorkout)
         }
+    }
+
+    @Test fun publicProfileShareUsesLoadedCanonicalIdentity() {
+        var shared: Pair<String, String>? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                PublicProfileScreen(
+                    state = PublicProfileUiState.Content(profile(), false),
+                    onBack = {}, onFollow = {}, onOpenFollowers = {}, onOpenFollowing = {}, onRetry = {},
+                    onShareProfile = { displayName, username -> shared = displayName to username },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("public_profile_share").performClick()
+        composeRule.runOnIdle { assertEquals("Alice Doe" to "alice", shared) }
     }
 
     @Test fun homeEmptyShowsSingleHorizontalSuggestionsBlockAndAvatarFallback() {
@@ -78,7 +100,7 @@ class SocialFeedScreensTest {
             GYmAppTheme {
                 HomeScreen(
                     state = HomeUiState(
-                        initialLoading = false,
+                        home = FeedUiState(initialLoading = false),
                         suggestionsLoading = false,
                         suggestions = listOf(athlete()),
                     ),
@@ -117,8 +139,7 @@ class SocialFeedScreensTest {
             GYmAppTheme {
                 HomeScreen(
                     state = HomeUiState(
-                        workouts = listOf(workout()),
-                        initialLoading = false,
+                        home = FeedUiState(workouts = listOf(workout())),
                         suggestionsLoading = false,
                     ),
                     onSearchPeople = {}, onOpenProfile = {}, onOpenWorkout = {}, onRetry = {},
@@ -134,6 +155,91 @@ class SocialFeedScreensTest {
             assertTrue(liked)
             assertTrue(comments)
         }
+    }
+
+    @Test fun homeDiscoverSelectorChangesMode() {
+        var selected: HomeFeedMode? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                HomeScreen(
+                    state = HomeUiState(home = FeedUiState()),
+                    onSearchPeople = {}, onOpenProfile = {}, onOpenWorkout = {}, onRetry = {},
+                    onRetrySuggestions = {}, onRefresh = {}, onLoadMore = {}, onFollow = {},
+                    onModeSelected = { selected = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("home_discover_selector").performClick()
+        composeRule.onNodeWithTag("feed_mode_discover").performClick()
+        composeRule.runOnIdle { assertEquals(HomeFeedMode.Discover, selected) }
+    }
+
+    @Test fun discoverReusesWorkoutCardActionsNavigationAndFollowWithoutSuggestions() {
+        var openedAuthor: String? = null
+        var openedWorkout: String? = null
+        var liked = false
+        var comments = false
+        var shared: String? = null
+        var followed: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                HomeScreen(
+                    state = HomeUiState(
+                        selectedMode = HomeFeedMode.Discover,
+                        home = FeedUiState(workouts = listOf(workout().copy(title = "Home workout"))),
+                        discover = FeedUiState(workouts = listOf(workout())),
+                        suggestions = listOf(athlete()),
+                        suggestionsLoading = false,
+                    ),
+                    onSearchPeople = {},
+                    onOpenProfile = { openedAuthor = it },
+                    onOpenWorkout = { openedWorkout = it },
+                    onRetry = {}, onRetrySuggestions = {}, onRefresh = {}, onLoadMore = {},
+                    onFollow = { followed = it },
+                    onToggleLike = { liked = true },
+                    onOpenComments = { comments = true },
+                    onShareWorkout = { shared = it },
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithTag("suggestions_block").assertCountEquals(0)
+        composeRule.onNodeWithTag("social_workout_$WORKOUT_ID").assertIsDisplayed()
+        composeRule.onNodeWithTag("social_workout_author_alice").performClick()
+        composeRule.onNodeWithTag("social_follow_alice").performClick()
+        composeRule.onNodeWithTag("social_like_action").performClick()
+        composeRule.onNodeWithTag("social_comments_action").performClick()
+        composeRule.onNodeWithTag("social_share_action").performClick()
+        composeRule.onNodeWithTag("social_workout_$WORKOUT_ID").performClick()
+        composeRule.runOnIdle {
+            assertEquals("alice", openedAuthor)
+            assertEquals(WORKOUT_ID, openedWorkout)
+            assertEquals("alice", followed)
+            assertTrue(liked)
+            assertTrue(comments)
+            assertEquals(WORKOUT_ID, shared)
+        }
+    }
+
+    @Test fun discoverEmptyHasDedicatedCopyAndNoSuggestions() {
+        composeRule.setContent {
+            GYmAppTheme {
+                HomeScreen(
+                    state = HomeUiState(
+                        selectedMode = HomeFeedMode.Discover,
+                        discover = FeedUiState(),
+                        suggestions = listOf(athlete()),
+                        suggestionsLoading = false,
+                    ),
+                    onSearchPeople = {}, onOpenProfile = {}, onOpenWorkout = {}, onRetry = {},
+                    onRetrySuggestions = {}, onRefresh = {}, onLoadMore = {}, onFollow = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("No hay entrenamientos para descubrir").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("suggestions_block").assertCountEquals(0)
     }
 
     @Test fun publicProfileReusesWorkoutCard() {
@@ -167,6 +273,7 @@ class SocialFeedScreensTest {
     @Test fun detailIsReadOnlyRendersActualMetrics() {
         var liked = false
         var openedComments = false
+        var sharedWorkout: String? = null
         composeRule.setContent {
             GYmAppTheme {
                 SocialWorkoutDetailScreen(
@@ -174,6 +281,7 @@ class SocialFeedScreensTest {
                     onBack = {}, onOpenProfile = {}, onRetry = {},
                     onToggleLike = { liked = true },
                     onOpenComments = { openedComments = true },
+                    onShareWorkout = { sharedWorkout = it.workoutId },
                 )
             }
         }
@@ -183,9 +291,11 @@ class SocialFeedScreensTest {
         composeRule.onNodeWithTag("social_likes_count", useUnmergedTree = true).assertTextEquals("5")
         composeRule.onNodeWithTag("social_like_action").performClick()
         composeRule.onNodeWithTag("social_comments_action").performClick()
+        composeRule.onNodeWithTag("social_share_action").performClick()
         composeRule.runOnIdle {
             assertTrue(liked)
             assertTrue(openedComments)
+            assertEquals(WORKOUT_ID, sharedWorkout)
         }
     }
 

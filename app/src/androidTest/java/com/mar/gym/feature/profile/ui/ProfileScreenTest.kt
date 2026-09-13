@@ -37,6 +37,26 @@ class ProfileScreenTest {
         composeRule.onNodeWithText("Me gusta").assertDoesNotExist()
     }
 
+    @Test fun publicProfileOffersShare() {
+        var shared = false
+        setProfile(contentState(), onShare = { shared = true })
+        composeRule.onNodeWithTag("profile_share").performClick()
+        composeRule.runOnIdle { assertEquals(true, shared) }
+
+    }
+
+    @Test fun privateProfileExplainsWhyItDoesNotOfferPublicShare() {
+        setProfile(contentState(privacy = ProfilePrivacy.Private))
+        composeRule.onNodeWithTag("profile_share").assertDoesNotExist()
+        composeRule.onNodeWithText("Tu perfil es privado y no se puede compartir públicamente.").assertIsDisplayed()
+    }
+
+    @Test fun profileWithoutUsernameNeverInventsShareIdentity() {
+        setProfile(contentState(username = null))
+        composeRule.onNodeWithTag("profile_share").assertDoesNotExist()
+        composeRule.onNodeWithText("Añade un nombre de usuario para poder compartir tu perfil.").assertIsDisplayed()
+    }
+
     @Test fun durationVolumeAndRepetitionsSelectorChangesState() {
         var state by mutableStateOf(contentState())
         composeRule.setContent {
@@ -78,22 +98,25 @@ class ProfileScreenTest {
         composeRule.runOnIdle { assertEquals(HistoryRange.AllTime, state.selectedActivityRange) }
     }
 
-    private fun setProfile(state: ProfileUiState) {
+    private fun setProfile(state: ProfileUiState, onShare: () -> Unit = {}) {
         composeRule.setContent {
             GYmAppTheme {
                 ProfileScreen(
                     state = state,
-                    onEditProfile = {}, onShare = {}, onSettings = {}, onSelectMetric = {}, onSelectRange = {},
+                    onEditProfile = {}, onShare = onShare, onSettings = {}, onSelectMetric = {}, onSelectRange = {},
                     onOpenStatistics = {}, onOpenMeasurements = {}, onOpenExercises = {}, onOpenCalendar = {}, onRetry = {},
                 )
             }
         }
     }
 
-    private fun contentState() = ProfileUiState(
+    private fun contentState(
+        privacy: ProfilePrivacy = ProfilePrivacy.Public,
+        username: String? = "mar.gym",
+    ) = ProfileUiState(
         profile = VersionedDocument(
             PrivateProfile(
-                ID, "Mar", "mar.gym", Instant.EPOCH, NOW, 0, ProfilePrivacy.Public,
+                ID, "Mar", username, Instant.EPOCH, NOW, 0, privacy,
             ), EntityTag.fromVersion(0)!!,
         ),
         profileLoading = false,

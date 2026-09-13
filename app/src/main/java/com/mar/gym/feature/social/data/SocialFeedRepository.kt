@@ -8,6 +8,7 @@ import com.mar.gym.feature.social.model.SocialCommentPage
 
 interface SocialFeedRepository {
     suspend fun feed(cursor: String?, size: Int): SocialResult<SocialWorkoutPage>
+    suspend fun discover(cursor: String?, size: Int): SocialResult<SocialWorkoutPage>
     suspend fun suggestions(page: Int, size: Int): SocialResult<SuggestedAthletePage>
     suspend fun userWorkouts(
         username: String,

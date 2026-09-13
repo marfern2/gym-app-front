@@ -56,6 +56,38 @@ fun validatedBaseUrl(
     return if (value.endsWith('/')) value else "$value/"
 }
 
+fun validatedShareBaseUrl(
+    propertyName: String,
+    value: String,
+    release: Boolean,
+): URI {
+    val normalized = value.trim().removeSuffix("/")
+    val uri = try {
+        URI(normalized)
+    } catch (_: URISyntaxException) {
+        throw GradleException("$propertyName must be a valid absolute HTTP(S) URL.")
+    }
+    val scheme = uri.scheme?.lowercase()
+    val host = uri.host
+    if (scheme !in setOf("http", "https") || host.isNullOrBlank() ||
+        uri.userInfo != null || uri.query != null || uri.fragment != null
+    ) {
+        throw GradleException(
+            "$propertyName must be an absolute HTTP(S) URL without user info, query, or fragment."
+        )
+    }
+    if (release && scheme != "https") {
+        throw GradleException("$propertyName must use HTTPS for release builds.")
+    }
+    if (release && host == "10.0.2.2") {
+        throw GradleException("$propertyName must not use the Android emulator host in release builds.")
+    }
+    if (!release && scheme == "http" && host != "10.0.2.2") {
+        throw GradleException("$propertyName may use HTTP only with the Android emulator host 10.0.2.2.")
+    }
+    return uri
+}
+
 val googleServerClientId = externalProperty("GOOGLE_SERVER_CLIENT_ID").trimmedOrEmpty()
 val debugApiBaseUrl = validatedBaseUrl(
     propertyName = "DEBUG_API_BASE_URL",
@@ -65,6 +97,30 @@ val debugApiBaseUrl = validatedBaseUrl(
 )
 val releaseApiBaseUrl = externalProperty("RELEASE_API_BASE_URL").trimmedOrEmpty().let { value ->
     if (value.isEmpty()) value else validatedBaseUrl("RELEASE_API_BASE_URL", value, release = true)
+}
+val debugShareBaseUri = validatedShareBaseUrl(
+    propertyName = "DEBUG_SHARE_BASE_URL",
+    value = externalProperty("DEBUG_SHARE_BASE_URL").trimmedOrEmpty()
+        .ifEmpty { debugApiBaseUrl.removeSuffix("/") },
+    release = false,
+)
+val releaseShareBaseUri = releaseApiBaseUrl.takeIf(String::isNotEmpty)?.let { apiUrl ->
+    validatedShareBaseUrl(
+        propertyName = "RELEASE_SHARE_BASE_URL",
+        value = externalProperty("RELEASE_SHARE_BASE_URL").trimmedOrEmpty()
+            .ifEmpty { apiUrl.removeSuffix("/") },
+        release = true,
+    )
+}
+val shareAppLinksAutoVerify = externalProperty("SHARE_APP_LINKS_AUTO_VERIFY")
+    ?.trim()?.toBooleanStrictOrNull() ?: false
+
+fun com.android.build.api.dsl.ApplicationBuildType.configureSharing(uri: URI?) {
+    buildConfigField("String", "SHARE_BASE_URL", uri?.toString().orEmpty().asBuildConfigString())
+    manifestPlaceholders["shareScheme"] = uri?.scheme.orEmpty()
+    manifestPlaceholders["shareHost"] = uri?.host.orEmpty()
+    manifestPlaceholders["sharePathPrefix"] = uri?.path?.removeSuffix("/").orEmpty()
+    manifestPlaceholders["shareAutoVerify"] = shareAppLinksAutoVerify.toString()
 }
 
 val validateDebugConfiguration by tasks.registering {
@@ -123,6 +179,7 @@ android {
                 "GOOGLE_SERVER_CLIENT_ID",
                 googleServerClientId.asBuildConfigString(),
             )
+            configureSharing(debugShareBaseUri)
         }
         release {
             buildConfigField("String", "API_BASE_URL", releaseApiBaseUrl.asBuildConfigString())
@@ -131,6 +188,7 @@ android {
                 "GOOGLE_SERVER_CLIENT_ID",
                 googleServerClientId.asBuildConfigString(),
             )
+            configureSharing(releaseShareBaseUri)
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

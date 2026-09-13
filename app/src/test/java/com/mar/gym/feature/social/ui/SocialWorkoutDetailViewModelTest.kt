@@ -55,6 +55,9 @@ class SocialWorkoutDetailViewModelTest {
         override suspend fun feed(cursor: String?, size: Int) = SocialResult.Success(
             SocialWorkoutPage(emptyList(), null, false),
         )
+        override suspend fun discover(cursor: String?, size: Int) = SocialResult.Success(
+            SocialWorkoutPage(emptyList(), null, false),
+        )
         override suspend fun suggestions(page: Int, size: Int) = SocialResult.Success(
             SuggestedAthletePage(emptyList(), 0, size, 0, 0, true, true),
         )

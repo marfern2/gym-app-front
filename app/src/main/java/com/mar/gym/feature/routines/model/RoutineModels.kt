@@ -24,6 +24,44 @@ data class RoutineDetail(
     val createdAt: Instant,
     val updatedAt: Instant,
     val exercises: List<RoutineExercise>,
+    val shareVisibility: RoutineShareVisibility = RoutineShareVisibility.Private,
+    val shareId: String? = null,
+    val shareUrl: String? = null,
+)
+
+enum class RoutineShareVisibility(val apiValue: String) {
+    Private("PRIVATE"), LinkPublic("LINK_PUBLIC");
+
+    companion object {
+        fun fromApiValue(value: String): RoutineShareVisibility? = entries.find { it.apiValue == value }
+    }
+}
+
+data class RoutineShare(
+    val shareId: String,
+    val shareUrl: String,
+    val etag: RoutineEtag,
+)
+
+data class SharedRoutine(
+    val shareId: String,
+    val shareUrl: String,
+    val name: String,
+    val description: String?,
+    val updatedAt: Instant,
+    val exercises: List<SharedRoutineExercise>,
+)
+
+data class SharedRoutineExercise(
+    val exerciseTemplateId: String,
+    val exerciseName: String,
+    val exerciseType: ExerciseType?,
+    val equipment: Equipment?,
+    val position: Int,
+    val supersetGroup: Int?,
+    val notes: String?,
+    val restSeconds: Int,
+    val sets: List<RoutineSet>,
 )
 
 data class RoutineExercise(

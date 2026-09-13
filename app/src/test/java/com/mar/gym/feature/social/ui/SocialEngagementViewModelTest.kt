@@ -215,6 +215,7 @@ class SocialEngagementViewModelTest {
             return deleteResult
         }
         override suspend fun feed(cursor: String?, size: Int): SocialResult<SocialWorkoutPage> = error("Not used")
+        override suspend fun discover(cursor: String?, size: Int): SocialResult<SocialWorkoutPage> = error("Not used")
         override suspend fun suggestions(page: Int, size: Int): SocialResult<SuggestedAthletePage> = error("Not used")
         override suspend fun userWorkouts(username: String, cursor: String?, size: Int): SocialResult<SocialWorkoutPage> =
             error("Not used")

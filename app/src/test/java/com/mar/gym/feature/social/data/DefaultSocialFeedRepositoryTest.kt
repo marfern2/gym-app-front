@@ -59,6 +59,15 @@ class DefaultSocialFeedRepositoryTest {
         assertEquals(0, workout.commentsCount)
     }
 
+    @Test fun `discover uses dedicated endpoint and passes opaque cursor`() = runTest {
+        enqueue(feedPage(nextCursor = null, hasMore = false))
+
+        val result = repository.discover("discover-cursor", 20) as SocialResult.Success
+
+        assertEquals(listOf("Push day"), result.value.content.map { it.title })
+        assertEquals("/api/v1/discover?cursor=discover-cursor&size=20", server.takeRequest().path)
+    }
+
     @Test fun `user workouts passes opaque cursor and suggestions remove followed users`() = runTest {
         enqueue(feedPage(nextCursor = null, hasMore = false))
         repository.userWorkouts(" Alice ", "opaque", 20)
@@ -80,10 +89,11 @@ class DefaultSocialFeedRepositoryTest {
         assertEquals(ExerciseType.WeightReps, exercise.exerciseType)
         assertEquals(8, exercise.sets.single().reps)
         assertEquals("80.5", exercise.sets.single().weightKg?.toPlainString())
-        assertEquals("/api/v1/feed/workouts/$WORKOUT_ID", server.takeRequest().path)
+        assertEquals("/api/v1/share/workouts/$WORKOUT_ID", server.takeRequest().path)
         assertEquals(7, result.value.likesCount)
         assertTrue(result.value.isLikedByMe)
         assertEquals(3, result.value.commentsCount)
+        assertEquals("https://links.example.test/w/$WORKOUT_ID", result.value.shareUrl)
     }
 
     @Test fun `like and unlike use workout scoped idempotent endpoints`() = runTest {
@@ -138,6 +148,7 @@ class DefaultSocialFeedRepositoryTest {
 
     @Test fun `invalid cursor and non completed detail fail safely`() = runTest {
         assertTrue(repository.feed(" ", 20) is SocialResult.Failure)
+        assertTrue(repository.discover(" ", 20) is SocialResult.Failure)
         assertEquals(0, server.requestCount)
 
         enqueue(detail(status = "ACTIVE"))
@@ -166,6 +177,7 @@ class DefaultSocialFeedRepositoryTest {
         {"workoutId":"$WORKOUT_ID","title":"Push day","notes":null,"status":"$status",
         "startedAt":"2026-08-25T09:00:00Z","completedAt":"2026-08-25T10:00:00Z","durationSeconds":3600,
         "author":${author()},"likesCount":7,"isLikedByMe":true,"commentsCount":3,
+        "shareUrl":"https://links.example.test/w/$WORKOUT_ID",
         "exercises":[{"id":"$EXERCISE_ID","exerciseTemplateId":"$TEMPLATE_ID",
         "name":"Bench press","exerciseType":"WEIGHT_REPS","equipment":"BARBELL","position":1,
         "supersetGroup":null,"thumbnailUrl":null,"sets":[{"id":"$SET_ID","position":1,"setType":"NORMAL",

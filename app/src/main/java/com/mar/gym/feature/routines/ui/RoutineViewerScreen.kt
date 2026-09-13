@@ -46,6 +46,7 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.routines.model.RoutineExercise
 import com.mar.gym.feature.routines.model.RoutineSet
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
@@ -66,6 +67,7 @@ fun RoutineViewerRoute(
     onStartRoutine: () -> Unit,
     onOpenRoutine: (String) -> Unit,
     onDeleted: () -> Unit,
+    onShare: (String) -> Unit,
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -73,6 +75,7 @@ fun RoutineViewerRoute(
         viewModel.effects.collect { effect ->
             when (effect) {
                 is RoutineViewerEffect.OpenRoutine -> onOpenRoutine(effect.routineId)
+                is RoutineViewerEffect.ShareRoutine -> onShare(effect.shareUrl)
                 RoutineViewerEffect.Deleted,
                 RoutineViewerEffect.Unavailable,
                 -> onDeleted()
@@ -88,6 +91,8 @@ fun RoutineViewerRoute(
         onDuplicate = viewModel::duplicate,
         onDelete = viewModel::delete,
         onReload = viewModel::refresh,
+        onShare = viewModel::share,
+        onStopSharing = viewModel::stopSharing,
         onOpenExercise = onOpenExercise,
     )
 }
@@ -103,6 +108,8 @@ fun RoutineViewerScreen(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onReload: () -> Unit,
+    onShare: () -> Unit = {},
+    onStopSharing: () -> Unit = {},
     onOpenExercise: (String) -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -219,6 +226,10 @@ fun RoutineViewerScreen(
             onDismiss = { showMenu = false },
             onEdit = { showMenu = false; onEdit() },
             onDuplicate = { showMenu = false; onDuplicate() },
+            onShare = { showMenu = false; onShare() },
+            onStopSharing = if (content.document.detail.shareVisibility == RoutineShareVisibility.LinkPublic) {
+                { showMenu = false; onStopSharing() }
+            } else null,
             onDelete = { showMenu = false; showDeleteConfirmation = true },
         )
     }

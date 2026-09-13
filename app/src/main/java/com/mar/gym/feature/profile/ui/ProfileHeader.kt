@@ -35,6 +35,8 @@ fun ProfileHeader(
     onSettings: () -> Unit,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    canSharePublicly: Boolean = true,
+    shareUnavailableMessage: String? = null,
 ) {
     val identity = profile.username?.let { "@$it" } ?: profile.displayName.ifBlank { "Perfil" }
     Column(modifier.testTag("profile_header"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -49,8 +51,10 @@ fun ProfileHeader(
             IconButton(onClick = onEdit, modifier = Modifier.testTag("profile_edit")) {
                 Icon(Icons.Default.Edit, contentDescription = "Editar perfil")
             }
-            IconButton(onClick = onShare, modifier = Modifier.testTag("profile_share")) {
-                Icon(Icons.Default.Share, contentDescription = "Compartir perfil")
+            if (canSharePublicly) {
+                IconButton(onClick = onShare, modifier = Modifier.testTag("profile_share")) {
+                    Icon(Icons.Default.Share, contentDescription = "Compartir perfil")
+                }
             }
             IconButton(onClick = onSettings, modifier = Modifier.testTag("profile_settings")) {
                 Icon(Icons.Default.Settings, contentDescription = "Ajustes")
@@ -77,6 +81,14 @@ fun ProfileHeader(
                     Text(profile.displayName, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+        shareUnavailableMessage?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("profile_share_unavailable"),
+            )
         }
     }
 }

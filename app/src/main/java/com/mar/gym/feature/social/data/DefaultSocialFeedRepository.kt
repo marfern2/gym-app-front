@@ -32,6 +32,12 @@ class DefaultSocialFeedRepository(
         return execute { api.feed(cursor, size) }.map { it.toDomain() }
     }
 
+    override suspend fun discover(cursor: String?, size: Int): SocialResult<SocialWorkoutPage> {
+        if (!cursor.isValidCursor()) return invalid()
+        if (size !in 1..MAX_FEED_SIZE) return invalid()
+        return execute { api.discover(cursor, size) }.map { it.toDomain() }
+    }
+
     override suspend fun suggestions(page: Int, size: Int): SocialResult<SuggestedAthletePage> {
         if (page < 0 || size !in 1..MAX_SUGGESTIONS_SIZE) return invalid()
         return execute { api.suggestions(page, size) }.map { it.toDomain() }
@@ -51,7 +57,7 @@ class DefaultSocialFeedRepository(
 
     override suspend fun workoutDetail(workoutId: String): SocialResult<SocialWorkoutDetail> {
         if (!workoutId.isUuid()) return invalid()
-        return execute { api.workoutDetail(workoutId) }.map { it.toDomain() }
+        return execute { api.sharedWorkoutDetail(workoutId) }.map { it.toDomain() }
     }
 
     override suspend fun like(workoutId: String): SocialResult<Unit> = mutate(workoutId, api::like)
@@ -204,6 +210,7 @@ class DefaultSocialFeedRepository(
             likesCount = likesCount,
             isLikedByMe = isLikedByMe,
             commentsCount = commentsCount,
+            shareUrl = shareUrl?.validShareUrl("w", workoutId),
         )
     }
 
@@ -267,6 +274,13 @@ class DefaultSocialFeedRepository(
     private fun String.isUuid(): Boolean = runCatching { UUID.fromString(this) }.isSuccess
     private fun String.instant(): Instant? = runCatching { Instant.parse(this) }.getOrNull()
     private fun String?.normalizedHttpsUrl(): String? = this?.let { HttpsUrl.parse(it)?.value }
+    private fun String.validShareUrl(kind: String, id: String): String? = runCatching {
+        java.net.URI(this)
+    }.getOrNull()?.takeIf {
+        (it.scheme == "https" || (it.scheme == "http" && it.host in LOCAL_SHARE_HOSTS)) &&
+            !it.host.isNullOrBlank() && it.userInfo == null &&
+            it.query == null && it.fragment == null && it.path.endsWith("/$kind/$id")
+    }?.toString()
     private fun Double?.invalidMetric(): Boolean = this?.let { !it.isFinite() || it < 0 } == true
     private fun Double?.decimal(): BigDecimal? = this?.let(BigDecimal::valueOf)
     private fun <T> invalid(): SocialResult<T> = SocialResult.Failure(NetworkFailure.InvalidResponse())
@@ -280,5 +294,6 @@ class DefaultSocialFeedRepository(
         const val MAX_COMMENT_LENGTH = 1_000
         const val COMPLETED = "COMPLETED"
         val USERNAME = Regex("^[a-z0-9][a-z0-9._]{1,28}[a-z0-9]$")
+        val LOCAL_SHARE_HOSTS = setOf("10.0.2.2", "localhost", "127.0.0.1")
     }
 }

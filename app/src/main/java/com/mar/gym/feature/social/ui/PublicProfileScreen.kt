@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -41,6 +45,8 @@ fun PublicProfileRoute(
     onOpenFollowing: (String) -> Unit,
     onOpenWorkout: (String) -> Unit = {},
     onOpenComments: (String) -> Unit = {},
+    onShareProfile: (displayName: String, username: String) -> Unit = { _, _ -> },
+    onShareWorkout: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -64,6 +70,8 @@ fun PublicProfileRoute(
         },
         onLoadMoreWorkouts = viewModel::loadMoreWorkouts,
         onRetry = viewModel::retry,
+        onShareProfile = onShareProfile,
+        onShareWorkout = onShareWorkout,
     )
 }
 
@@ -80,8 +88,28 @@ fun PublicProfileScreen(
     engagementState: SocialEngagementUiState = SocialEngagementUiState(),
     onToggleLike: (SocialWorkoutSummary) -> Unit = {},
     onOpenComments: (SocialWorkoutSummary) -> Unit = {},
+    onShareProfile: (displayName: String, username: String) -> Unit = { _, _ -> },
+    onShareWorkout: (String) -> Unit = {},
 ) {
-    Scaffold(topBar = { AppTopBar("Perfil", onBack = onBack) }) { padding ->
+    val content = state as? PublicProfileUiState.Content
+    Scaffold(topBar = {
+        AppTopBar(
+            "Perfil",
+            onBack = onBack,
+            actions = {
+                if (content?.profile?.privacy == com.mar.gym.feature.profile.model.ProfilePrivacy.Public) {
+                    IconButton(
+                        onClick = {
+                            onShareProfile(content.profile.displayName, content.profile.username)
+                        },
+                        modifier = Modifier.testTag("public_profile_share"),
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Compartir perfil")
+                    }
+                }
+            },
+        )
+    }) { padding ->
         when (state) {
             PublicProfileUiState.Loading -> LoadingState(Modifier.padding(padding), "Cargando perfil…")
             is PublicProfileUiState.Error -> ErrorState(
@@ -94,6 +122,7 @@ fun PublicProfileScreen(
             is PublicProfileUiState.Content -> PublicProfileContent(
                 state, onFollow, onOpenFollowers, onOpenFollowing, onOpenWorkout,
                 onLoadMoreWorkouts, onRetry, engagementState, onToggleLike, onOpenComments,
+                onShareWorkout,
                 Modifier.padding(padding),
             )
         }
@@ -112,6 +141,7 @@ private fun PublicProfileContent(
     engagementState: SocialEngagementUiState,
     onToggleLike: (SocialWorkoutSummary) -> Unit,
     onOpenComments: (SocialWorkoutSummary) -> Unit,
+    onShareWorkout: (String) -> Unit,
     modifier: Modifier,
 ) {
     val profile = state.profile
@@ -197,6 +227,7 @@ private fun PublicProfileContent(
                 onWorkoutClick = onOpenWorkout,
                 onToggleLike = { onToggleLike(displayedWorkout) },
                 onCommentsClick = { onOpenComments(displayedWorkout) },
+                onShare = onShareWorkout,
                 likeInFlight = workout.workoutId in engagementState.likesInFlight,
                 likeError = engagementState.likeErrors[workout.workoutId]?.workoutActionMessage(),
                 modifier = Modifier.padding(horizontal = 12.dp),

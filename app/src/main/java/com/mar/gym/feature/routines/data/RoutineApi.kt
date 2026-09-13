@@ -68,4 +68,21 @@ interface RoutineApi {
         @Path("routineId") routineId: String,
         @Header("If-Match") ifMatch: String,
     ): Response<Unit>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
+    @POST("api/v1/routines/{routineId}/share")
+    suspend fun enableSharing(
+        @Path("routineId") routineId: String,
+        @Header("If-Match") ifMatch: String,
+    ): Response<RoutineShareDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
+    @DELETE("api/v1/routines/{routineId}/share")
+    suspend fun disableSharing(
+        @Path("routineId") routineId: String,
+        @Header("If-Match") ifMatch: String,
+    ): Response<Unit>
+
+    @GET("api/v1/share/routines/{shareId}")
+    suspend fun sharedDetail(@Path("shareId") shareId: String): Response<SharedRoutineDto>
 }

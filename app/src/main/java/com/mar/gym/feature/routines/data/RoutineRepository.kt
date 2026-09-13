@@ -6,6 +6,8 @@ import com.mar.gym.feature.routines.model.RoutineDraft
 import com.mar.gym.feature.routines.model.RoutineEtag
 import com.mar.gym.feature.routines.model.RoutinePage
 import com.mar.gym.feature.routines.model.RoutineSort
+import com.mar.gym.feature.routines.model.RoutineShare
+import com.mar.gym.feature.routines.model.SharedRoutine
 
 sealed interface RoutineRepositoryResult<out T> {
     data class Success<T>(val value: T) : RoutineRepositoryResult<T>
@@ -32,4 +34,10 @@ interface RoutineRepository {
         name: String? = null,
     ): RoutineRepositoryResult<RoutineDocument>
     suspend fun delete(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<Unit>
+    suspend fun enableSharing(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<RoutineShare> =
+        RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
+    suspend fun disableSharing(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<Unit> =
+        RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
+    suspend fun sharedDetail(shareId: String): RoutineRepositoryResult<SharedRoutine> =
+        RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
 }

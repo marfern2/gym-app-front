@@ -142,6 +142,8 @@
     <string name="routine_error_server">El servidor no pudo completar la petición.</string>
     <string name="routine_error_unknown">Se produjo un error inesperado.</string>
     <string name="routine_start_workout">Iniciar rutina</string>
+    <string name="share_action">Compartir</string>
+    <string name="routine_stop_sharing">Dejar de compartir</string>
 
     <string name="workout_active_title">Entrenamiento</string>
     <string name="workout_loading">Buscando el entrenamiento activo…</string>

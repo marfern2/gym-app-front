@@ -33,6 +33,39 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter android:autoVerify="${shareAutoVerify}">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="${shareScheme}"
+                    android:host="${shareHost}"
+                    android:pathPrefix="${sharePathPrefix}/u/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="${shareAutoVerify}">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="${shareScheme}"
+                    android:host="${shareHost}"
+                    android:pathPrefix="${sharePathPrefix}/w/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="${shareAutoVerify}">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="${shareScheme}"
+                    android:host="${shareHost}"
+                    android:pathPrefix="${sharePathPrefix}/r/" />
+            </intent-filter>
         </activity>
         <receiver
             android:name=".feature.workouts.rest.RestTimerActionReceiver"

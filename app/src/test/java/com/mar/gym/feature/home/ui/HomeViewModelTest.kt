@@ -41,9 +41,9 @@ class HomeViewModelTest {
         val viewModel = HomeViewModel(feed, FakeSocialRepository())
         advanceUntilIdle()
 
-        assertEquals(listOf("own", "followed"), viewModel.uiState.value.workouts.map { it.title })
+        assertEquals(listOf("own", "followed"), viewModel.uiState.value.home.workouts.map { it.title })
         assertEquals(listOf("alice"), viewModel.uiState.value.suggestions.map { it.username })
-        assertFalse(viewModel.uiState.value.initialLoading)
+        assertFalse(viewModel.uiState.value.home.initialLoading)
     }
 
     @Test fun `cursor pagination deduplicates workouts and blocks duplicate calls`() = runTest {
@@ -60,7 +60,7 @@ class HomeViewModelTest {
         viewModel.loadMore()
         advanceUntilIdle()
 
-        assertEquals(listOf(WORKOUT_ID, WORKOUT_ID_2), viewModel.uiState.value.workouts.map { it.workoutId })
+        assertEquals(listOf(WORKOUT_ID, WORKOUT_ID_2), viewModel.uiState.value.home.workouts.map { it.workoutId })
         assertEquals(listOf(null, "cursor-1"), feed.feedCursors)
     }
 
@@ -68,14 +68,14 @@ class HomeViewModelTest {
         val feed = FakeFeedRepository().apply { firstPage = SocialResult.Failure(NetworkFailure.Network()) }
         val viewModel = HomeViewModel(feed, FakeSocialRepository())
         advanceUntilIdle()
-        assertNotNull(viewModel.uiState.value.feedError)
+        assertNotNull(viewModel.uiState.value.home.feedError)
 
         feed.firstPage = successPage(emptyList())
         viewModel.retry()
         advanceUntilIdle()
-        assertEquals(emptyList<SocialWorkoutSummary>(), viewModel.uiState.value.workouts)
-        assertEquals(null, viewModel.uiState.value.feedError)
-        assertFalse(viewModel.uiState.value.initialLoading)
+        assertEquals(emptyList<SocialWorkoutSummary>(), viewModel.uiState.value.home.workouts)
+        assertEquals(null, viewModel.uiState.value.home.feedError)
+        assertFalse(viewModel.uiState.value.home.initialLoading)
         assertEquals(2, feed.feedCursors.size)
     }
 
@@ -95,7 +95,7 @@ class HomeViewModelTest {
         social.followGate?.complete(SocialResult.Success(Unit))
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.suggestions.isEmpty())
-        assertEquals(listOf("newly followed"), viewModel.uiState.value.workouts.map { it.title })
+        assertEquals(listOf("newly followed"), viewModel.uiState.value.home.workouts.map { it.title })
         assertEquals(listOf(null, null), feed.feedCursors)
     }
 
@@ -111,8 +111,120 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.suggestions.single().isFollowing)
-        assertEquals(listOf("real"), viewModel.uiState.value.workouts.map { it.title })
+        assertEquals(listOf("real"), viewModel.uiState.value.home.workouts.map { it.title })
         assertNotNull(viewModel.uiState.value.suggestionActionErrors["alice"])
+    }
+
+    @Test fun `selector loads discover once and preserves both feeds`() = runTest {
+        val feed = FakeFeedRepository().apply {
+            firstPage = successPage(listOf(workout("home", USER_ID)))
+            discoverFirstPage = successPage(listOf(workout("discover", OTHER_USER_ID)))
+        }
+        val viewModel = HomeViewModel(feed, FakeSocialRepository())
+        advanceUntilIdle()
+
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Home)
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+
+        assertEquals(HomeFeedMode.Discover, viewModel.uiState.value.selectedMode)
+        assertEquals(listOf("home"), viewModel.uiState.value.home.workouts.map { it.title })
+        assertEquals(listOf("discover"), viewModel.uiState.value.discover.workouts.map { it.title })
+        assertEquals(listOf(null), feed.discoverCursors)
+    }
+
+    @Test fun `discover pagination owns cursor and deduplicates independently`() = runTest {
+        val duplicate = workout("discover first", OTHER_USER_ID, WORKOUT_ID_2)
+        val feed = FakeFeedRepository().apply {
+            firstPage = successPage(listOf(workout("home", USER_ID)), cursor = "home-cursor", hasMore = true)
+            discoverFirstPage = successPage(listOf(duplicate), cursor = "discover-cursor", hasMore = true)
+            discoverCursorPages["discover-cursor"] = successPage(
+                listOf(duplicate, workout("discover second", THIRD_USER_ID, WORKOUT_ID_3)),
+            )
+        }
+        val viewModel = HomeViewModel(feed, FakeSocialRepository())
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+        viewModel.loadMore()
+        viewModel.loadMore()
+        advanceUntilIdle()
+
+        assertEquals(listOf(WORKOUT_ID_2, WORKOUT_ID_3), viewModel.uiState.value.discover.workouts.map { it.workoutId })
+        assertEquals("home-cursor", viewModel.uiState.value.home.nextCursor)
+        assertEquals(listOf(null, "discover-cursor"), feed.discoverCursors)
+        assertEquals(listOf(null), feed.feedCursors)
+    }
+
+    @Test fun `discover error does not break loaded home`() = runTest {
+        val feed = FakeFeedRepository().apply {
+            firstPage = successPage(listOf(workout("home", USER_ID)))
+            discoverFirstPage = SocialResult.Failure(NetworkFailure.Network())
+        }
+        val viewModel = HomeViewModel(feed, FakeSocialRepository())
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.discover.feedError)
+        assertEquals(listOf("home"), viewModel.uiState.value.home.workouts.map { it.title })
+        assertEquals(null, viewModel.uiState.value.home.feedError)
+
+        feed.discoverFirstPage = successPage(listOf(workout("recovered", OTHER_USER_ID)))
+        viewModel.retry()
+        advanceUntilIdle()
+        assertEquals(listOf("recovered"), viewModel.uiState.value.discover.workouts.map { it.title })
+        assertEquals(1, feed.feedCursors.size)
+        assertEquals(2, feed.discoverCursors.size)
+    }
+
+    @Test fun `discover follow is optimistic protected and removes all author workouts`() = runTest {
+        val feed = FakeFeedRepository().apply {
+            discoverFirstPage = successPage(
+                listOf(
+                    workout("first", OTHER_USER_ID, WORKOUT_ID_2),
+                    workout("second", OTHER_USER_ID, WORKOUT_ID_3),
+                    workout("other", THIRD_USER_ID, WORKOUT_ID_4),
+                ),
+            )
+        }
+        val social = FakeSocialRepository().apply { followGate = CompletableDeferred() }
+        val viewModel = HomeViewModel(feed, social)
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+
+        viewModel.follow("friend")
+        viewModel.follow("friend")
+        runCurrent()
+        assertTrue("friend" in viewModel.uiState.value.discoverFollowingUsernames)
+        assertEquals(1, social.followCalls)
+
+        social.followGate?.complete(SocialResult.Success(Unit))
+        advanceUntilIdle()
+        assertEquals(listOf(THIRD_USER_ID), viewModel.uiState.value.discover.workouts.map { it.author.userId })
+        assertFalse("friend" in viewModel.uiState.value.discoverFollowingUsernames)
+    }
+
+    @Test fun `discover follow failure rolls optimistic state back and keeps workouts`() = runTest {
+        val feed = FakeFeedRepository().apply {
+            discoverFirstPage = successPage(listOf(workout("discover", OTHER_USER_ID)))
+        }
+        val social = FakeSocialRepository().apply {
+            followResult = SocialResult.Failure(NetworkFailure.Network())
+        }
+        val viewModel = HomeViewModel(feed, social)
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+        viewModel.follow("friend")
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.uiState.value.discover.workouts.size)
+        assertFalse("friend" in viewModel.uiState.value.discoverFollowingUsernames)
+        assertNotNull(viewModel.uiState.value.discoverFollowErrors["friend"])
     }
 
     @Test fun `suggestions insertion is deterministic and only one position exists`() {
@@ -125,12 +237,19 @@ class HomeViewModelTest {
     private class FakeFeedRepository : SocialFeedRepository {
         var firstPage: SocialResult<SocialWorkoutPage> = successPage(emptyList())
         var suggestionResult: SocialResult<SuggestedAthletePage> = suggestions()
+        var discoverFirstPage: SocialResult<SocialWorkoutPage> = successPage(emptyList())
         val cursorPages = mutableMapOf<String, SocialResult<SocialWorkoutPage>>()
+        val discoverCursorPages = mutableMapOf<String, SocialResult<SocialWorkoutPage>>()
         val feedCursors = mutableListOf<String?>()
+        val discoverCursors = mutableListOf<String?>()
 
         override suspend fun feed(cursor: String?, size: Int): SocialResult<SocialWorkoutPage> {
             feedCursors += cursor
             return cursor?.let { cursorPages.getValue(it) } ?: firstPage
+        }
+        override suspend fun discover(cursor: String?, size: Int): SocialResult<SocialWorkoutPage> {
+            discoverCursors += cursor
+            return cursor?.let { discoverCursorPages.getValue(it) } ?: discoverFirstPage
         }
         override suspend fun suggestions(page: Int, size: Int) = suggestionResult
         override suspend fun userWorkouts(username: String, cursor: String?, size: Int) = successPage(emptyList())
@@ -165,11 +284,23 @@ class HomeViewModelTest {
         const val OTHER_USER_ID = "00000000-0000-4000-8000-000000000002"
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000010"
         const val WORKOUT_ID_2 = "00000000-0000-4000-8000-000000000011"
+        const val WORKOUT_ID_3 = "00000000-0000-4000-8000-000000000012"
+        const val WORKOUT_ID_4 = "00000000-0000-4000-8000-000000000013"
+        const val THIRD_USER_ID = "00000000-0000-4000-8000-000000000003"
 
         fun workout(title: String, userId: String, id: String = if (userId == USER_ID) WORKOUT_ID else WORKOUT_ID_2) =
             SocialWorkoutSummary(
                 id, Instant.parse("2026-08-25T10:00:00Z"), title, null,
-                SocialAuthor(userId, if (userId == USER_ID) "me" else "friend", title, null),
+                SocialAuthor(
+                    userId,
+                    when (userId) {
+                        USER_ID -> "me"
+                        OTHER_USER_ID -> "friend"
+                        else -> "other"
+                    },
+                    title,
+                    null,
+                ),
                 3600, BigDecimal("1000"), 5, 2, emptyList(), 0,
             )
 

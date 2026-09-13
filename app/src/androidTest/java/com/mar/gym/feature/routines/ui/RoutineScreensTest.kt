@@ -1,6 +1,7 @@
 package com.mar.gym.feature.routines.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -26,6 +27,9 @@ import com.mar.gym.feature.routines.model.RoutineSet
 import com.mar.gym.feature.routines.model.RoutineSetDraft
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
+import com.mar.gym.feature.routines.model.SharedRoutine
+import com.mar.gym.feature.routines.model.SharedRoutineExercise
 import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.Instant
@@ -303,6 +307,60 @@ class RoutineScreensTest {
         composeRule.runOnIdle { assertTrue(reloaded) }
     }
 
+    @Test
+    fun viewerOffersShareAndStopSharingWithoutRemovingExistingActions() {
+        var shared = false
+        var stopped = false
+        composeRule.setContent {
+            GYmAppTheme {
+                RoutineViewerScreen(
+                    state = RoutineViewerUiState.Content(RoutineDocument(
+                        detail().copy(
+                            shareVisibility = RoutineShareVisibility.LinkPublic,
+                            shareId = SHARE_ID,
+                            shareUrl = SHARE_URL,
+                        ),
+                        etag(),
+                    )),
+                    onBack = {}, onEdit = {}, onStartRoutine = {}, onRetry = {},
+                    onDuplicate = {}, onDelete = {}, onReload = {},
+                    onShare = { shared = true }, onStopSharing = { stopped = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithTag("routine-share-action").performClick()
+        composeRule.runOnIdle { assertTrue(shared) }
+        composeRule.onNodeWithContentDescription("Opciones de Rutina de fuerza").performClick()
+        composeRule.onNodeWithTag("routine-stop-sharing-action").performClick()
+        composeRule.runOnIdle { assertTrue(stopped) }
+    }
+
+    @Test
+    fun sharedRoutineIsReadOnlyShowsTargetsSupersetAndDisabledImportGap() {
+        val exercise = SharedRoutineExercise(
+            TEMPLATE_ID, "Press de banca", ExerciseType.WeightReps, Equipment.Barbell, 1, 1,
+            "Controlado", 90, listOf(RoutineSet(1, SetType.Normal, "8", "10", "80", "", "", "8")),
+        )
+        composeRule.setContent {
+            GYmAppTheme {
+                SharedRoutineScreen(
+                    state = SharedRoutineUiState.Content(SharedRoutine(
+                        SHARE_ID, SHARE_URL, "Fuerza compartida", "Notas", Instant.EPOCH, listOf(exercise),
+                    )),
+                    onBack = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Fuerza compartida").assertIsDisplayed()
+        composeRule.onNodeWithText("Superserie 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Serie 1: 8–10 reps · 80 kg · RPE 8").assertIsDisplayed()
+        composeRule.onNodeWithText("Editar").assertDoesNotExist()
+        composeRule.onNodeWithTag("shared_routine_import").assertIsNotEnabled()
+    }
+
     private fun setList(
         state: RoutineListUiState,
         onDelete: (String) -> Unit = {},
@@ -398,5 +456,7 @@ class RoutineScreensTest {
         const val ID = "a1111111-1111-4111-8111-111111111111"
         const val TEMPLATE_ID = "a2222222-2222-4222-8222-222222222222"
         const val SECOND_TEMPLATE_ID = "a3333333-3333-4333-8333-333333333333"
+        const val SHARE_ID = "a4444444-4444-4444-8444-444444444444"
+        const val SHARE_URL = "https://links.example.test/r/$SHARE_ID"
     }
 }

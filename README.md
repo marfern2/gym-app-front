@@ -9,8 +9,11 @@ Android Studio crea `local.properties` en la raíz con la ubicación del SDK. Co
 ```properties
 GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_SERVER_CLIENT_ID.apps.googleusercontent.com
 RELEASE_API_BASE_URL=https://api.YOUR_CLOUDFLARE_DOMAIN/
+RELEASE_SHARE_BASE_URL=https://links.YOUR_DOMAIN/
 # Opcional; este es el valor predeterminado:
 DEBUG_API_BASE_URL=http://10.0.2.2:8080/
+DEBUG_SHARE_BASE_URL=http://10.0.2.2:8080/
+SHARE_APP_LINKS_AUTO_VERIFY=false
 ```
 
 `local.properties` está ignorado por Git y no debe versionarse. También pueden proporcionarse los valores mediante `-P`, variables `ORG_GRADLE_PROJECT_<NOMBRE>` o variables de entorno con el nombre exacto de la propiedad.
@@ -22,7 +25,28 @@ El Web/server OAuth client ID no es un secreto, pero se mantiene fuera del códi
 - `debug` utiliza `http://10.0.2.2:8080/` de forma predeterminada. `10.0.2.2` permite que el emulador Android acceda al `localhost` del ordenador. Puede establecerse `DEBUG_API_BASE_URL`, pero HTTP solo se admite para ese host.
 - `release` exige `RELEASE_API_BASE_URL`, requiere HTTPS y nunca utiliza una URL local como fallback.
 - Ambas variantes exponen `BuildConfig.API_BASE_URL` y `BuildConfig.GOOGLE_SERVER_CLIENT_ID`.
+- Ambas variantes exponen también `BuildConfig.SHARE_BASE_URL`. `DEBUG_SHARE_BASE_URL` cae en
+  `DEBUG_API_BASE_URL` y `RELEASE_SHARE_BASE_URL` cae en `RELEASE_API_BASE_URL` si no se declara;
+  cuando el backend use un origen de enlaces distinto, debe configurarse explícitamente con el
+  mismo valor que su `SHARE_BASE_URL`.
 - Solo debug incluye una Network Security Config que permite cleartext exclusivamente hacia `10.0.2.2`; release mantiene cleartext desactivado.
+
+## Sharing y App Links
+
+La app comparte texto plano mediante el Sharesheet nativo y genera/resuelve las rutas lógicas
+`/u/{username}`, `/w/{workoutId}` y `/r/{shareId}`. El detalle de workout y las operaciones de
+sharing de rutina usan la `shareUrl` canónica devuelta por el backend; las cards y perfiles usan
+`BuildConfig.SHARE_BASE_URL` sin añadir tokens ni parámetros.
+
+Los tres intent filters toman scheme, host y path base de esa configuración. La verificación está
+desactivada de forma predeterminada. Para activar Android App Links reales, el dominio final debe
+usar HTTPS, servir un `/.well-known/assetlinks.json` correcto para `com.mar.gym` y sus certificados,
+y compilar con `SHARE_APP_LINKS_AUTO_VERIFY=true`. Este repositorio no inventa ni publica
+`assetlinks.json` porque todavía no hay dominio/certificados finales confirmados.
+
+`GET /api/v1/share/routines/{shareId}` se presenta siempre en modo solo lectura. El botón
+“Guardar en mis rutinas” permanece deshabilitado: el contrato actual no expone una operación de
+importación/copia y el cliente no reconstruye una rutina mediante un hack parcial.
 
 ## Comandos de verificación
 

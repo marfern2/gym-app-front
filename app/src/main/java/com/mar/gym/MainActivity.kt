@@ -79,6 +79,9 @@ import com.mar.gym.feature.routines.ui.RoutineListViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineViewerRoute
 import com.mar.gym.feature.routines.ui.RoutineViewerViewModel
 import com.mar.gym.feature.routines.ui.RoutineViewerViewModelFactory
+import com.mar.gym.feature.routines.ui.SharedRoutineRoute
+import com.mar.gym.feature.routines.ui.SharedRoutineViewModel
+import com.mar.gym.feature.routines.ui.SharedRoutineViewModelFactory
 import com.mar.gym.feature.system.SystemViewModel
 import com.mar.gym.feature.system.SystemViewModelFactory
 import com.mar.gym.feature.social.ui.PublicProfileRoute
@@ -105,14 +108,22 @@ import com.mar.gym.feature.workouts.ui.SaveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.WorkoutCongratsRoute
 import com.mar.gym.ui.components.BarbellIcon
 import com.mar.gym.ui.theme.GYmAppTheme
+import com.mar.gym.core.sharing.ShareDeepLink
+import com.mar.gym.core.sharing.ShareLinks
+import com.mar.gym.core.sharing.ShareMessages
+import com.mar.gym.feature.social.model.SocialWorkoutDetail
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionViewModels: UserSessionViewModelScope
+    private val incomingDeepLink = MutableStateFlow<String?>(null)
+    private val shareLinks by lazy { ShareLinks(BuildConfig.SHARE_BASE_URL) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AppContainer.initialize(applicationContext)
+        incomingDeepLink.value = intent?.dataString
 
         val authViewModel = ViewModelProvider(
             this,
@@ -152,6 +163,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        incomingDeepLink.value = intent.dataString
+    }
+
     @Composable
     private fun AuthenticatedApp(
         user: com.mar.gym.feature.auth.model.AuthenticatedUser,
@@ -181,6 +198,29 @@ class MainActivity : ComponentActivity() {
         var socialListOrigin by rememberSaveable { mutableStateOf(TAB_PROFILE) }
         var socialListParentUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var socialListType by rememberSaveable { mutableStateOf(SocialListType.Followers.name) }
+        var sharedRoutineId by rememberSaveable { mutableStateOf<String?>(null) }
+
+        val pendingDeepLink by incomingDeepLink.collectAsStateWithLifecycle()
+        LaunchedEffect(pendingDeepLink) {
+            when (val target = shareLinks.parse(pendingDeepLink)) {
+                is ShareDeepLink.Profile -> {
+                    publicUsername = target.username
+                    publicProfileOrigin = TAB_HOME
+                    deep = DEEP_PUBLIC_PROFILE
+                }
+                is ShareDeepLink.Workout -> {
+                    socialWorkoutId = target.workoutId
+                    socialWorkoutOrigin = TAB_HOME
+                    deep = DEEP_SOCIAL_WORKOUT
+                }
+                is ShareDeepLink.Routine -> {
+                    sharedRoutineId = target.shareId
+                    deep = DEEP_SHARED_ROUTINE
+                }
+                null -> Unit
+            }
+            if (pendingDeepLink != null) incomingDeepLink.value = null
+        }
 
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
         val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
@@ -227,6 +267,10 @@ class MainActivity : ComponentActivity() {
                     DEEP_ROUTINE_VIEWER -> {
                         routineListViewModel().refresh()
                         tab = TAB_TRAINING
+                        null
+                    }
+                    DEEP_SHARED_ROUTINE -> {
+                        tab = TAB_HOME
                         null
                     }
                     DEEP_ROUTINE_EDITOR -> {
@@ -363,6 +407,7 @@ class MainActivity : ComponentActivity() {
                                 commentsParentUsername = null
                                 deep = DEEP_SOCIAL_COMMENTS
                             },
+                            onShareWorkout = ::shareWorkout,
                         )
                         TAB_TRAINING -> TrainingScreen(
                             activeWorkout = activeWorkoutState,
@@ -404,7 +449,7 @@ class MainActivity : ComponentActivity() {
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = profileViewModel(),
                             onOpenEdit = { deep = DEEP_PROFILE_EDIT },
-                            onShare = { identity -> shareProfile(identity) },
+                            onShare = ::shareProfile,
                             onOpenSettings = { deep = DEEP_PROFILE_SETTINGS },
                             onOpenStatistics = { deep = DEEP_PROFILE_STATS },
                             onOpenMeasurements = { deep = DEEP_MEASUREMENTS },
@@ -541,6 +586,7 @@ class MainActivity : ComponentActivity() {
                                 deep = null
                                 tab = TAB_TRAINING
                             },
+                            onShare = ::shareRoutine,
                             onOpenExercise = { id ->
                                 detailOrigin = DEEP_ROUTINE_VIEWER
                                 detailId = id
@@ -780,6 +826,8 @@ class MainActivity : ComponentActivity() {
                             commentsParentUsername = username
                             deep = DEEP_SOCIAL_COMMENTS
                         },
+                        onShareProfile = ::shareProfile,
+                        onShareWorkout = ::shareWorkout,
                     )
                 }
                 DEEP_SOCIAL_WORKOUT -> socialWorkoutId?.let { workoutId ->
@@ -799,6 +847,17 @@ class MainActivity : ComponentActivity() {
                             socialCommentsOrigin = DEEP_SOCIAL_WORKOUT
                             commentsParentUsername = null
                             deep = DEEP_SOCIAL_COMMENTS
+                        },
+                        onShareWorkout = ::shareWorkout,
+                    )
+                }
+                DEEP_SHARED_ROUTINE -> sharedRoutineId?.let { shareId ->
+                    SharedRoutineRoute(
+                        viewModel = remember(shareId) { sharedRoutineViewModel(shareId) },
+                        onBack = {
+                            sharedRoutineId = null
+                            deep = null
+                            tab = TAB_HOME
                         },
                     )
                 }
@@ -981,6 +1040,11 @@ class MainActivity : ComponentActivity() {
             SocialWorkoutDetailViewModelFactory(workoutId, AppContainer.socialFeedRepository),
         )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 
+    private fun sharedRoutineViewModel(shareId: String): SharedRoutineViewModel = ViewModelProvider(
+        userSessionViewModels,
+        SharedRoutineViewModelFactory(shareId, AppContainer.routineRepository),
+    )["shared-routine-$shareId", SharedRoutineViewModel::class.java]
+
     private fun socialEngagementViewModel(currentUserId: String): SocialEngagementViewModel = ViewModelProvider(
         userSessionViewModels,
         SocialEngagementViewModelFactory(currentUserId, AppContainer.socialFeedRepository),
@@ -1002,12 +1066,31 @@ class MainActivity : ComponentActivity() {
         ),
     )[ProfileCalendarViewModel::class.java]
 
-    private fun shareProfile(identity: String) {
+    private fun shareProfile(displayName: String, username: String) {
+        val url = shareLinks.profile(username) ?: return
+        openShareSheet(ShareMessages.profile(displayName, url), "Compartir perfil")
+    }
+
+    private fun shareWorkout(workoutId: String) {
+        val url = shareLinks.workout(workoutId) ?: return
+        openShareSheet(ShareMessages.workout(url), "Compartir entrenamiento")
+    }
+
+    private fun shareWorkout(workout: SocialWorkoutDetail) {
+        val url = workout.shareUrl ?: shareLinks.workout(workout.workoutId) ?: return
+        openShareSheet(ShareMessages.workout(url), "Compartir entrenamiento")
+    }
+
+    private fun shareRoutine(url: String) {
+        openShareSheet(ShareMessages.routine(url), "Compartir rutina")
+    }
+
+    private fun openShareSheet(text: String, title: String) {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "Mi perfil en GYm: $identity")
+            putExtra(Intent.EXTRA_TEXT, text)
         }
-        startActivity(Intent.createChooser(intent, "Compartir perfil"))
+        startActivity(Intent.createChooser(intent, title))
     }
 
     private fun exerciseProgressViewModel(exerciseTemplateId: String): ExerciseProgressViewModel = ViewModelProvider(
@@ -1051,5 +1134,6 @@ class MainActivity : ComponentActivity() {
         const val DEEP_SOCIAL_LIST = "social_list"
         const val DEEP_SOCIAL_WORKOUT = "social_workout"
         const val DEEP_SOCIAL_COMMENTS = "social_comments"
+        const val DEEP_SHARED_ROUTINE = "shared_routine"
     }
 }

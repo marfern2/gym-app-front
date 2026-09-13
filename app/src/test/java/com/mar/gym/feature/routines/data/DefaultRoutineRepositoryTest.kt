@@ -152,6 +152,58 @@ class DefaultRoutineRepositoryTest {
     }
 
     @Test
+    fun sharingUsesIfMatchMapsCanonicalResponseAndDisablesWithoutRetry() = runBlocking {
+        val repository = repository()
+        server.enqueue(json(
+            """{"shareId":"$SHARE_ID","shareUrl":"https://links.example.test/r/$SHARE_ID","version":8}""",
+            etag = "\"8\"",
+        ))
+
+        val enabled = repository.enableSharing(ROUTINE_ID, RoutineEtag.fromVersion(7)!!)
+            as RoutineRepositoryResult.Success
+        assertEquals(SHARE_ID, enabled.value.shareId)
+        assertEquals("https://links.example.test/r/$SHARE_ID", enabled.value.shareUrl)
+        assertEquals(8, enabled.value.etag.version)
+        server.takeRequest().let {
+            assertEquals("POST", it.method)
+            assertEquals("/api/v1/routines/$ROUTINE_ID/share", it.path)
+            assertEquals("\"7\"", it.getHeader("If-Match"))
+            assertEquals(AUTHENTICATION_NO_RETRY, it.getHeader(AUTHENTICATION_REQUIRED_HEADER))
+        }
+
+        server.enqueue(MockResponse().setResponseCode(204).setHeader("ETag", "\"9\""))
+        assertTrue(repository.disableSharing(ROUTINE_ID, RoutineEtag.fromVersion(8)!!) is RoutineRepositoryResult.Success)
+        server.takeRequest().let {
+            assertEquals("DELETE", it.method)
+            assertEquals("/api/v1/routines/$ROUTINE_ID/share", it.path)
+            assertEquals("\"8\"", it.getHeader("If-Match"))
+            assertEquals(AUTHENTICATION_NO_RETRY, it.getHeader(AUTHENTICATION_REQUIRED_HEADER))
+        }
+    }
+
+    @Test
+    fun sharingPreservesConflictAndSharedDetailIsAnonymousReadOnlyContract() = runBlocking {
+        val repository = repository()
+        server.enqueue(problem(409, "ROUTINE_VERSION_CONFLICT"))
+        val conflict = repository.enableSharing(ROUTINE_ID, RoutineEtag.fromVersion(7)!!)
+            as RoutineRepositoryResult.Failure
+        assertEquals(409, (conflict.error as NetworkFailure.HttpProblem).statusCode)
+        server.takeRequest()
+
+        server.enqueue(json(sharedDetailJson()))
+        val shared = repository.sharedDetail(SHARE_ID) as RoutineRepositoryResult.Success
+        assertEquals("Fuerza compartida", shared.value.name)
+        assertEquals(listOf(1, 1), shared.value.exercises.map { it.supersetGroup })
+        assertEquals("8", shared.value.exercises.first().sets.single().targetRepsMin)
+        server.takeRequest().let {
+            assertEquals("GET", it.method)
+            assertEquals("/api/v1/share/routines/$SHARE_ID", it.path)
+            assertEquals(null, it.getHeader(AUTHENTICATION_REQUIRED_HEADER))
+            assertEquals(null, it.getHeader("If-Match"))
+        }
+    }
+
+    @Test
     fun preserves404ConflictAndNestedProblemDetails() = runBlocking {
         server.enqueue(problem(404, "ROUTINE_NOT_FOUND"))
         val missing = repository().detail(ROUTINE_ID) as RoutineRepositoryResult.Failure
@@ -223,6 +275,19 @@ class DefaultRoutineRepositoryTest {
       ]
     }"""
 
+    private fun sharedDetailJson() = """{
+      "shareId":"$SHARE_ID","shareUrl":"https://links.example.test/r/$SHARE_ID",
+      "name":"Fuerza compartida","description":"Solo lectura","updatedAt":"2026-08-02T10:00:00Z",
+      "exercises":[
+        {"exerciseTemplateId":"$TEMPLATE_ID","exerciseName":"Press","exerciseType":"WEIGHT_REPS",
+         "equipment":"BARBELL","position":1,"supersetGroup":1,"notes":"Controlado","restSeconds":90,
+         "sets":[{"position":1,"setType":"NORMAL","targetRepsMin":8,"targetRepsMax":10,
+                  "targetWeight":22.5,"targetDurationSeconds":null,"targetDistanceMeters":null,"targetRpe":8.5}]},
+        {"exerciseTemplateId":"$SECOND_TEMPLATE_ID","exerciseName":"Remo","exerciseType":"WEIGHT_REPS",
+         "equipment":"BARBELL","position":2,"supersetGroup":1,"notes":null,"restSeconds":90,"sets":[]}
+      ]
+    }"""
+
     private fun draft(routineId: String?) = RoutineDraft(
         routineId = routineId, name = "Fuerza", description = "Base",
         exercises = listOf(RoutineExerciseDraft(
@@ -255,5 +320,6 @@ class DefaultRoutineRepositoryTest {
         const val SET_ID = "84444444-4444-4444-8444-444444444444"
         const val SECOND_EXERCISE_ID = "85555555-5555-4555-8555-555555555555"
         const val SECOND_TEMPLATE_ID = "86666666-6666-4666-8666-666666666666"
+        const val SHARE_ID = "87777777-7777-4777-8777-777777777777"
     }
 }

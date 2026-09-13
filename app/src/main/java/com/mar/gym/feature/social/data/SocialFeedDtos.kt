@@ -79,6 +79,7 @@ data class SocialWorkoutDetailDto(
     val likesCount: Long = 0,
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
+    val shareUrl: String? = null,
 )
 
 @Serializable

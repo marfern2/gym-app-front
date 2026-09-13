@@ -8,6 +8,7 @@ import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.routines.data.RoutineRepositoryResult
 import com.mar.gym.feature.routines.model.RoutineDocument
 import com.mar.gym.feature.routines.model.RoutineEtag
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -35,6 +36,60 @@ class RoutineViewerViewModel(
     fun archive() = mutate { id, etag -> repository.archive(id, etag) }
     fun restore() = mutate { id, etag -> repository.restore(id, etag) }
     fun duplicate() = mutate { id, etag -> repository.duplicate(id, etag) }
+
+    fun share() {
+        val current = _uiState.value as? RoutineViewerUiState.Content ?: return
+        if (current.busy) return
+        val detail = current.document.detail
+        if (detail.shareVisibility == RoutineShareVisibility.LinkPublic && detail.shareUrl != null) {
+            viewModelScope.launch { _effects.emit(RoutineViewerEffect.ShareRoutine(detail.shareUrl)) }
+            return
+        }
+        _uiState.value = current.copy(busy = true, operationError = null)
+        viewModelScope.launch {
+            when (val result = repository.enableSharing(detail.id, current.document.etag)) {
+                is RoutineRepositoryResult.Failure -> showOperationFailure(current, result)
+                is RoutineRepositoryResult.Success -> {
+                    val sharedDocument = RoutineDocument(
+                        detail = detail.copy(
+                            version = result.value.etag.version,
+                            shareVisibility = RoutineShareVisibility.LinkPublic,
+                            shareId = result.value.shareId,
+                            shareUrl = result.value.shareUrl,
+                        ),
+                        etag = result.value.etag,
+                    )
+                    val sharedState = current.copy(document = sharedDocument, busy = false)
+                    _uiState.value = sharedState
+                    _effects.emit(RoutineViewerEffect.ShareRoutine(result.value.shareUrl))
+                    refreshAfterShareMutation(sharedState)
+                }
+            }
+        }
+    }
+
+    fun stopSharing() {
+        val current = _uiState.value as? RoutineViewerUiState.Content ?: return
+        if (current.busy || current.document.detail.shareVisibility != RoutineShareVisibility.LinkPublic) return
+        _uiState.value = current.copy(busy = true, operationError = null)
+        viewModelScope.launch {
+            when (val result = repository.disableSharing(current.document.detail.id, current.document.etag)) {
+                is RoutineRepositoryResult.Failure -> showOperationFailure(current, result)
+                is RoutineRepositoryResult.Success -> {
+                    val revoked = current.copy(
+                        document = current.document.copy(
+                            detail = current.document.detail.copy(
+                                shareVisibility = RoutineShareVisibility.Private,
+                            ),
+                        ),
+                        busy = false,
+                    )
+                    _uiState.value = revoked
+                    refreshAfterShareMutation(revoked)
+                }
+            }
+        }
+    }
 
     fun delete() {
         val current = _uiState.value as? RoutineViewerUiState.Content ?: return
@@ -69,6 +124,23 @@ class RoutineViewerViewModel(
                 }
             }
         }
+    }
+
+    private suspend fun refreshAfterShareMutation(previous: RoutineViewerUiState.Content) {
+        when (val refreshed = repository.detail(routineId)) {
+            is RoutineRepositoryResult.Success -> _uiState.value = RoutineViewerUiState.Content(refreshed.value)
+            is RoutineRepositoryResult.Failure -> showOperationFailure(previous, refreshed)
+        }
+    }
+
+    private fun showOperationFailure(
+        previous: RoutineViewerUiState.Content,
+        failure: RoutineRepositoryResult.Failure,
+    ) {
+        _uiState.value = previous.copy(
+            busy = false,
+            operationError = failure.error.toRoutineUiError(),
+        )
     }
 
     private fun mutate(

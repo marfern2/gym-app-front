@@ -15,11 +15,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +33,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -58,6 +64,7 @@ fun HomeRoute(
     onOpenProfile: (String) -> Unit,
     onOpenWorkout: (String) -> Unit,
     onOpenComments: (String) -> Unit,
+    onShareWorkout: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -79,6 +86,8 @@ fun HomeRoute(
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMore,
         onFollow = viewModel::follow,
+        onModeSelected = viewModel::selectMode,
+        onShareWorkout = onShareWorkout,
     )
 }
 
@@ -93,11 +102,14 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFollow: (String) -> Unit,
+    onModeSelected: (HomeFeedMode) -> Unit = {},
     engagementState: SocialEngagementUiState = SocialEngagementUiState(),
     onToggleLike: (SocialWorkoutSummary) -> Unit = {},
     onOpenComments: (SocialWorkoutSummary) -> Unit = {},
     modifier: Modifier = Modifier,
+    onShareWorkout: (String) -> Unit = {},
 ) {
+    val feed = state.activeFeed
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -107,9 +119,15 @@ fun HomeScreen(
                     IconButton(onClick = onSearchPeople) {
                         Icon(Icons.Default.PersonSearch, contentDescription = "Buscar personas")
                     }
-                    IconButton(onClick = onRefresh, enabled = !state.refreshing) {
+                    IconButton(onClick = onRefresh, enabled = !feed.refreshing) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualizar feed")
                     }
+                },
+                titleContent = {
+                    HomeDiscoverSelector(
+                        selectedMode = state.selectedMode,
+                        onModeSelected = onModeSelected,
+                    )
                 },
             )
         },
@@ -119,43 +137,55 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.refreshing) item("refreshing") {
+            if (feed.refreshing) item("refreshing") {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
                     CircularProgressIndicator(modifier = Modifier.testTag("home_refreshing"))
                 }
             }
 
             when {
-                state.initialLoading -> item("initial_loading") {
+                feed.initialLoading -> item("initial_loading") {
                     Row(
                         Modifier.fillMaxWidth().padding(48.dp),
                         horizontalArrangement = Arrangement.Center,
                     ) { CircularProgressIndicator() }
                 }
-                state.feedError != null && state.workouts.isEmpty() -> item("feed_error") {
+                feed.feedError != null && feed.workouts.isEmpty() -> item("feed_error") {
                     ErrorState(
-                        title = "No se pudo cargar el feed",
-                        message = state.feedError.userMessage(),
+                        title = if (state.selectedMode == HomeFeedMode.Discover) {
+                            "No se pudo cargar Discover"
+                        } else {
+                            "No se pudo cargar el feed"
+                        },
+                        message = feed.feedError.userMessage(),
                         retryLabel = "Reintentar",
                         onRetry = onRetry,
                     )
                 }
-                state.workouts.isEmpty() -> item("feed_empty") {
-                    EmptyState(
-                        modifier = Modifier.testTag("home_feed_empty"),
-                        title = "Aún no hay entrenamientos en tu feed",
-                        message = "Sigue a otros usuarios para ver sus entrenamientos aquí.",
-                        actionLabel = "Buscar personas",
-                        onAction = onSearchPeople,
-                    )
+                feed.workouts.isEmpty() -> item("feed_empty") {
+                    if (state.selectedMode == HomeFeedMode.Discover) {
+                        EmptyState(
+                            modifier = Modifier.testTag("discover_feed_empty"),
+                            title = "No hay entrenamientos para descubrir",
+                            message = "Vuelve a intentarlo más tarde o actualiza el feed.",
+                        )
+                    } else {
+                        EmptyState(
+                            modifier = Modifier.testTag("home_feed_empty"),
+                            title = "Aún no hay entrenamientos en tu feed",
+                            message = "Sigue a otros usuarios para ver sus entrenamientos aquí.",
+                            actionLabel = "Buscar personas",
+                            onAction = onSearchPeople,
+                        )
+                    }
                 }
             }
 
-            if (!state.initialLoading && state.workouts.isEmpty()) {
+            if (state.selectedMode == HomeFeedMode.Home && !feed.initialLoading && feed.workouts.isEmpty()) {
                 suggestionsBlock(state, onOpenProfile, onFollow, onRetrySuggestions)
             } else {
                 itemsIndexed(
-                    items = state.workouts,
+                    items = feed.workouts,
                     key = { _, workout -> workout.workoutId },
                 ) { index, workout ->
                     val socialState = engagementState.workouts[workout.workoutId]
@@ -174,22 +204,29 @@ fun HomeScreen(
                         onCommentsClick = { onOpenComments(displayedWorkout) },
                         likeInFlight = workout.workoutId in engagementState.likesInFlight,
                         likeError = engagementState.likeErrors[workout.workoutId]?.workoutActionMessage(),
+                        onShare = onShareWorkout,
+                        onFollowAuthor = if (state.selectedMode == HomeFeedMode.Discover) onFollow else null,
+                        followInFlight = workout.author.username in state.discoverFollowingUsernames,
+                        followError = workout.author.username?.let(state.discoverFollowErrors::get)?.userMessage(),
                     )
-                    if (index + 1 == suggestionsInsertionIndex(state.workouts.size)) {
+                    if (
+                        state.selectedMode == HomeFeedMode.Home &&
+                        index + 1 == suggestionsInsertionIndex(feed.workouts.size)
+                    ) {
                         SuggestionsBlock(state, onOpenProfile, onFollow, onRetrySuggestions)
                     }
-                    if (index == state.workouts.lastIndex && state.hasMore && !state.loadingMore) {
-                        LaunchedEffect(state.nextCursor, state.workouts.size) { onLoadMore() }
+                    if (index == feed.workouts.lastIndex && feed.hasMore && !feed.loadingMore) {
+                        LaunchedEffect(state.selectedMode, feed.nextCursor, feed.workouts.size) { onLoadMore() }
                     }
                 }
             }
 
-            if (state.loadingMore) item("loading_more") {
+            if (feed.loadingMore) item("loading_more") {
                 Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) {
                     CircularProgressIndicator(modifier = Modifier.testTag("home_loading_more"))
                 }
             }
-            state.loadMoreError?.let { error -> item("load_more_error") {
+            feed.loadMoreError?.let { error -> item("load_more_error") {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(error.userMessage(), color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                     TextButton(onClick = onLoadMore) { Text("Reintentar") }
@@ -197,6 +234,47 @@ fun HomeScreen(
             } }
         }
     }
+}
+
+@Composable
+private fun HomeDiscoverSelector(
+    selectedMode: HomeFeedMode,
+    onModeSelected: (HomeFeedMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Row(
+            modifier = Modifier
+                .clickable { expanded = true }
+                .testTag("home_discover_selector")
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = selectedMode.label(),
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+            )
+            Icon(Icons.Default.ArrowDropDown, contentDescription = "Cambiar feed")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            HomeFeedMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.label()) },
+                    onClick = {
+                        expanded = false
+                        onModeSelected(mode)
+                    },
+                    modifier = Modifier.testTag("feed_mode_${mode.name.lowercase()}"),
+                )
+            }
+        }
+    }
+}
+
+private fun HomeFeedMode.label(): String = when (this) {
+    HomeFeedMode.Home -> "Home"
+    HomeFeedMode.Discover -> "Discover"
 }
 
 private fun SocialWorkoutSummary.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)

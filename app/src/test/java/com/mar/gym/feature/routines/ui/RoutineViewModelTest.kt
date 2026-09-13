@@ -27,6 +27,9 @@ import com.mar.gym.feature.routines.model.RoutineEtag
 import com.mar.gym.feature.routines.model.RoutinePage
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.feature.routines.model.RoutineShare
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
+import com.mar.gym.feature.routines.model.SharedRoutine
 import com.mar.gym.feature.system.MainDispatcherRule
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -188,6 +191,86 @@ class RoutineViewModelTest {
         runCurrent()
 
         assertEquals(RoutineViewerEffect.Unavailable, effect.await())
+    }
+
+    @Test
+    fun viewerEnablesSharingWithCurrentEtagRefreshesAndReusesExistingLink() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            detailHandler = {
+                if (detailRequests == 1) RoutineRepositoryResult.Success(document())
+                else RoutineRepositoryResult.Success(document(
+                    version = 3,
+                    shareVisibility = RoutineShareVisibility.LinkPublic,
+                    shareId = SHARE_ID,
+                    shareUrl = SHARE_URL,
+                ))
+            }
+        }
+        val viewModel = RoutineViewerViewModel(ROUTINE_ID, repository)
+        runCurrent()
+
+        val firstShare = async { viewModel.effects.first() }
+        runCurrent()
+        viewModel.share()
+        runCurrent()
+        assertEquals(RoutineViewerEffect.ShareRoutine(SHARE_URL), firstShare.await())
+        assertEquals(listOf(ROUTINE_ID to "\"2\""), repository.enableShareRequests)
+        assertEquals(3, (viewModel.uiState.value as RoutineViewerUiState.Content).document.etag.version)
+
+        val reused = async { viewModel.effects.first() }
+        runCurrent()
+        viewModel.share()
+        runCurrent()
+        assertEquals(RoutineViewerEffect.ShareRoutine(SHARE_URL), reused.await())
+        assertEquals(1, repository.enableShareRequests.size)
+        assertEquals(2, repository.detailRequests)
+    }
+
+    @Test
+    fun viewerDisablesSharingRefreshesAndKeepsConflictVisible() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            detailHandler = {
+                RoutineRepositoryResult.Success(
+                    if (detailRequests == 1) document(
+                        shareVisibility = RoutineShareVisibility.LinkPublic,
+                        shareId = SHARE_ID,
+                        shareUrl = SHARE_URL,
+                    ) else document(version = 3)
+                )
+            }
+        }
+        val viewModel = RoutineViewerViewModel(ROUTINE_ID, repository)
+        runCurrent()
+        viewModel.stopSharing()
+        runCurrent()
+        assertEquals(listOf(ROUTINE_ID to "\"2\""), repository.disableShareRequests)
+        assertEquals(RoutineShareVisibility.Private,
+            (viewModel.uiState.value as RoutineViewerUiState.Content).document.detail.shareVisibility)
+
+        val conflictRepository = FakeRoutineRepository().apply {
+            enableShareHandler = { _, _ -> conflictFailure() }
+        }
+        val conflictViewModel = RoutineViewerViewModel(ROUTINE_ID, conflictRepository)
+        runCurrent()
+        conflictViewModel.share()
+        runCurrent()
+        val state = conflictViewModel.uiState.value as RoutineViewerUiState.Content
+        assertFalse(state.busy)
+        assertEquals(RoutineUiErrorKind.Conflict, state.operationError?.kind)
+    }
+
+    @Test
+    fun sharedRoutineViewModelLoadsReadOnlySnapshot() = runTest {
+        val repository = FakeRoutineRepository().apply {
+            sharedDetailHandler = { RoutineRepositoryResult.Success(
+                SharedRoutine(it, SHARE_URL, "Compartida", null, Instant.EPOCH, emptyList())
+            ) }
+        }
+        val viewModel = SharedRoutineViewModel(SHARE_ID, repository)
+        runCurrent()
+        val state = viewModel.uiState.value as SharedRoutineUiState.Content
+        assertEquals(SHARE_ID, state.routine.shareId)
+        assertEquals(listOf(SHARE_ID), repository.sharedDetailRequests)
     }
 
     @Test
@@ -387,6 +470,9 @@ class RoutineViewModelTest {
         var detailRequests = 0
         var replaceRequests = 0
         val deleteRequests = mutableListOf<Pair<String, String>>()
+        val enableShareRequests = mutableListOf<Pair<String, String>>()
+        val disableShareRequests = mutableListOf<Pair<String, String>>()
+        val sharedDetailRequests = mutableListOf<String>()
         var lastEtag: RoutineEtag? = null
         var listHandler: suspend (ListRequest) -> RoutineRepositoryResult<RoutinePage> = {
             RoutineRepositoryResult.Success(page(archived = it.archived))
@@ -399,6 +485,15 @@ class RoutineViewModelTest {
         }
         var deleteHandler: suspend (String, RoutineEtag) -> RoutineRepositoryResult<Unit> = { _, _ ->
             RoutineRepositoryResult.Success(Unit)
+        }
+        var enableShareHandler: suspend (String, RoutineEtag) -> RoutineRepositoryResult<RoutineShare> = { _, _ ->
+            RoutineRepositoryResult.Success(RoutineShare(SHARE_ID, SHARE_URL, RoutineEtag.fromVersion(3)!!))
+        }
+        var disableShareHandler: suspend (String, RoutineEtag) -> RoutineRepositoryResult<Unit> = { _, _ ->
+            RoutineRepositoryResult.Success(Unit)
+        }
+        var sharedDetailHandler: suspend (String) -> RoutineRepositoryResult<SharedRoutine> = {
+            RoutineRepositoryResult.Failure(NetworkFailure.Network())
         }
         override suspend fun list(archived: Boolean, query: String?, page: Int, size: Int, sort: RoutineSort): RoutineRepositoryResult<RoutinePage> {
             val request = ListRequest(archived, query, page); listRequests += request; return listHandler(request)
@@ -425,6 +520,18 @@ class RoutineViewModelTest {
             deleteRequests += routineId to etag.headerValue
             return deleteHandler(routineId, etag)
         }
+        override suspend fun enableSharing(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<RoutineShare> {
+            enableShareRequests += routineId to etag.headerValue
+            return enableShareHandler(routineId, etag)
+        }
+        override suspend fun disableSharing(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<Unit> {
+            disableShareRequests += routineId to etag.headerValue
+            return disableShareHandler(routineId, etag)
+        }
+        override suspend fun sharedDetail(shareId: String): RoutineRepositoryResult<SharedRoutine> {
+            sharedDetailRequests += shareId
+            return sharedDetailHandler(shareId)
+        }
     }
 
     companion object {
@@ -446,12 +553,20 @@ class RoutineViewModelTest {
             name: String = "Rutina",
             description: String = "",
             archived: Boolean = false,
+            shareVisibility: RoutineShareVisibility = RoutineShareVisibility.Private,
+            shareId: String? = null,
+            shareUrl: String? = null,
         ) = RoutineDocument(
-            RoutineDetail(id, name, description.takeIf(String::isNotBlank), archived, version, Instant.EPOCH, Instant.EPOCH, emptyList()),
+            RoutineDetail(
+                id, name, description.takeIf(String::isNotBlank), archived, version,
+                Instant.EPOCH, Instant.EPOCH, emptyList(), shareVisibility, shareId, shareUrl,
+            ),
             RoutineEtag.fromVersion(version)!!,
         )
         private fun conflictFailure() = RoutineRepositoryResult.Failure(NetworkFailure.HttpProblem(
             409, ProblemDetails(status = 409, errorCode = "ROUTINE_VERSION_CONFLICT"), null,
         ))
+        const val SHARE_ID = "95555555-5555-4555-8555-555555555555"
+        const val SHARE_URL = "https://links.example.test/r/$SHARE_ID"
     }
 }

@@ -22,6 +22,13 @@ interface SocialFeedApi {
     ): Response<FeedPageDto>
 
     @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
+    @GET("api/v1/discover")
+    suspend fun discover(
+        @Query("cursor") cursor: String?,
+        @Query("size") size: Int,
+    ): Response<FeedPageDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
     @GET("api/v1/users/suggestions")
     suspend fun suggestions(
         @Query("page") page: Int,
@@ -39,6 +46,12 @@ interface SocialFeedApi {
     @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
     @GET("api/v1/feed/workouts/{workoutId}")
     suspend fun workoutDetail(
+        @Path("workoutId") workoutId: String,
+    ): Response<SocialWorkoutDetailDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_RETRY_ON_401")
+    @GET("api/v1/share/workouts/{workoutId}")
+    suspend fun sharedWorkoutDetail(
         @Path("workoutId") workoutId: String,
     ): Response<SocialWorkoutDetailDto>
 

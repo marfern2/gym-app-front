@@ -7,5 +7,13 @@ GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_SERVER_CLIENT_ID.apps.googleusercontent.com
 # Required only when building or testing the release variant. There is no release fallback.
 RELEASE_API_BASE_URL=https://api.YOUR_CLOUDFLARE_DOMAIN/
 
+# Canonical origin used for /u, /w and /r links. Keep it equal to backend SHARE_BASE_URL.
+# If omitted, each variant falls back to its API base URL.
+RELEASE_SHARE_BASE_URL=https://links.YOUR_DOMAIN/
+
 # Optional. Debug defaults to the Android emulator loopback address shown below.
 DEBUG_API_BASE_URL=http://10.0.2.2:8080/
+DEBUG_SHARE_BASE_URL=http://10.0.2.2:8080/
+
+# Enable only after the HTTPS host is final and serves a valid /.well-known/assetlinks.json.
+SHARE_APP_LINKS_AUTO_VERIFY=false

@@ -25,15 +25,20 @@ fun AppTopBar(
     backContentDescription: String = stringResource(R.string.routine_back),
     navigationIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     actions: @Composable RowScope.() -> Unit = {},
+    titleContent: (@Composable () -> Unit)? = null,
 ) {
     TopAppBar(
         modifier = modifier,
         title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-            )
+            if (titleContent != null) {
+                titleContent()
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                )
+            }
         },
         navigationIcon = {
             if (onBack != null) {

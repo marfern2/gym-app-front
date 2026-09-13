@@ -309,6 +309,8 @@ internal fun RoutineActionsSheet(
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    onStopSharing: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -331,6 +333,22 @@ internal fun RoutineActionsSheet(
                 onClick = onDuplicate,
                 modifier = Modifier.testTag("routine-duplicate-action"),
             )
+            onShare?.let {
+                SheetAction(
+                    text = stringResource(R.string.share_action),
+                    enabled = !busy,
+                    onClick = it,
+                    modifier = Modifier.testTag("routine-share-action"),
+                )
+            }
+            onStopSharing?.let {
+                SheetAction(
+                    text = stringResource(R.string.routine_stop_sharing),
+                    enabled = !busy,
+                    onClick = it,
+                    modifier = Modifier.testTag("routine-stop-sharing-action"),
+                )
+            }
             SheetAction(
                 text = stringResource(R.string.routine_menu_delete),
                 enabled = !busy,

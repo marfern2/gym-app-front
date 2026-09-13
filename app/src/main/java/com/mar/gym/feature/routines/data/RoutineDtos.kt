@@ -35,6 +35,9 @@ data class RoutineDetailDto(
     val createdAt: String,
     val updatedAt: String,
     val exercises: List<RoutineExerciseDto>,
+    val shareVisibility: String = "PRIVATE",
+    val shareId: String? = null,
+    val shareUrl: String? = null,
 )
 
 @Serializable
@@ -95,3 +98,45 @@ data class RoutineSetWriteDto(
 
 @Serializable
 data class DuplicateRoutineDto(val name: String? = null)
+
+@Serializable
+data class RoutineShareDto(
+    val shareId: String,
+    val shareUrl: String,
+    val version: Long,
+)
+
+@Serializable
+data class SharedRoutineDto(
+    val shareId: String,
+    val shareUrl: String,
+    val name: String,
+    val description: String? = null,
+    val updatedAt: String,
+    val exercises: List<SharedRoutineExerciseDto>,
+)
+
+@Serializable
+data class SharedRoutineExerciseDto(
+    val exerciseTemplateId: String,
+    val exerciseName: String,
+    val exerciseType: String? = null,
+    val equipment: String? = null,
+    val position: Int,
+    val supersetGroup: Int? = null,
+    val notes: String? = null,
+    val restSeconds: Int,
+    val sets: List<SharedRoutineSetDto>,
+)
+
+@Serializable
+data class SharedRoutineSetDto(
+    val position: Int,
+    val setType: String,
+    val targetRepsMin: Int? = null,
+    val targetRepsMax: Int? = null,
+    val targetWeight: Double? = null,
+    val targetDurationSeconds: Int? = null,
+    val targetDistanceMeters: Double? = null,
+    val targetRpe: Double? = null,
+)

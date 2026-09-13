@@ -40,6 +40,7 @@ fun SocialWorkoutDetailRoute(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenComments: (String) -> Unit,
+    onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -56,6 +57,7 @@ fun SocialWorkoutDetailRoute(
             engagementViewModel.openComments(workout.workoutId, workout.engagement())
             onOpenComments(workout.workoutId)
         },
+        onShareWorkout = onShareWorkout,
     )
 }
 
@@ -68,6 +70,7 @@ fun SocialWorkoutDetailScreen(
     engagementState: SocialEngagementUiState = SocialEngagementUiState(),
     onToggleLike: (SocialWorkoutDetail) -> Unit = {},
     onOpenComments: (SocialWorkoutDetail) -> Unit = {},
+    onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
 ) {
     Scaffold(topBar = { AppTopBar("Entrenamiento", onBack = onBack) }) { padding ->
         when (state) {
@@ -129,6 +132,7 @@ fun SocialWorkoutDetailScreen(
                                 onToggleLike = { onToggleLike(displayedWorkout) },
                                 onCommentsClick = { onOpenComments(displayedWorkout) },
                                 likeError = engagementState.likeErrors[displayedWorkout.workoutId]?.workoutActionMessage(),
+                                onShare = { onShareWorkout(displayedWorkout) },
                             )
                         }
                     }

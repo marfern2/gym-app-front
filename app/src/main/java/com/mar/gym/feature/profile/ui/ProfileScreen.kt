@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
+import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.workouts.ui.CompletedWorkoutCard
 import com.mar.gym.ui.components.SectionHeader
@@ -31,7 +32,7 @@ import com.mar.gym.ui.components.SectionHeader
 fun ProfileRoute(
     viewModel: ProfileViewModel,
     onOpenEdit: () -> Unit,
-    onShare: (String) -> Unit,
+    onShare: (displayName: String, username: String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenStatistics: () -> Unit,
     onOpenMeasurements: () -> Unit,
@@ -45,11 +46,9 @@ fun ProfileRoute(
     ProfileScreen(
         state = state,
         onEditProfile = { viewModel.startEditing(); onOpenEdit() },
-        onShare = {
-            state.profile?.value?.let { profile ->
-                onShare(profile.username?.let { "@$it" } ?: profile.displayName)
-            }
-        },
+        onShare = { state.profile?.value?.let { profile ->
+            profile.username?.let { onShare(profile.displayName, it) }
+        } },
         onSettings = onOpenSettings,
         onSelectMetric = viewModel::selectActivityMetric,
         onSelectRange = viewModel::selectActivityRange,
@@ -97,6 +96,15 @@ fun ProfileScreen(
                     onShare = onShare,
                     onSettings = onSettings,
                     onSearch = onSearchPeople,
+                    canSharePublicly = state.profile.value.privacy == ProfilePrivacy.Public &&
+                        state.profile.value.username != null,
+                    shareUnavailableMessage = when {
+                        state.profile.value.privacy == ProfilePrivacy.Private ->
+                            "Tu perfil es privado y no se puede compartir públicamente."
+                        state.profile.value.username == null ->
+                            "Añade un nombre de usuario para poder compartir tu perfil."
+                        else -> null
+                    },
                 )
             }
         }

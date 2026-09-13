@@ -18,12 +18,14 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,11 +52,15 @@ fun SocialWorkoutCard(
     workout: SocialWorkoutSummary,
     onAuthorClick: (SocialAuthor) -> Unit,
     onWorkoutClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
     onToggleLike: (String) -> Unit = {},
     onCommentsClick: (String) -> Unit = {},
     likeInFlight: Boolean = false,
     likeError: String? = null,
-    modifier: Modifier = Modifier,
+    onShare: (String) -> Unit = {},
+    onFollowAuthor: ((String) -> Unit)? = null,
+    followInFlight: Boolean = false,
+    followError: String? = null,
 ) {
     Card(
         onClick = { onWorkoutClick(workout.workoutId) },
@@ -71,7 +77,19 @@ fun SocialWorkoutCard(
                 author = workout.author,
                 supportingText = workout.completedAt.atZone(ZoneId.systemDefault()).format(workoutDateFormatter()),
                 onClick = { onAuthorClick(workout.author) },
+                onFollow = workout.author.username?.let { username ->
+                    onFollowAuthor?.let { follow -> { follow(username) } }
+                },
+                followInFlight = followInFlight,
             )
+            followError?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.testTag("social_follow_error"),
+                )
+            }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(workout.title, style = MaterialTheme.typography.titleLarge)
                 workout.notes?.takeIf(String::isNotBlank)?.let {
@@ -101,6 +119,7 @@ fun SocialWorkoutCard(
                 onToggleLike = { onToggleLike(workout.workoutId) },
                 onCommentsClick = { onCommentsClick(workout.workoutId) },
                 likeError = likeError,
+                onShare = { onShare(workout.workoutId) },
             )
         }
     }
@@ -114,8 +133,9 @@ internal fun SocialWorkoutActions(
     likeInFlight: Boolean,
     onToggleLike: () -> Unit,
     onCommentsClick: () -> Unit,
-    likeError: String? = null,
     modifier: Modifier = Modifier,
+    likeError: String? = null,
+    onShare: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -151,6 +171,17 @@ internal fun SocialWorkoutActions(
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.testTag("social_comments_count"),
             )
+            Spacer(Modifier.weight(1f))
+            IconButton(
+                onClick = onShare,
+                modifier = Modifier.testTag("social_share_action"),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Share,
+                    contentDescription = "Compartir entrenamiento",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         likeError?.let {
             Text(
@@ -169,6 +200,8 @@ internal fun AuthorHeader(
     supportingText: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onFollow: (() -> Unit)? = null,
+    followInFlight: Boolean = false,
 ) {
     val name = author.displayName?.takeIf(String::isNotBlank)
         ?: author.username?.let { "@$it" }
@@ -203,6 +236,15 @@ internal fun AuthorHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (onFollow != null) {
+            TextButton(
+                onClick = onFollow,
+                enabled = !followInFlight,
+                modifier = Modifier.testTag("social_follow_${author.username}"),
+            ) {
+                Text(if (followInFlight) "Siguiendo" else "Seguir")
+            }
         }
     }
 }
