@@ -16,8 +16,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,6 +52,7 @@ import com.mar.gym.feature.social.ui.SocialAvatar
 import com.mar.gym.feature.social.ui.SocialEngagement
 import com.mar.gym.feature.social.ui.SocialEngagementUiState
 import com.mar.gym.feature.social.ui.SocialEngagementViewModel
+import com.mar.gym.feature.social.ui.SocialNotificationsViewModel
 import com.mar.gym.feature.social.ui.SocialWorkoutCard
 import com.mar.gym.feature.social.ui.userMessage
 import com.mar.gym.feature.social.ui.workoutActionMessage
@@ -60,7 +64,9 @@ import com.mar.gym.ui.components.ErrorState
 fun HomeRoute(
     viewModel: HomeViewModel,
     engagementViewModel: SocialEngagementViewModel,
+    notificationsViewModel: SocialNotificationsViewModel,
     onSearchPeople: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenWorkout: (String) -> Unit,
     onOpenComments: (String) -> Unit,
@@ -68,8 +74,12 @@ fun HomeRoute(
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
+    val notificationsState by notificationsViewModel.uiState.collectAsState()
+    LaunchedEffect(Unit) { notificationsViewModel.onHomeVisible() }
     HomeScreen(
         state = state,
+        unreadNotificationCount = notificationsState.unreadCount,
+        onOpenNotifications = onOpenNotifications,
         onSearchPeople = onSearchPeople,
         onOpenProfile = onOpenProfile,
         onOpenWorkout = onOpenWorkout,
@@ -103,6 +113,8 @@ fun HomeScreen(
     onLoadMore: () -> Unit,
     onFollow: (String) -> Unit,
     onModeSelected: (HomeFeedMode) -> Unit = {},
+    unreadNotificationCount: Long = 0,
+    onOpenNotifications: () -> Unit = {},
     engagementState: SocialEngagementUiState = SocialEngagementUiState(),
     onToggleLike: (SocialWorkoutSummary) -> Unit = {},
     onOpenComments: (SocialWorkoutSummary) -> Unit = {},
@@ -119,6 +131,10 @@ fun HomeScreen(
                     IconButton(onClick = onSearchPeople) {
                         Icon(Icons.Default.PersonSearch, contentDescription = "Buscar personas")
                     }
+                    NotificationBell(
+                        unreadCount = unreadNotificationCount,
+                        onClick = onOpenNotifications,
+                    )
                     IconButton(onClick = onRefresh, enabled = !feed.refreshing) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualizar feed")
                     }
@@ -232,6 +248,27 @@ fun HomeScreen(
                     TextButton(onClick = onLoadMore) { Text("Reintentar") }
                 }
             } }
+        }
+    }
+}
+
+@Composable
+fun NotificationBell(
+    unreadCount: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    IconButton(onClick = onClick, modifier = modifier.testTag("notifications_bell")) {
+        BadgedBox(
+            badge = {
+                if (unreadCount > 0) {
+                    Badge(modifier = Modifier.testTag("notifications_badge")) {
+                        Text(if (unreadCount > 99) "99+" else unreadCount.toString())
+                    }
+                }
+            },
+        ) {
+            Icon(Icons.Default.Notifications, contentDescription = "Notificaciones")
         }
     }
 }

@@ -97,6 +97,9 @@ import com.mar.gym.feature.social.ui.SocialEngagementViewModelFactory
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailRoute
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModel
 import com.mar.gym.feature.social.ui.SocialWorkoutDetailViewModelFactory
+import com.mar.gym.feature.social.ui.SocialNotificationsRoute
+import com.mar.gym.feature.social.ui.SocialNotificationsViewModel
+import com.mar.gym.feature.social.ui.SocialNotificationsViewModelFactory
 import com.mar.gym.feature.social.ui.UserSearchRoute
 import com.mar.gym.feature.social.ui.UserSearchViewModel
 import com.mar.gym.feature.social.ui.UserSearchViewModelFactory
@@ -318,6 +321,10 @@ class MainActivity : ComponentActivity() {
                         tab = userSearchOrigin
                         null
                     }
+                    DEEP_NOTIFICATIONS -> {
+                        tab = TAB_HOME
+                        null
+                    }
                     DEEP_PUBLIC_PROFILE -> {
                         if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
                         if (publicProfileOrigin == TAB_PROFILE || publicProfileOrigin == TAB_HOME) {
@@ -394,6 +401,8 @@ class MainActivity : ComponentActivity() {
                         TAB_HOME -> HomeRoute(
                             viewModel = homeViewModel(),
                             engagementViewModel = socialEngagementViewModel(user.id),
+                            notificationsViewModel = socialNotificationsViewModel(),
+                            onOpenNotifications = { deep = DEEP_NOTIFICATIONS },
                             onSearchPeople = {
                                 userSearchOrigin = TAB_HOME
                                 deep = DEEP_USER_SEARCH
@@ -800,6 +809,29 @@ class MainActivity : ComponentActivity() {
                         deep = DEEP_PUBLIC_PROFILE
                     },
                 )
+                DEEP_NOTIFICATIONS -> SocialNotificationsRoute(
+                    viewModel = socialNotificationsViewModel(),
+                    onBack = {
+                        deep = null
+                        tab = TAB_HOME
+                    },
+                    onOpenProfile = { username ->
+                        publicUsername = username
+                        publicProfileOrigin = DEEP_NOTIFICATIONS
+                        deep = DEEP_PUBLIC_PROFILE
+                    },
+                    onOpenWorkout = { workoutId ->
+                        socialWorkoutId = workoutId
+                        socialWorkoutOrigin = DEEP_NOTIFICATIONS
+                        deep = DEEP_SOCIAL_WORKOUT
+                    },
+                    onOpenComments = { workoutId ->
+                        socialWorkoutId = workoutId
+                        socialCommentsOrigin = DEEP_NOTIFICATIONS
+                        commentsParentUsername = null
+                        deep = DEEP_SOCIAL_COMMENTS
+                    },
+                )
                 DEEP_PUBLIC_PROFILE -> publicUsername?.let { username ->
                     PublicProfileRoute(
                         viewModel = remember(username) { publicProfileViewModel(username, user.id) },
@@ -1078,6 +1110,11 @@ class MainActivity : ComponentActivity() {
         SocialEngagementViewModelFactory(currentUserId, AppContainer.socialFeedRepository),
     )[SocialEngagementViewModel::class.java]
 
+    private fun socialNotificationsViewModel(): SocialNotificationsViewModel = ViewModelProvider(
+        userSessionViewModels,
+        SocialNotificationsViewModelFactory(AppContainer.socialNotificationsRepository),
+    )[SocialNotificationsViewModel::class.java]
+
     private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
         ViewModelProvider(
             userSessionViewModels,
@@ -1163,5 +1200,6 @@ class MainActivity : ComponentActivity() {
         const val DEEP_SOCIAL_WORKOUT = "social_workout"
         const val DEEP_SOCIAL_COMMENTS = "social_comments"
         const val DEEP_SHARED_ROUTINE = "shared_routine"
+        const val DEEP_NOTIFICATIONS = "notifications"
     }
 }
