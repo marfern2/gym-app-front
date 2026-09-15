@@ -6,10 +6,18 @@ import com.mar.gym.core.network.executeNetworkRequest
 import com.mar.gym.core.network.executeNetworkUnitRequest
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.social.model.PublicProfile
+import com.mar.gym.feature.social.model.BlockedUser
+import com.mar.gym.feature.social.model.BlockedUserPage
+import com.mar.gym.feature.social.model.MAX_REPORT_DETAILS_LENGTH
+import com.mar.gym.feature.social.model.ReportReason
+import com.mar.gym.feature.social.model.ReportRequest
+import com.mar.gym.feature.social.model.ReportResponse
+import com.mar.gym.feature.social.model.ReportStatus
 import com.mar.gym.feature.social.model.SocialProfilePage
+import java.time.Instant
 import java.util.UUID
 
-class DefaultSocialRepository(private val api: SocialApi) : SocialRepository {
+class DefaultSocialRepository(private val api: SocialApi) : SocialRepository, SocialModerationRepository {
     override suspend fun profile(username: String): SocialResult<PublicProfile> {
         val normalized = username.normalizedUsername() ?: return invalid()
         return execute { api.profile(normalized) }.map { it.toDomain() }
@@ -24,6 +32,32 @@ class DefaultSocialRepository(private val api: SocialApi) : SocialRepository {
     override suspend fun follow(username: String): SocialResult<Unit> = mutate(username, api::follow)
 
     override suspend fun unfollow(username: String): SocialResult<Unit> = mutate(username, api::unfollow)
+
+    override suspend fun block(username: String): SocialResult<Unit> = mutate(username, api::block)
+
+    override suspend fun unblock(username: String): SocialResult<Unit> = mutate(username, api::unblock)
+
+    override suspend fun blockedUsers(page: Int, size: Int): SocialResult<BlockedUserPage> {
+        if (!validPage(page, size)) return invalid()
+        return execute { api.blockedUsers(page, size) }.map { it.toDomain() }
+    }
+
+    override suspend fun report(request: ReportRequest): SocialResult<ReportResponse> {
+        if (!request.targetId.isUuid() || request.details?.length?.let { it > MAX_REPORT_DETAILS_LENGTH } == true) {
+            return invalid()
+        }
+        val details = request.details?.trim()?.takeIf(String::isNotEmpty)
+        return execute {
+            api.report(
+                CreateReportDto(
+                    targetType = request.targetType.name,
+                    targetId = request.targetId,
+                    reason = request.reason.name,
+                    details = details,
+                ),
+            )
+        }.map { it.toDomain() }
+    }
 
     override suspend fun followers(username: String, page: Int, size: Int): SocialResult<SocialProfilePage> =
         list(username, page, size, api::followers)
@@ -69,6 +103,31 @@ class DefaultSocialRepository(private val api: SocialApi) : SocialRepository {
         val profiles = content.map { it.toDomain() ?: return null }
         if (profiles.map(PublicProfile::userId).distinct().size != profiles.size) return null
         return SocialProfilePage(profiles, page, size, totalElements, totalPages, first, last)
+    }
+
+    private fun BlockedUserPageDto.toDomain(): BlockedUserPage? {
+        if (!validPage(page, size) || totalElements < 0 || totalPages < 0) return null
+        val users = content.map { it.toDomain() ?: return null }
+        if (users.map(BlockedUser::userId).distinct().size != users.size) return null
+        return BlockedUserPage(users, page, size, totalElements, totalPages, first, last)
+    }
+
+    private fun BlockedUserDto.toDomain(): BlockedUser? {
+        if (!userId.isUuid() || !USERNAME.matches(username) || displayName.length > 100) return null
+        val time = runCatching { Instant.parse(blockedAt) }.getOrNull() ?: return null
+        return BlockedUser(userId, username, displayName, avatarUrl?.trim()?.takeIf(String::isNotEmpty), time)
+    }
+
+    private fun ReportResponseDto.toDomain(): ReportResponse? {
+        if (!id.isUuid() || !targetId.isUuid()) return null
+        val mappedTarget = runCatching { com.mar.gym.feature.social.model.ReportTargetType.valueOf(targetType) }.getOrNull()
+            ?: return null
+        val mappedReason = runCatching { ReportReason.valueOf(reason) }.getOrNull() ?: return null
+        val mappedStatus = runCatching { ReportStatus.valueOf(status) }.getOrNull() ?: return null
+        val time = runCatching { Instant.parse(createdAt) }.getOrNull() ?: return null
+        val normalizedDetails = details?.trim()?.takeIf(String::isNotEmpty)
+        if (normalizedDetails?.length?.let { it > MAX_REPORT_DETAILS_LENGTH } == true) return null
+        return ReportResponse(id, mappedTarget, targetId, mappedReason, normalizedDetails, mappedStatus, time)
     }
 
     private fun PublicProfileDto.toDomain(): PublicProfile? {

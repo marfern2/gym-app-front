@@ -262,6 +262,21 @@ class SocialEngagementViewModel(
 
     fun isOwnComment(comment: SocialComment): Boolean = comment.author.userId == currentUserId
 
+    fun isOwnAuthor(userId: String): Boolean = userId == currentUserId
+
+    fun onUserBlocked(userId: String) {
+        val currentComments = _commentsState.value.dataOrNull()
+        if (currentComments != null) {
+            val removed = currentComments.comments.count { it.author.userId == userId }
+            if (removed > 0) {
+                _commentsState.value = currentComments.copy(
+                    comments = currentComments.comments.filterNot { it.author.userId == userId },
+                    totalElements = (currentComments.totalElements - removed).coerceAtLeast(0),
+                ).asUiState()
+            }
+        }
+    }
+
     private fun loadComments(workoutId: String) {
         val generation = ++commentsGeneration
         _commentsState.value = SocialCommentsUiState.Loading(workoutId)

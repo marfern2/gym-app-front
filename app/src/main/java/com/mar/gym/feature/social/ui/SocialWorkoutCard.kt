@@ -19,14 +19,21 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +70,8 @@ fun SocialWorkoutCard(
     onFollowAuthor: ((String) -> Unit)? = null,
     followInFlight: Boolean = false,
     followError: String? = null,
+    canReport: Boolean = false,
+    onReport: (String) -> Unit = {},
 ) {
     Card(
         onClick = { onWorkoutClick(workout.workoutId) },
@@ -75,15 +84,19 @@ fun SocialWorkoutCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            AuthorHeader(
-                author = workout.author,
-                supportingText = workout.completedAt.atZone(ZoneId.systemDefault()).format(workoutDateFormatter()),
-                onClick = { onAuthorClick(workout.author) },
-                onFollow = workout.author.username?.let { username ->
-                    onFollowAuthor?.let { follow -> { follow(username) } }
-                },
-                followInFlight = followInFlight,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AuthorHeader(
+                    author = workout.author,
+                    supportingText = workout.completedAt.atZone(ZoneId.systemDefault()).format(workoutDateFormatter()),
+                    onClick = { onAuthorClick(workout.author) },
+                    onFollow = workout.author.username?.let { username ->
+                        onFollowAuthor?.let { follow -> { follow(username) } }
+                    },
+                    followInFlight = followInFlight,
+                    modifier = Modifier.weight(1f),
+                )
+                if (canReport) WorkoutReportMenu { onReport(workout.workoutId) }
+            }
             followError?.let {
                 Text(
                     text = it,
@@ -126,6 +139,24 @@ fun SocialWorkoutCard(
                 likeError = likeError,
                 onShare = { onShare(workout.workoutId) },
                 canShare = workout.socialVisibility == WorkoutVisibility.Public,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutReportMenu(onReport: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.testTag("workout_report_menu"),
+        ) { Icon(Icons.Default.MoreVert, contentDescription = "Opciones del entrenamiento") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Reportar entrenamiento") },
+                onClick = { expanded = false; onReport() },
+                modifier = Modifier.testTag("report_workout_action"),
             )
         }
     }

@@ -13,6 +13,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.SocialWorkoutExercise
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutSet
+import com.mar.gym.feature.social.model.ReportTargetType
 import com.mar.gym.feature.workouts.model.WorkoutSetSummary
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.ui.WorkoutVisibilityDialog
@@ -48,6 +55,7 @@ import java.util.Locale
 fun SocialWorkoutDetailRoute(
     viewModel: SocialWorkoutDetailViewModel,
     engagementViewModel: SocialEngagementViewModel,
+    reportViewModel: ReportViewModel,
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenComments: (String) -> Unit,
@@ -78,7 +86,9 @@ fun SocialWorkoutDetailRoute(
         onShareWorkout = onShareWorkout,
         onVisibilityChange = viewModel::updateVisibility,
         onReloadVisibility = viewModel::reloadOwnerDocument,
+        onReportWorkout = { reportViewModel.open(ReportTargetType.WORKOUT, it) },
     )
+    ReportOverlay(reportViewModel)
 }
 
 @Composable
@@ -93,9 +103,35 @@ fun SocialWorkoutDetailScreen(
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
     onVisibilityChange: (WorkoutVisibility) -> Unit = {},
     onReloadVisibility: () -> Unit = {},
+    onReportWorkout: (String) -> Unit = {},
 ) {
     var visibilityDialogOpen by remember { mutableStateOf(false) }
-    Scaffold(topBar = { AppTopBar("Entrenamiento", onBack = onBack) }) { padding ->
+    var menuExpanded by remember { mutableStateOf(false) }
+    val content = state as? SocialWorkoutDetailUiState.Content
+    Scaffold(topBar = {
+        AppTopBar(
+            "Entrenamiento",
+            onBack = onBack,
+            actions = {
+                if (content != null && !content.isOwnWorkout) {
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier.testTag("workout_detail_menu"),
+                    ) { Icon(Icons.Default.MoreVert, contentDescription = "Opciones del entrenamiento") }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Reportar entrenamiento") },
+                            onClick = {
+                                menuExpanded = false
+                                onReportWorkout(content.workout.workoutId)
+                            },
+                            modifier = Modifier.testTag("report_workout_action"),
+                        )
+                    }
+                }
+            },
+        )
+    }) { padding ->
         when (state) {
             SocialWorkoutDetailUiState.Loading -> LoadingState(
                 Modifier.fillMaxSize().padding(padding),
@@ -181,7 +217,6 @@ fun SocialWorkoutDetailScreen(
             }
         }
     }
-    val content = state as? SocialWorkoutDetailUiState.Content
     if (visibilityDialogOpen && content?.ownerDocument != null) {
         WorkoutVisibilityDialog(
             visibility = content.workout.socialVisibility,

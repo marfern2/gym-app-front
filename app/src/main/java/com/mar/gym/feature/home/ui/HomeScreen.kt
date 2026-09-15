@@ -54,6 +54,9 @@ import com.mar.gym.feature.social.ui.SocialEngagementUiState
 import com.mar.gym.feature.social.ui.SocialEngagementViewModel
 import com.mar.gym.feature.social.ui.SocialNotificationsViewModel
 import com.mar.gym.feature.social.ui.SocialWorkoutCard
+import com.mar.gym.feature.social.ui.ReportViewModel
+import com.mar.gym.feature.social.ui.ReportOverlay
+import com.mar.gym.feature.social.model.ReportTargetType
 import com.mar.gym.feature.social.ui.userMessage
 import com.mar.gym.feature.social.ui.workoutActionMessage
 import com.mar.gym.ui.components.AppTopBar
@@ -65,6 +68,7 @@ fun HomeRoute(
     viewModel: HomeViewModel,
     engagementViewModel: SocialEngagementViewModel,
     notificationsViewModel: SocialNotificationsViewModel,
+    reportViewModel: ReportViewModel,
     onSearchPeople: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenProfile: (String) -> Unit,
@@ -98,7 +102,10 @@ fun HomeRoute(
         onFollow = viewModel::follow,
         onModeSelected = viewModel::selectMode,
         onShareWorkout = onShareWorkout,
+        canReportWorkout = { !engagementViewModel.isOwnAuthor(it.author.userId) },
+        onReportWorkout = { reportViewModel.open(ReportTargetType.WORKOUT, it) },
     )
+    ReportOverlay(reportViewModel)
 }
 
 @Composable
@@ -120,6 +127,8 @@ fun HomeScreen(
     onOpenComments: (SocialWorkoutSummary) -> Unit = {},
     modifier: Modifier = Modifier,
     onShareWorkout: (String) -> Unit = {},
+    canReportWorkout: (SocialWorkoutSummary) -> Boolean = { false },
+    onReportWorkout: (String) -> Unit = {},
 ) {
     val feed = state.activeFeed
     Scaffold(
@@ -224,6 +233,8 @@ fun HomeScreen(
                         onFollowAuthor = if (state.selectedMode == HomeFeedMode.Discover) onFollow else null,
                         followInFlight = workout.author.username in state.discoverFollowingUsernames,
                         followError = workout.author.username?.let(state.discoverFollowErrors::get)?.userMessage(),
+                        canReport = canReportWorkout(displayedWorkout),
+                        onReport = onReportWorkout,
                     )
                     if (
                         state.selectedMode == HomeFeedMode.Home &&

@@ -73,6 +73,21 @@ class UserSearchViewModel(
         else -> Unit
     }
 
+    fun onUserBlocked(userId: String, username: String) {
+        val state = _uiState.value
+        val updated = state.data.copy(users = state.data.users.filterNot { it.userId == userId || it.username == username })
+        _uiState.value = when (state) {
+            is UserSearchUiState.Idle -> UserSearchUiState.Idle(updated)
+            is UserSearchUiState.Loading -> UserSearchUiState.Loading(updated)
+            is UserSearchUiState.Content -> if (updated.users.isEmpty()) UserSearchUiState.Empty(updated) else UserSearchUiState.Content(updated)
+            is UserSearchUiState.Empty -> UserSearchUiState.Empty(updated)
+            is UserSearchUiState.Error -> UserSearchUiState.Error(updated, state.error)
+            is UserSearchUiState.LoadingMore -> UserSearchUiState.LoadingMore(updated, state.requestedPage)
+            is UserSearchUiState.ErrorLoadingMore -> UserSearchUiState.ErrorLoadingMore(updated, state.requestedPage, state.error)
+        }
+        refresh()
+    }
+
     fun loadMore() {
         val state = _uiState.value
         if (state !is UserSearchUiState.Content || !state.data.hasNextPage || moreJob?.isActive == true) return

@@ -145,6 +145,14 @@ class SocialNotificationsViewModel(
         _uiState.value = _uiState.value.copy(actionError = null)
     }
 
+    fun onUserBlocked(userId: String) {
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            notifications = current.notifications.filterNot { it.actor.userId == userId },
+        )
+        refreshUnreadCount(force = true)
+    }
+
     private fun markRead(notificationId: String) {
         val before = _uiState.value
         val item = before.notifications.firstOrNull { it.id == notificationId } ?: return

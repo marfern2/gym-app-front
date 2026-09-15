@@ -257,6 +257,26 @@ class HomeViewModelTest {
         assertEquals(2, suggestionsInsertionIndex(20))
     }
 
+    @Test fun `blocked author disappears immediately from both feeds and suggestions`() = runTest {
+        val blockedSuggestion = SuggestedAthlete(OTHER_USER_ID, "friend", "Friend", null, 1, 1, false)
+        val feed = FakeFeedRepository().apply {
+            firstPage = successPage(listOf(workout("home blocked", OTHER_USER_ID)))
+            discoverFirstPage = successPage(listOf(workout("discover blocked", OTHER_USER_ID, WORKOUT_ID_3)))
+            suggestionResult = suggestions(blockedSuggestion)
+        }
+        val viewModel = HomeViewModel(feed, FakeSocialRepository())
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+
+        viewModel.onUserBlocked(OTHER_USER_ID, "friend")
+
+        assertTrue(viewModel.uiState.value.home.workouts.isEmpty())
+        assertTrue(viewModel.uiState.value.discover.workouts.isEmpty())
+        assertTrue(viewModel.uiState.value.suggestions.isEmpty())
+        assertFalse("friend" in viewModel.uiState.value.followingUsernames)
+    }
+
     private class FakeFeedRepository : SocialFeedRepository {
         var firstPage: SocialResult<SocialWorkoutPage> = successPage(emptyList())
         var suggestionResult: SocialResult<SuggestedAthletePage> = suggestions()

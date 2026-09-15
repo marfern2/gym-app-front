@@ -3,6 +3,10 @@ package com.mar.gym.feature.social.data
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.profile.model.ProfilePrivacy
+import com.mar.gym.feature.social.model.ReportReason
+import com.mar.gym.feature.social.model.ReportRequest
+import com.mar.gym.feature.social.model.ReportStatus
+import com.mar.gym.feature.social.model.ReportTargetType
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import okhttp3.MediaType.Companion.toMediaType
@@ -82,6 +86,48 @@ class DefaultSocialRepositoryTest {
     @Test fun `blank search is rejected without network call`() = runTest {
         assertTrue(repository.search("   ", 0, 20) is SocialResult.Failure)
         assertEquals(0, server.requestCount)
+    }
+
+    @Test fun `block unblock and blocked users use exact contracts`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(204))
+        assertTrue(repository.block(" Alice ") is SocialResult.Success)
+        server.takeRequest().let {
+            assertEquals("PUT", it.method)
+            assertEquals("/api/v1/users/alice/block", it.path)
+        }
+
+        enqueue("""{"content":[{"userId":"$ID","username":"alice","displayName":"Alice","avatarUrl":null,"blockedAt":"2026-09-15T10:00:00Z"}],"page":0,"size":20,"totalElements":1,"totalPages":1,"first":true,"last":true}""")
+        val blocked = repository.blockedUsers(0, 20) as SocialResult.Success
+        assertEquals(listOf("alice"), blocked.value.content.map { it.username })
+        assertEquals("/api/v1/users/me/blocked?page=0&size=20", server.takeRequest().path)
+
+        server.enqueue(MockResponse().setResponseCode(204))
+        assertTrue(repository.unblock("alice") is SocialResult.Success)
+        assertEquals("DELETE", server.takeRequest().method)
+    }
+
+    @Test fun `report trims details and maps created or existing response as success`() = runTest {
+        val response = """{"id":"00000000-0000-4000-8000-000000000010","targetType":"USER","targetId":"$ID","reason":"OTHER","details":"detalle","status":"OPEN","createdAt":"2026-09-15T10:00:00Z"}"""
+        server.enqueue(MockResponse().setResponseCode(201).setHeader("Content-Type", "application/json").setBody(response))
+        val request = ReportRequest(ReportTargetType.USER, ID, ReportReason.OTHER, "  detalle  ")
+        val created = repository.report(request) as SocialResult.Success
+        assertEquals(ReportStatus.OPEN, created.value.status)
+        val sent = server.takeRequest()
+        assertEquals("POST", sent.method)
+        assertEquals("/api/v1/reports", sent.path)
+        assertTrue(sent.body.readUtf8().contains("\"details\":\"detalle\""))
+
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json").setBody(response))
+        assertTrue(repository.report(request) is SocialResult.Success)
+    }
+
+    @Test fun `invalid report details are rejected before network`() = runTest {
+        val before = server.requestCount
+        val result = repository.report(
+            ReportRequest(ReportTargetType.COMMENT, ID, ReportReason.SPAM, "x".repeat(2_001)),
+        )
+        assertTrue(result is SocialResult.Failure)
+        assertEquals(before, server.requestCount)
     }
 
     private fun enqueue(body: String) {

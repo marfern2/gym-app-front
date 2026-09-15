@@ -9,6 +9,7 @@ enum class SocialUiError {
     Forbidden,
     NotFound,
     SelfFollow,
+    Conflict,
     PrivateProfileNotFollowable,
     Server,
     InvalidResponse,
@@ -25,7 +26,8 @@ internal fun NetworkFailure.toSocialUiError(): SocialUiError = when (this) {
         statusCode == 403 -> SocialUiError.Forbidden
         statusCode == 404 && problem.errorCode in SOCIAL_NOT_FOUND_CODES -> SocialUiError.NotFound
         problem.errorCode == "PRIVATE_PROFILE_NOT_FOLLOWABLE" -> SocialUiError.PrivateProfileNotFollowable
-        statusCode == 409 -> SocialUiError.SelfFollow
+        problem.errorCode == "SELF_FOLLOW_NOT_ALLOWED" -> SocialUiError.SelfFollow
+        statusCode == 409 -> SocialUiError.Conflict
         statusCode >= 500 -> SocialUiError.Server
         else -> SocialUiError.Unknown
     }
@@ -46,9 +48,15 @@ internal fun SocialUiError.userMessage(): String = when (this) {
     SocialUiError.Forbidden -> "No tienes permiso para completar esta operación."
     SocialUiError.NotFound -> "Este perfil no existe o no está visible."
     SocialUiError.SelfFollow -> "No puedes seguir tu propio perfil."
+    SocialUiError.Conflict -> "La operación no se pudo completar en su estado actual."
     SocialUiError.PrivateProfileNotFollowable -> "Este perfil es privado y no admite nuevos seguidores."
     SocialUiError.Server -> "El servidor no pudo completar la petición."
     SocialUiError.InvalidResponse, SocialUiError.Unknown -> "No se pudo completar la operación."
+}
+
+internal fun SocialUiError.reportMessage(): String = when (this) {
+    SocialUiError.NotFound, SocialUiError.Forbidden -> "Este contenido ya no está disponible."
+    else -> userMessage()
 }
 
 internal fun SocialUiError.workoutActionMessage(): String = when (this) {

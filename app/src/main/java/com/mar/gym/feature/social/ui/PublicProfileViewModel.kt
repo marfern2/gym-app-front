@@ -6,13 +6,17 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialRepository
+import com.mar.gym.feature.social.data.SocialModerationRepository
 import com.mar.gym.feature.social.data.SocialResult
+import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.social.model.PublicProfile
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 sealed interface PublicProfileUiState {
@@ -21,6 +25,8 @@ sealed interface PublicProfileUiState {
         val profile: PublicProfile,
         val isOwnProfile: Boolean,
         val followInFlight: Boolean = false,
+        val blockConfirmationOpen: Boolean = false,
+        val blockInFlight: Boolean = false,
         val actionError: SocialUiError? = null,
         val workouts: List<SocialWorkoutSummary> = emptyList(),
         val workoutsLoading: Boolean = true,
@@ -38,9 +44,12 @@ class PublicProfileViewModel(
     private val currentUserId: String,
     private val repository: SocialRepository,
     private val feedRepository: SocialFeedRepository,
+    private val moderationRepository: SocialModerationRepository? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<PublicProfileUiState>(PublicProfileUiState.Loading)
     val uiState: StateFlow<PublicProfileUiState> = _uiState.asStateFlow()
+    private val effectChannel = Channel<PublicProfileEffect>(Channel.BUFFERED)
+    val effects = effectChannel.receiveAsFlow()
 
     init { load() }
 
@@ -113,6 +122,46 @@ class PublicProfileViewModel(
         }
     }
 
+    fun requestBlock() {
+        val current = _uiState.value as? PublicProfileUiState.Content ?: return
+        if (current.isOwnProfile || current.blockInFlight) return
+        _uiState.value = current.copy(blockConfirmationOpen = true, actionError = null)
+    }
+
+    fun cancelBlock() {
+        updateContent { if (it.blockInFlight) it else it.copy(blockConfirmationOpen = false) }
+    }
+
+    fun confirmBlock() {
+        val current = _uiState.value as? PublicProfileUiState.Content ?: return
+        val moderation = moderationRepository ?: return
+        if (current.isOwnProfile || current.blockInFlight || !current.blockConfirmationOpen) return
+        _uiState.value = current.copy(blockInFlight = true, actionError = null)
+        viewModelScope.launch {
+            when (val result = moderation.block(current.profile.username)) {
+                is SocialResult.Success -> {
+                    val latest = _uiState.value as? PublicProfileUiState.Content ?: return@launch
+                    _uiState.value = latest.copy(
+                        profile = latest.profile.copy(isFollowing = false),
+                        followInFlight = false,
+                        blockInFlight = false,
+                        blockConfirmationOpen = false,
+                    )
+                    effectChannel.send(PublicProfileEffect.Blocked(current.profile.userId, current.profile.username))
+                }
+                is SocialResult.Failure -> {
+                    val error = if (result.error.isHttpNotFound()) SocialUiError.NotFound
+                    else result.error.toSocialUiError()
+                    if (error == SocialUiError.NotFound) {
+                        _uiState.value = PublicProfileUiState.Error(SocialUiError.NotFound)
+                    } else updateContent {
+                        it.copy(blockInFlight = false, actionError = error)
+                    }
+                }
+            }
+        }
+    }
+
     private fun load() {
         profileJob?.cancel()
         _uiState.value = PublicProfileUiState.Loading
@@ -174,10 +223,21 @@ class PublicProfileViewModelFactory(
     private val currentUserId: String,
     private val repository: SocialRepository,
     private val feedRepository: SocialFeedRepository,
+    private val moderationRepository: SocialModerationRepository? = null,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(PublicProfileViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return PublicProfileViewModel(username, currentUserId, repository, feedRepository) as T
+        return PublicProfileViewModel(username, currentUserId, repository, feedRepository, moderationRepository) as T
     }
+}
+
+private fun NetworkFailure.isHttpNotFound(): Boolean = when (this) {
+    is NetworkFailure.HttpProblem -> statusCode == 404
+    is NetworkFailure.HttpUnknown -> statusCode == 404
+    else -> false
+}
+
+sealed interface PublicProfileEffect {
+    data class Blocked(val userId: String, val username: String) : PublicProfileEffect
 }

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.SocialComment
+import com.mar.gym.feature.social.model.ReportTargetType
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.EmptyState
 import com.mar.gym.ui.components.ErrorState
@@ -56,6 +57,7 @@ import java.util.Locale
 fun SocialCommentsRoute(
     workoutId: String,
     viewModel: SocialEngagementViewModel,
+    reportViewModel: ReportViewModel,
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
 ) {
@@ -73,7 +75,9 @@ fun SocialCommentsRoute(
         onRequestDelete = viewModel::requestDelete,
         onCancelDelete = viewModel::cancelDelete,
         onConfirmDelete = viewModel::confirmDelete,
+        onReportComment = { reportViewModel.open(ReportTargetType.COMMENT, it.id) },
     )
+    ReportOverlay(reportViewModel)
 }
 
 @Composable
@@ -89,6 +93,7 @@ fun SocialCommentsScreen(
     onRequestDelete: (SocialComment) -> Unit,
     onCancelDelete: () -> Unit,
     onConfirmDelete: () -> Unit,
+    onReportComment: (SocialComment) -> Unit = {},
 ) {
     val data = state.dataOrNull()
     Scaffold(
@@ -134,6 +139,7 @@ fun SocialCommentsScreen(
                 onOpenProfile = onOpenProfile,
                 onLoadMore = onLoadMore,
                 onRequestDelete = onRequestDelete,
+                onReportComment = onReportComment,
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
         }
@@ -161,6 +167,7 @@ private fun CommentsList(
     onOpenProfile: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRequestDelete: (SocialComment) -> Unit,
+    onReportComment: (SocialComment) -> Unit,
     modifier: Modifier,
 ) {
     LazyColumn(
@@ -174,6 +181,7 @@ private fun CommentsList(
                 deleting = comment.id in data.deletingCommentIds,
                 onOpenProfile = onOpenProfile,
                 onRequestDelete = { onRequestDelete(comment) },
+                onReport = { onReportComment(comment) },
             )
             if (index == data.comments.lastIndex && data.hasMore && !data.loadingMore) {
                 LaunchedEffect(data.page, data.comments.size) { onLoadMore() }
@@ -203,6 +211,7 @@ private fun CommentRow(
     deleting: Boolean,
     onOpenProfile: (String) -> Unit,
     onRequestDelete: () -> Unit,
+    onReport: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)
@@ -248,25 +257,26 @@ private fun CommentRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (ownComment) {
-            Box {
-                var menuExpanded by remember(comment.id) { mutableStateOf(false) }
-                IconButton(
-                    onClick = { menuExpanded = true },
-                    enabled = !deleting,
-                    modifier = Modifier.testTag("delete_comment_${comment.id}"),
-                ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Opciones del comentario")
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Eliminar") },
-                        onClick = {
-                            menuExpanded = false
-                            onRequestDelete()
-                        },
-                    )
-                }
+        Box {
+            var menuExpanded by remember(comment.id) { mutableStateOf(false) }
+            IconButton(
+                onClick = { menuExpanded = true },
+                enabled = !deleting,
+                modifier = Modifier.testTag(
+                    if (ownComment) "delete_comment_${comment.id}" else "report_comment_${comment.id}",
+                ),
+            ) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Opciones del comentario")
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (ownComment) "Eliminar" else "Reportar") },
+                    onClick = {
+                        menuExpanded = false
+                        if (ownComment) onRequestDelete() else onReport()
+                    },
+                    modifier = Modifier.testTag(if (ownComment) "delete_comment_action" else "report_comment_action"),
+                )
             }
         }
     }

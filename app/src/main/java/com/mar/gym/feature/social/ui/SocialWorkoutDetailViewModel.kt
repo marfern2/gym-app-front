@@ -25,6 +25,7 @@ sealed interface SocialWorkoutDetailUiState {
     data object Loading : SocialWorkoutDetailUiState
     data class Content(
         val workout: SocialWorkoutDetail,
+        val isOwnWorkout: Boolean = false,
         val ownerDocument: WorkoutDocument? = null,
         val visibilityChanging: Boolean = false,
         val visibilityError: WorkoutUiError? = null,
@@ -107,8 +108,9 @@ class SocialWorkoutDetailViewModel(
             _uiState.value = when (val result = repository.workoutDetail(workoutId)) {
                 is SocialResult.Failure -> SocialWorkoutDetailUiState.Error(result.error.toSocialUiError())
                 is SocialResult.Success -> {
-                    val content = SocialWorkoutDetailUiState.Content(result.value)
-                    if (result.value.author.userId != currentUserId || workoutRepository == null) {
+                    val isOwnWorkout = result.value.author.userId == currentUserId
+                    val content = SocialWorkoutDetailUiState.Content(result.value, isOwnWorkout = isOwnWorkout)
+                    if (!isOwnWorkout || workoutRepository == null) {
                         content
                     } else when (val owner = workoutRepository.getWorkout(workoutId)) {
                         is WorkoutRepositoryResult.Failure -> content.copy(

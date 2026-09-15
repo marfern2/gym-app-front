@@ -103,6 +103,11 @@ import com.mar.gym.feature.social.ui.SocialNotificationsViewModelFactory
 import com.mar.gym.feature.social.ui.UserSearchRoute
 import com.mar.gym.feature.social.ui.UserSearchViewModel
 import com.mar.gym.feature.social.ui.UserSearchViewModelFactory
+import com.mar.gym.feature.social.ui.BlockedUsersRoute
+import com.mar.gym.feature.social.ui.BlockedUsersViewModel
+import com.mar.gym.feature.social.ui.BlockedUsersViewModelFactory
+import com.mar.gym.feature.social.ui.ReportViewModel
+import com.mar.gym.feature.social.ui.ReportViewModelFactory
 import com.mar.gym.feature.training.ui.TrainingScreen
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModel
@@ -317,6 +322,7 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                         null
                     }
+                    DEEP_BLOCKED_USERS -> DEEP_PROFILE_SETTINGS
                     DEEP_USER_SEARCH -> {
                         tab = userSearchOrigin
                         null
@@ -402,6 +408,7 @@ class MainActivity : ComponentActivity() {
                             viewModel = homeViewModel(),
                             engagementViewModel = socialEngagementViewModel(user.id),
                             notificationsViewModel = socialNotificationsViewModel(),
+                            reportViewModel = reportViewModel(),
                             onOpenNotifications = { deep = DEEP_NOTIFICATIONS },
                             onSearchPeople = {
                                 userSearchOrigin = TAB_HOME
@@ -781,6 +788,11 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                     },
                     onLogout = { authViewModel.logout() },
+                    onOpenBlockedUsers = { deep = DEEP_BLOCKED_USERS },
+                )
+                DEEP_BLOCKED_USERS -> BlockedUsersRoute(
+                    viewModel = blockedUsersViewModel(),
+                    onBack = { deep = DEEP_PROFILE_SETTINGS },
                 )
                 DEEP_PROFILE_STATS -> ProfileStatsRoute(
                     viewModel = profileViewModel(),
@@ -836,6 +848,7 @@ class MainActivity : ComponentActivity() {
                     PublicProfileRoute(
                         viewModel = remember(username) { publicProfileViewModel(username, user.id) },
                         engagementViewModel = socialEngagementViewModel(user.id),
+                        reportViewModel = reportViewModel(),
                         onBack = {
                             if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
                             if (publicProfileOrigin == TAB_HOME) homeViewModel().refresh()
@@ -874,6 +887,20 @@ class MainActivity : ComponentActivity() {
                         },
                         onShareProfile = ::shareProfile,
                         onShareWorkout = ::shareWorkout,
+                        onUserBlocked = { blockedUserId, blockedUsername ->
+                            homeViewModel().onUserBlocked(blockedUserId, blockedUsername)
+                            userSearchViewModel().onUserBlocked(blockedUserId, blockedUsername)
+                            socialEngagementViewModel(user.id).onUserBlocked(blockedUserId)
+                            socialNotificationsViewModel().onUserBlocked(blockedUserId)
+                            blockedUsersViewModel().refresh()
+                            profileViewModel().refresh()
+                            if (publicProfileOrigin == DEEP_SOCIAL_LIST && socialListUsername != null) {
+                                socialListViewModel(
+                                    socialListUsername!!,
+                                    SocialListType.valueOf(socialListType),
+                                ).refresh()
+                            }
+                        },
                     )
                 }
                 DEEP_SOCIAL_WORKOUT -> socialWorkoutId?.let { workoutId ->
@@ -882,6 +909,7 @@ class MainActivity : ComponentActivity() {
                             socialWorkoutDetailViewModel(workoutId, user.id)
                         },
                         engagementViewModel = socialEngagementViewModel(user.id),
+                        reportViewModel = reportViewModel(),
                         onBack = {
                             deep = socialWorkoutOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
                             if (deep == null) tab = socialWorkoutOrigin
@@ -917,6 +945,7 @@ class MainActivity : ComponentActivity() {
                     SocialCommentsRoute(
                         workoutId = workoutId,
                         viewModel = socialEngagementViewModel(user.id),
+                        reportViewModel = reportViewModel(),
                         onBack = {
                             if (socialCommentsOrigin == DEEP_PUBLIC_PROFILE) {
                                 publicUsername = commentsParentUsername
@@ -1083,6 +1112,7 @@ class MainActivity : ComponentActivity() {
                 currentUserId,
                 AppContainer.socialRepository,
                 AppContainer.socialFeedRepository,
+                AppContainer.socialModerationRepository,
             ),
         )["public-profile-$username", PublicProfileViewModel::class.java]
 
@@ -1109,6 +1139,16 @@ class MainActivity : ComponentActivity() {
         userSessionViewModels,
         SocialEngagementViewModelFactory(currentUserId, AppContainer.socialFeedRepository),
     )[SocialEngagementViewModel::class.java]
+
+    private fun reportViewModel(): ReportViewModel = ViewModelProvider(
+        userSessionViewModels,
+        ReportViewModelFactory(AppContainer.socialModerationRepository),
+    )[ReportViewModel::class.java]
+
+    private fun blockedUsersViewModel(): BlockedUsersViewModel = ViewModelProvider(
+        userSessionViewModels,
+        BlockedUsersViewModelFactory(AppContainer.socialModerationRepository),
+    )[BlockedUsersViewModel::class.java]
 
     private fun socialNotificationsViewModel(): SocialNotificationsViewModel = ViewModelProvider(
         userSessionViewModels,
@@ -1194,6 +1234,7 @@ class MainActivity : ComponentActivity() {
         const val DEEP_PROFILE_SETTINGS = "profile_settings"
         const val DEEP_PROFILE_STATS = "profile_stats"
         const val DEEP_PROFILE_CALENDAR = "profile_calendar"
+        const val DEEP_BLOCKED_USERS = "blocked_users"
         const val DEEP_USER_SEARCH = "user_search"
         const val DEEP_PUBLIC_PROFILE = "public_profile"
         const val DEEP_SOCIAL_LIST = "social_list"

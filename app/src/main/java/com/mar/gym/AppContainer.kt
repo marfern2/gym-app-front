@@ -38,6 +38,7 @@ import com.mar.gym.feature.social.data.SocialApi
 import com.mar.gym.feature.social.data.SocialFeedApi
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialRepository
+import com.mar.gym.feature.social.data.SocialModerationRepository
 import com.mar.gym.feature.social.data.DefaultSocialNotificationsRepository
 import com.mar.gym.feature.social.data.SocialNotificationsApi
 import com.mar.gym.feature.social.data.SocialNotificationsRepository
@@ -169,7 +170,9 @@ object AppContainer {
     val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
 
     private val socialApi: SocialApi by lazy { protectedApi(SocialApi::class.java) }
-    val socialRepository: SocialRepository by lazy { DefaultSocialRepository(socialApi) }
+    private val defaultSocialRepository by lazy { DefaultSocialRepository(socialApi) }
+    val socialRepository: SocialRepository get() = defaultSocialRepository
+    val socialModerationRepository: SocialModerationRepository get() = defaultSocialRepository
 
     private val socialFeedApi: SocialFeedApi by lazy { protectedApi(SocialFeedApi::class.java) }
     val socialFeedRepository: SocialFeedRepository by lazy { DefaultSocialFeedRepository(socialFeedApi) }

@@ -100,6 +100,21 @@ class HomeViewModel(
         attemptedModes.forEach { mode -> loadFeed(mode, refresh = true) }
     }
 
+    fun onUserBlocked(userId: String, username: String) {
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            home = current.home.copy(workouts = current.home.workouts.filterNot { it.author.userId == userId }),
+            discover = current.discover.copy(workouts = current.discover.workouts.filterNot { it.author.userId == userId }),
+            suggestions = current.suggestions.filterNot { it.userId == userId || it.username == username },
+            followingUsernames = current.followingUsernames - username,
+            suggestionActionErrors = current.suggestionActionErrors - username,
+            discoverFollowingUsernames = current.discoverFollowingUsernames - username,
+            discoverFollowErrors = current.discoverFollowErrors - username,
+        )
+        attemptedModes.forEach { loadFeed(it, refresh = true) }
+        loadSuggestions(clearCurrent = false)
+    }
+
     fun loadMore() {
         val mode = _uiState.value.selectedMode
         val current = feedState(mode)

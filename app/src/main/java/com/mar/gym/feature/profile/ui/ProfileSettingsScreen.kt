@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -19,10 +20,22 @@ import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.SecondaryButton
 
 @Composable
-fun ProfileSettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
+fun ProfileSettingsScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenBlockedUsers: () -> Unit = {},
+) {
     var confirmLogout by remember { mutableStateOf(false) }
     Scaffold(topBar = { AppTopBar("Ajustes", onBack = onBack) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SecondaryButton(
+                "Usuarios bloqueados",
+                onOpenBlockedUsers,
+                Modifier.fillMaxWidth(),
+            )
             SecondaryButton("Cerrar sesión", { confirmLogout = true }, Modifier.fillMaxWidth())
         }
     }
