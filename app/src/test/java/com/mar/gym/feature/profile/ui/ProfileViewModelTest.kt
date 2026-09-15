@@ -41,6 +41,7 @@ import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
 import com.mar.gym.feature.workouts.model.WorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -133,6 +134,24 @@ class ProfileViewModelTest {
         viewModel.startEditing()
         viewModel.updatePrivacy(ProfilePrivacy.Private)
         assertEquals(ProfilePrivacy.Private, viewModel.uiState.value.draft?.privacy)
+    }
+
+    @Test fun `default workout visibility changes without altering other profile fields`() = runTest {
+        val profiles = FakeProfileRepository()
+        val viewModel = viewModel(profiles)
+        advanceUntilIdle()
+        viewModel.startEditing()
+
+        viewModel.updateDefaultWorkoutVisibility(WorkoutVisibility.Public)
+        viewModel.saveProfile()
+        advanceUntilIdle()
+
+        val saved = profiles.lastDraft!!
+        assertEquals(WorkoutVisibility.Public, saved.defaultWorkoutVisibility)
+        assertEquals("Mar", saved.displayName)
+        assertEquals("mar.gym", saved.username)
+        assertEquals(ProfilePrivacy.Public, saved.privacy)
+        assertEquals(0L, profiles.lastCurrent?.etag?.version)
     }
 
     @Test fun `PUBLIC profile loads when optional social profile fails`() = runTest {
@@ -257,11 +276,17 @@ class ProfileViewModelTest {
         var getCalls = 0
         var getResult: ProfileResult<PrivateProfileDocument> = ProfileResult.Success(document())
         var updateResult: ProfileResult<PrivateProfileDocument> = ProfileResult.Success(document())
+        var lastDraft: PrivateProfileDraft? = null
+        var lastCurrent: PrivateProfileDocument? = null
         override suspend fun getProfile(): ProfileResult<PrivateProfileDocument> {
             getCalls += 1
             return getResult
         }
-        override suspend fun updateProfile(draft: PrivateProfileDraft, current: PrivateProfileDocument) = updateResult
+        override suspend fun updateProfile(draft: PrivateProfileDraft, current: PrivateProfileDocument): ProfileResult<PrivateProfileDocument> {
+            lastDraft = draft
+            lastCurrent = current
+            return updateResult
+        }
     }
 
     private class RacingProfileRepository : ProfileRepository {
@@ -303,6 +328,11 @@ class ProfileViewModelTest {
         override suspend fun startWorkout(routineId: String?): WorkoutRepositoryResult<WorkoutDocument> = fail()
         override suspend fun updateWorkout(workoutId: String, draft: WorkoutDraft, etag: WorkoutEtag): WorkoutRepositoryResult<WorkoutDocument> = fail()
         override suspend fun completeWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<WorkoutDocument> = fail()
+        override suspend fun updateWorkoutVisibility(
+            workoutId: String,
+            visibility: WorkoutVisibility,
+            etag: WorkoutEtag,
+        ): WorkoutRepositoryResult<WorkoutDocument> = fail()
         override suspend fun discardWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<Unit> = fail()
         private fun <T> fail(): WorkoutRepositoryResult<T> = WorkoutRepositoryResult.Failure(NetworkFailure.Network())
     }

@@ -19,6 +19,7 @@ import com.mar.gym.feature.social.model.SocialWorkoutSet
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.model.SuggestedAthlete
 import com.mar.gym.feature.social.model.SuggestedAthletePage
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -57,7 +58,7 @@ class DefaultSocialFeedRepository(
 
     override suspend fun workoutDetail(workoutId: String): SocialResult<SocialWorkoutDetail> {
         if (!workoutId.isUuid()) return invalid()
-        return execute { api.sharedWorkoutDetail(workoutId) }.map { it.toDomain() }
+        return execute { api.workoutDetail(workoutId) }.map { it.toDomain() }
     }
 
     override suspend fun like(workoutId: String): SocialResult<Unit> = mutate(workoutId, api::like)
@@ -138,6 +139,7 @@ class DefaultSocialFeedRepository(
             likesCount = likesCount,
             isLikedByMe = isLikedByMe,
             commentsCount = commentsCount,
+            socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
         )
     }
 
@@ -211,6 +213,7 @@ class DefaultSocialFeedRepository(
             isLikedByMe = isLikedByMe,
             commentsCount = commentsCount,
             shareUrl = shareUrl?.validShareUrl("w", workoutId),
+            socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
         )
     }
 

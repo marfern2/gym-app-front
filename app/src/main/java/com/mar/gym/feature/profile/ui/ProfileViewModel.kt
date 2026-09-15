@@ -28,6 +28,7 @@ import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
 import com.mar.gym.feature.workouts.model.WorkoutDetail
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.time.Clock
 import java.time.ZoneId
 import kotlinx.coroutines.Job
@@ -124,6 +125,9 @@ class ProfileViewModel(
     fun updateDisplayName(value: String) = updateDraft { copy(displayName = value) }
     fun updateUsername(value: String) = updateDraft { copy(username = value) }
     fun updatePrivacy(value: ProfilePrivacy) = updateDraft { copy(privacy = value) }
+    fun updateDefaultWorkoutVisibility(value: WorkoutVisibility) = updateDraft {
+        copy(defaultWorkoutVisibility = value)
+    }
 
     private fun updateDraft(transform: PrivateProfileDraft.() -> PrivateProfileDraft) {
         val draft = _uiState.value.draft ?: return
@@ -158,14 +162,20 @@ class ProfileViewModel(
                 }
                 is ProfileResult.Failure -> {
                     val code = (result.error as? NetworkFailure.HttpProblem)?.problem?.errorCode
+                    val status = when (result.error) {
+                        is NetworkFailure.HttpProblem -> result.error.statusCode
+                        is NetworkFailure.HttpUnknown -> result.error.statusCode
+                        else -> null
+                    }
+                    val profileConflict = code == "PROFILE_VERSION_CONFLICT" ||
+                        (status == 409 && code != "USERNAME_UNAVAILABLE")
                     _uiState.update {
                         it.copy(
                             saving = false,
-                            profileError = if (code in setOf(
-                                    "PROFILE_VERSION_CONFLICT", "USERNAME_UNAVAILABLE"
-                                )
-                            ) null else result.error,
-                            conflict = code == "PROFILE_VERSION_CONFLICT",
+                            profileError = if (profileConflict || code == "USERNAME_UNAVAILABLE") {
+                                null
+                            } else result.error,
+                            conflict = profileConflict,
                             usernameUnavailable = code == "USERNAME_UNAVAILABLE",
                         )
                     }

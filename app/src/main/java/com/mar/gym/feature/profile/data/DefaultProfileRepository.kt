@@ -10,6 +10,7 @@ import com.mar.gym.feature.profile.model.PrivateProfileDocument
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.profile.model.validate
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.time.Instant
 import java.util.UUID
 
@@ -25,6 +26,7 @@ class DefaultProfileRepository(private val api: ProfileApi) : ProfileRepository 
             displayName = draft.displayName,
             username = draft.username.trim().takeIf(String::isNotEmpty),
             privacy = draft.privacy.apiValue,
+            defaultWorkoutVisibility = draft.defaultWorkoutVisibility.apiValue,
         )
         return execute { api.update(current.etag.headerValue, request) }
     }
@@ -48,7 +50,10 @@ class DefaultProfileRepository(private val api: ProfileApi) : ProfileRepository 
         val updated = updatedAt.instant() ?: return null
         if (updated < created || username?.let { !USERNAME.matches(it) } == true) return null
         val mappedPrivacy = ProfilePrivacy.fromApiValue(privacy) ?: return null
-        return PrivateProfile(userId, displayName, username, created, updated, version, mappedPrivacy)
+        val mappedWorkoutVisibility = WorkoutVisibility.fromApiValue(defaultWorkoutVisibility) ?: return null
+        return PrivateProfile(
+            userId, displayName, username, created, updated, version, mappedPrivacy, mappedWorkoutVisibility,
+        )
     }
 
     private fun String.instant() = runCatching { Instant.parse(this) }.getOrNull()

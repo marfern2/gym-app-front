@@ -51,6 +51,7 @@ fun CompletedWorkoutCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                WorkoutVisibilityIndicator(workout.socialVisibility)
             }
             Text(workout.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

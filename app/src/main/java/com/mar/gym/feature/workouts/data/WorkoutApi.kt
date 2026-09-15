@@ -39,6 +39,14 @@ interface WorkoutApi {
     ): Response<WorkoutDetailDto>
 
     @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
+    @PUT("api/v1/workouts/{workoutId}/visibility")
+    suspend fun updateVisibility(
+        @Path("workoutId") workoutId: String,
+        @Header("If-Match") ifMatch: String,
+        @Body request: UpdateWorkoutVisibilityDto,
+    ): Response<WorkoutDetailDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
     @POST("api/v1/workouts/{workoutId}/complete")
     suspend fun complete(
         @Path("workoutId") workoutId: String,

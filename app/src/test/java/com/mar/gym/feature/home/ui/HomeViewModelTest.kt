@@ -15,6 +15,7 @@ import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.model.SuggestedAthlete
 import com.mar.gym.feature.social.model.SuggestedAthletePage
 import com.mar.gym.feature.system.MainDispatcherRule
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.math.BigDecimal
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -44,6 +45,28 @@ class HomeViewModelTest {
         assertEquals(listOf("own", "followed"), viewModel.uiState.value.home.workouts.map { it.title })
         assertEquals(listOf("alice"), viewModel.uiState.value.suggestions.map { it.username })
         assertFalse(viewModel.uiState.value.home.initialLoading)
+    }
+
+    @Test fun `private visibility removes cached workout and refreshes visited home and discover`() = runTest {
+        val own = workout("own", USER_ID).copy(socialVisibility = WorkoutVisibility.Public)
+        val feed = FakeFeedRepository().apply {
+            firstPage = successPage(listOf(own))
+            discoverFirstPage = successPage(listOf(own))
+        }
+        val viewModel = HomeViewModel(feed, FakeSocialRepository())
+        advanceUntilIdle()
+        viewModel.selectMode(HomeFeedMode.Discover)
+        advanceUntilIdle()
+        feed.firstPage = successPage(emptyList())
+        feed.discoverFirstPage = successPage(emptyList())
+
+        viewModel.refreshAfterOwnVisibilityChange(WORKOUT_ID, WorkoutVisibility.Private)
+
+        assertTrue(viewModel.uiState.value.home.workouts.isEmpty())
+        assertTrue(viewModel.uiState.value.discover.workouts.isEmpty())
+        advanceUntilIdle()
+        assertEquals(2, feed.feedCursors.count { it == null })
+        assertEquals(2, feed.discoverCursors.count { it == null })
     }
 
     @Test fun `cursor pagination deduplicates workouts and blocks duplicate calls`() = runTest {

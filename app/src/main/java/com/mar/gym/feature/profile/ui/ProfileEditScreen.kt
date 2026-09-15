@@ -5,12 +5,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -18,9 +22,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.feature.profile.model.ProfilePrivacy
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 
 @Composable
 fun ProfileEditRoute(viewModel: ProfileViewModel, onBack: () -> Unit) {
@@ -34,6 +40,7 @@ fun ProfileEditRoute(viewModel: ProfileViewModel, onBack: () -> Unit) {
         onDisplayNameChange = viewModel::updateDisplayName,
         onUsernameChange = viewModel::updateUsername,
         onPrivacyChange = viewModel::updatePrivacy,
+        onDefaultWorkoutVisibilityChange = viewModel::updateDefaultWorkoutVisibility,
         onSave = viewModel::saveProfile,
         onReload = viewModel::reloadProfileKeepingDraft,
         onSaved = onBack,
@@ -47,6 +54,7 @@ fun ProfileEditScreen(
     onDisplayNameChange: (String) -> Unit,
     onUsernameChange: (String) -> Unit,
     onPrivacyChange: (ProfilePrivacy) -> Unit,
+    onDefaultWorkoutVisibilityChange: (WorkoutVisibility) -> Unit = {},
     onSave: () -> Unit,
     onReload: () -> Unit,
     onSaved: () -> Unit,
@@ -60,7 +68,8 @@ fun ProfileEditScreen(
             CenterLoading("Cargando perfil…")
         } else {
             Column(
-                Modifier.fillMaxSize().padding(padding).padding(16.dp).testTag("profile_editor"),
+                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                    .padding(16.dp).testTag("profile_editor"),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 OutlinedTextField(
@@ -71,6 +80,32 @@ fun ProfileEditScreen(
                     supportingText = state.fieldErrors["displayName"]?.let { { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Column(
+                    Modifier.fillMaxWidth().testTag("default_workout_visibility_control"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("Visibilidad predeterminada de entrenamientos", style = MaterialTheme.typography.titleMedium)
+                    WorkoutVisibility.entries.forEach { visibility ->
+                        val label = if (visibility == WorkoutVisibility.Public) "Público" else "Privado"
+                        androidx.compose.foundation.layout.Row(
+                            Modifier.fillMaxWidth().clickable {
+                                onDefaultWorkoutVisibilityChange(visibility)
+                            }.padding(vertical = 4.dp).testTag("default_workout_visibility_${visibility.apiValue}"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = draft.defaultWorkoutVisibility == visibility,
+                                onClick = { onDefaultWorkoutVisibilityChange(visibility) },
+                            )
+                            Text(label)
+                        }
+                    }
+                    Text(
+                        "Se aplicará a los entrenamientos nuevos. No cambia entrenamientos anteriores.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 androidx.compose.foundation.layout.Row(
                     Modifier.fillMaxWidth().testTag("profile_privacy_control"),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,

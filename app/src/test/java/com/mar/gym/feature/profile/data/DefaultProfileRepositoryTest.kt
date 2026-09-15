@@ -4,6 +4,7 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfilePrivacy
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import okhttp3.MediaType.Companion.toMediaType
@@ -40,12 +41,22 @@ class DefaultProfileRepositoryTest {
         assertNull(result.value.value.username)
         assertEquals(0, result.value.etag.version)
         assertEquals(ProfilePrivacy.Public, result.value.value.privacy)
+        assertEquals(WorkoutVisibility.Public, result.value.value.defaultWorkoutVisibility)
     }
 
     @Test fun `loads private privacy`() = runTest {
-        enqueue(profile(version = 0, username = "alice", privacy = "PRIVATE"), etag = "\"0\"")
+        enqueue(
+            profile(
+                version = 0,
+                username = "alice",
+                privacy = "PRIVATE",
+                defaultWorkoutVisibility = "PRIVATE",
+            ),
+            etag = "\"0\"",
+        )
         val result = repository.getProfile() as ProfileResult.Success
         assertEquals(ProfilePrivacy.Private, result.value.value.privacy)
+        assertEquals(WorkoutVisibility.Private, result.value.value.defaultWorkoutVisibility)
     }
 
     @Test fun `profile response without privacy defaults safely to private`() = runTest {
@@ -57,6 +68,7 @@ class DefaultProfileRepositoryTest {
         val result = repository.getProfile() as ProfileResult.Success
 
         assertEquals(ProfilePrivacy.Private, result.value.value.privacy)
+        assertEquals(WorkoutVisibility.Private, result.value.value.defaultWorkoutVisibility)
     }
 
     @Test fun `update sends If-Match and accepts canonical normalized username`() = runTest {
@@ -66,14 +78,21 @@ class DefaultProfileRepositoryTest {
         enqueue(profile(version = 1, username = "alice.profile"), etag = "\"1\"")
 
         val result = repository.updateProfile(
-            PrivateProfileDraft("Updated", " Alice.Profile ", ProfilePrivacy.Private), current,
+            PrivateProfileDraft(
+                "Updated",
+                " Alice.Profile ",
+                ProfilePrivacy.Private,
+                WorkoutVisibility.Public,
+            ), current,
         ) as ProfileResult.Success
         val request = server.takeRequest()
         assertEquals("\"0\"", request.getHeader("If-Match"))
         val requestBody = request.body.readUtf8()
         assertTrue(requestBody.contains("Alice.Profile"))
         assertTrue(requestBody.contains("PRIVATE"))
+        assertTrue(requestBody.contains("\"defaultWorkoutVisibility\":\"PUBLIC\""))
         assertEquals("alice.profile", result.value.value.username)
+        assertEquals(WorkoutVisibility.Public, result.value.value.defaultWorkoutVisibility)
     }
 
     @Test fun `empty username is sent as nullable and duplicate error remains visible`() = runTest {
@@ -106,7 +125,12 @@ class DefaultProfileRepositoryTest {
         server.enqueue(MockResponse().setResponseCode(status).setHeader("Content-Type", "application/problem+json")
             .setBody("""{"status":$status,"errorCode":"$code"}"""))
     }
-    private fun profile(version: Int, username: String?, privacy: String = "PUBLIC") = """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"privacy":"$privacy","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version}"""
+    private fun profile(
+        version: Int,
+        username: String?,
+        privacy: String = "PUBLIC",
+        defaultWorkoutVisibility: String = "PUBLIC",
+    ) = """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"privacy":"$privacy","defaultWorkoutVisibility":"$defaultWorkoutVisibility","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version}"""
 
     private companion object { const val ID = "00000000-0000-4000-8000-000000000001" }
 }

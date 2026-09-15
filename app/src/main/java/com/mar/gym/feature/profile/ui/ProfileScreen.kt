@@ -41,6 +41,7 @@ fun ProfileRoute(
     onSearchPeople: () -> Unit,
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
+    onOpenWorkout: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     ProfileScreen(
@@ -59,6 +60,7 @@ fun ProfileRoute(
         onSearchPeople = onSearchPeople,
         onOpenFollowers = onOpenFollowers,
         onOpenFollowing = onOpenFollowing,
+        onOpenWorkout = onOpenWorkout,
         onRetry = viewModel::refresh,
     )
 }
@@ -80,6 +82,7 @@ fun ProfileScreen(
     onSearchPeople: () -> Unit = {},
     onOpenFollowers: (String) -> Unit = {},
     onOpenFollowing: (String) -> Unit = {},
+    onOpenWorkout: (String) -> Unit = {},
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("profile_screen"),
@@ -163,6 +166,7 @@ fun ProfileScreen(
                         workout = workouts.value[index],
                         displayName = profile?.displayName.orEmpty(),
                         username = profile?.username,
+                        onClick = { onOpenWorkout(workouts.value[index].id) },
                     )
                 }
             }

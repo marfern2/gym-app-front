@@ -49,6 +49,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -98,6 +100,7 @@ import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.formatPreviousPerformance
 import com.mar.gym.feature.workouts.model.previousSetFor
@@ -167,11 +170,12 @@ fun ActiveWorkoutRoute(
         onSave = viewModel::save,
         onFinish = onOpenSaveWorkout,
         onDiscard = viewModel::discard,
-        onReload = viewModel::reloadDiscardingLocalChanges,
+        onReload = viewModel::reloadVisibility,
         onRetry = viewModel::retry,
         onRetryPrevious = viewModel::retryPreviousPerformance,
         onAdjustRestTimer = viewModel::adjustRestTimerSeconds,
         onSkipRestTimer = viewModel::skipRestTimer,
+        onVisibilityChange = viewModel::updateVisibility,
         manualClockState = viewModel.manualClockState,
     )
 }
@@ -208,14 +212,17 @@ fun ActiveWorkoutScreen(
     onAdjustRestTimer: (Int) -> Unit = {},
     onSkipRestTimer: () -> Unit = {},
     manualClockState: ManualWorkoutClockState? = null,
+    onVisibilityChange: (WorkoutVisibility) -> Unit = {},
 ) {
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
     var reorderOpen by remember { mutableStateOf(false) }
     var clockSheetOpen by remember { mutableStateOf(false) }
+    var visibilityDialogOpen by remember { mutableStateOf(false) }
     val clockState = manualClockState ?: remember(clock) { ManualWorkoutClockState(clock) }
     val requestBack = { if (state.data.hasUnsavedChanges) confirmExit = true else onBack() }
-    val editorEnabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises
+    val editorEnabled = state is ActiveWorkoutUiState.Active && !state.data.addingExercises &&
+        !state.data.visibilityChanging
     BackHandler(onBack = requestBack)
     Scaffold(
         topBar = {
@@ -223,6 +230,8 @@ fun ActiveWorkoutScreen(
                 ActiveWorkoutHeader(
                     onBack = requestBack,
                     onOpenClock = { clockSheetOpen = true },
+                    onOpenVisibility = { visibilityDialogOpen = true },
+                    visibility = state.data.socialVisibility,
                     onFinish = onFinish,
                     actionsEnabled = editorEnabled,
                 )
@@ -356,6 +365,21 @@ fun ActiveWorkoutScreen(
         ManualWorkoutClockSheet(
             state = clockState,
             onDismiss = { clockSheetOpen = false },
+        )
+    }
+    if (visibilityDialogOpen && state.data.draft != null) {
+        val visibilityError = state.data.visibilityError
+        WorkoutVisibilityDialog(
+            visibility = state.data.socialVisibility,
+            changing = state.data.visibilityChanging,
+            errorMessage = visibilityError?.let { stringResource(it.messageResource()) },
+            conflict = visibilityError?.kind == WorkoutUiErrorKind.Conflict,
+            onSelect = onVisibilityChange,
+            onReload = {
+                visibilityDialogOpen = false
+                onReload()
+            },
+            onDismiss = { visibilityDialogOpen = false },
         )
     }
 }
@@ -495,9 +519,12 @@ private fun RestTimerAdjustmentButton(
 private fun ActiveWorkoutHeader(
     onBack: () -> Unit,
     onOpenClock: () -> Unit,
+    onOpenVisibility: () -> Unit,
+    visibility: WorkoutVisibility,
     onFinish: () -> Unit,
     actionsEnabled: Boolean,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     TopAppBar(
         modifier = Modifier.testTag("active_workout_header"),
         title = {
@@ -528,6 +555,34 @@ private fun ActiveWorkoutHeader(
                     contentDescription = stringResource(R.string.workout_clock_open),
                     tint = Color.White,
                 )
+            }
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    enabled = actionsEnabled,
+                    modifier = Modifier.testTag("active_workout_menu"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Opciones del entrenamiento",
+                        tint = Color.White,
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        modifier = Modifier.testTag("active_workout_visibility_action"),
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Visibilidad del entrenamiento")
+                                WorkoutVisibilityIndicator(visibility)
+                            }
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onOpenVisibility()
+                        },
+                    )
+                }
             }
             Button(
                 onClick = onFinish,

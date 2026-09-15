@@ -26,6 +26,11 @@ import com.mar.gym.feature.social.model.SocialWorkoutExercise
 import com.mar.gym.feature.social.model.SocialWorkoutSet
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.model.SuggestedAthlete
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.feature.workouts.model.WorkoutDetail
+import com.mar.gym.feature.workouts.model.WorkoutDocument
+import com.mar.gym.feature.workouts.model.WorkoutEtag
+import com.mar.gym.feature.workouts.model.WorkoutStatus
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Instant
@@ -299,6 +304,43 @@ class SocialFeedScreensTest {
         }
     }
 
+    @Test fun privateWorkoutDoesNotOfferShareAndForeignWorkoutHasNoVisibilityControl() {
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialWorkoutDetailScreen(
+                    state = SocialWorkoutDetailUiState.Content(
+                        detail().copy(socialVisibility = WorkoutVisibility.Private),
+                    ),
+                    onBack = {}, onOpenProfile = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("workout_visibility_PRIVATE").assertIsDisplayed()
+        composeRule.onNodeWithTag("social_share_action").assertDoesNotExist()
+        composeRule.onNodeWithTag("completed_workout_visibility_action").assertDoesNotExist()
+    }
+
+    @Test fun ownerCompletedWorkoutOffersVisibilityChange() {
+        var selected: WorkoutVisibility? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialWorkoutDetailScreen(
+                    state = SocialWorkoutDetailUiState.Content(
+                        workout = detail().copy(socialVisibility = WorkoutVisibility.Private),
+                        ownerDocument = ownerDocument(),
+                    ),
+                    onBack = {}, onOpenProfile = {}, onRetry = {},
+                    onVisibilityChange = { selected = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("completed_workout_visibility_action").performClick()
+        composeRule.onNodeWithTag("workout_visibility_option_PUBLIC").performClick()
+        composeRule.runOnIdle { assertEquals(WorkoutVisibility.Public, selected) }
+    }
+
     @Test fun commentsRenderOwnDeleteOnlyAndOpenAuthor() {
         var openedUsername: String? = null
         var requestedDelete: String? = null
@@ -383,6 +425,7 @@ class SocialFeedScreensTest {
         likesCount = 7,
         isLikedByMe = true,
         commentsCount = 3,
+        socialVisibility = WorkoutVisibility.Public,
     )
 
     private fun detail() = SocialWorkoutDetail(
@@ -413,6 +456,7 @@ class SocialFeedScreensTest {
         likesCount = 5,
         isLikedByMe = false,
         commentsCount = 4,
+        socialVisibility = WorkoutVisibility.Public,
     )
 
     private fun comment(id: String, userId: String, text: String) = SocialComment(
@@ -430,6 +474,17 @@ class SocialFeedScreensTest {
     )
 
     private fun author() = SocialAuthor(USER_ID, "alice", "Alice Doe", null)
+    private fun ownerDocument(): WorkoutDocument {
+        val started = Instant.parse("2026-08-25T09:00:00Z")
+        return WorkoutDocument(
+            WorkoutDetail(
+                WORKOUT_ID, null, null, "Push day", null, WorkoutStatus.Completed,
+                started, started.plusSeconds(3_600), 3_600, started, started.plusSeconds(3_600),
+                0, emptyList(), WorkoutVisibility.Private,
+            ),
+            WorkoutEtag.fromVersion(0)!!,
+        )
+    }
     private fun athlete() = SuggestedAthlete(USER_ID, "alice", null, null, 12, 3, false)
     private fun profile() = PublicProfile(
         USER_ID, "alice", "Alice Doe", null, 12, 3, 4, false, ProfilePrivacy.Public,

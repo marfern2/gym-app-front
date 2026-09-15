@@ -2,6 +2,7 @@ package com.mar.gym.feature.social.data
 
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import okhttp3.MediaType.Companion.toMediaType
@@ -42,8 +43,22 @@ class DefaultSocialFeedRepositoryTest {
         assertEquals(7, result.value.content.single().likesCount)
         assertTrue(result.value.content.single().isLikedByMe)
         assertEquals(3, result.value.content.single().commentsCount)
+        assertEquals(WorkoutVisibility.Private, result.value.content.single().socialVisibility)
         assertEquals("/api/v1/feed?size=20", server.takeRequest().path)
         assertEquals(1, server.requestCount)
+    }
+
+    @Test fun `social workout visibility maps explicit values and missing values fall back private`() = runTest {
+        enqueue(
+            feedPage(nextCursor = null, hasMore = false)
+                .replace("\"commentsCount\":3", "\"commentsCount\":3,\"socialVisibility\":\"PUBLIC\""),
+        )
+        val publicWorkout = (repository.feed(null, 20) as SocialResult.Success).value.content.single()
+        assertEquals(WorkoutVisibility.Public, publicWorkout.socialVisibility)
+
+        enqueue(detail())
+        val legacyDetail = (repository.workoutDetail(WORKOUT_ID) as SocialResult.Success).value
+        assertEquals(WorkoutVisibility.Private, legacyDetail.socialVisibility)
     }
 
     @Test fun `feed accepts author without username and legacy engagement omissions`() = runTest {
@@ -89,7 +104,7 @@ class DefaultSocialFeedRepositoryTest {
         assertEquals(ExerciseType.WeightReps, exercise.exerciseType)
         assertEquals(8, exercise.sets.single().reps)
         assertEquals("80.5", exercise.sets.single().weightKg?.toPlainString())
-        assertEquals("/api/v1/share/workouts/$WORKOUT_ID", server.takeRequest().path)
+        assertEquals("/api/v1/feed/workouts/$WORKOUT_ID", server.takeRequest().path)
         assertEquals(7, result.value.likesCount)
         assertTrue(result.value.isLikedByMe)
         assertEquals(3, result.value.commentsCount)

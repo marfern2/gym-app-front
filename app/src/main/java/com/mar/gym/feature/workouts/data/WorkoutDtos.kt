@@ -20,7 +20,11 @@ data class WorkoutDetailDto(
     val updatedAt: String,
     val version: Long,
     val exercises: List<WorkoutExerciseDto>,
+    val socialVisibility: String = "PRIVATE",
 )
+
+@Serializable
+data class UpdateWorkoutVisibilityDto(val visibility: String)
 
 @Serializable
 data class WorkoutExerciseDto(
@@ -106,4 +110,5 @@ data class WorkoutHistoryItemDto(
     val durationSeconds: Long,
     val exerciseCount: Int,
     val completedSetCount: Int,
+    val socialVisibility: String = "PRIVATE",
 )

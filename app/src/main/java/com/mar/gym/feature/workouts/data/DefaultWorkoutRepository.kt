@@ -18,6 +18,7 @@ import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
 import com.mar.gym.feature.workouts.model.WorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.math.BigDecimal
@@ -64,6 +65,18 @@ class DefaultWorkoutRepository(
         if (!workoutId.isUuid()) return invalid()
         mutationFailure()?.let { return WorkoutRepositoryResult.Failure(it) }
         return execute { api.complete(workoutId, etag.headerValue) }.mapDocument()
+    }
+
+    override suspend fun updateWorkoutVisibility(
+        workoutId: String,
+        visibility: WorkoutVisibility,
+        etag: WorkoutEtag,
+    ): WorkoutRepositoryResult<WorkoutDocument> {
+        if (!workoutId.isUuid()) return invalid()
+        mutationFailure()?.let { return WorkoutRepositoryResult.Failure(it) }
+        return execute {
+            api.updateVisibility(workoutId, etag.headerValue, UpdateWorkoutVisibilityDto(visibility.apiValue))
+        }.mapDocument()
     }
 
     override suspend fun discardWorkout(
@@ -129,6 +142,7 @@ class DefaultWorkoutRepository(
             updatedAt = updatedAt.toInstant() ?: return null,
             version = version,
             exercises = mapped,
+            socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
         )
     }
 
@@ -191,6 +205,7 @@ class DefaultWorkoutRepository(
             WorkoutHistoryItem(
                 item.id, item.title, start, completion, item.durationSeconds,
                 item.exerciseCount, item.completedSetCount,
+                WorkoutVisibility.fromApiValue(item.socialVisibility) ?: return null,
             )
         }
         if (items.map { it.id }.distinct().size != items.size) return null

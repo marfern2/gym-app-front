@@ -5,6 +5,7 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
 import java.math.BigDecimal
 import java.time.Instant
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 
 data class SocialAuthor(
     val userId: String,
@@ -35,6 +36,7 @@ data class SocialWorkoutSummary(
     val likesCount: Long = 0,
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 data class SocialWorkoutPage(
@@ -76,6 +78,7 @@ data class SocialWorkoutDetail(
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
     val shareUrl: String? = null,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 data class SocialComment(

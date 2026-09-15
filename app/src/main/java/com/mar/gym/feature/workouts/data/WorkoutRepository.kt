@@ -5,6 +5,7 @@ import com.mar.gym.feature.workouts.model.WorkoutDocument
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
 import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 
 sealed interface WorkoutRepositoryResult<out T> {
     data class Success<T>(val value: T) : WorkoutRepositoryResult<T>
@@ -23,6 +24,12 @@ interface WorkoutRepository {
 
     suspend fun completeWorkout(
         workoutId: String,
+        etag: WorkoutEtag,
+    ): WorkoutRepositoryResult<WorkoutDocument>
+
+    suspend fun updateWorkoutVisibility(
+        workoutId: String,
+        visibility: WorkoutVisibility,
         etag: WorkoutEtag,
     ): WorkoutRepositoryResult<WorkoutDocument>
 

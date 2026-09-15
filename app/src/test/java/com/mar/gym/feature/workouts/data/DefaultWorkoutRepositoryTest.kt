@@ -8,6 +8,7 @@ import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonArray
@@ -46,7 +47,27 @@ class DefaultWorkoutRepositoryTest {
         assertNull(set.weight)
         assertNull(set.reps)
         assertFalse(set.completed)
+        assertEquals(WorkoutVisibility.Private, document.detail.socialVisibility)
         assertEquals("/api/v1/workouts/active", server.takeRequest().path)
+    }
+
+    @Test
+    fun `maps explicit workout visibility and updates it with If-Match and canonical ETag`() = runBlocking {
+        server.enqueue(jsonResponse(detailJson(version = 8, socialVisibility = "PUBLIC"), etag = "\"8\""))
+
+        val result = repository().updateWorkoutVisibility(
+            WORKOUT_ID,
+            WorkoutVisibility.Public,
+            WorkoutEtag.fromVersion(7)!!,
+        ) as WorkoutRepositoryResult.Success
+
+        val request = server.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/v1/workouts/$WORKOUT_ID/visibility", request.path)
+        assertEquals("\"7\"", request.getHeader("If-Match"))
+        assertEquals("{\"visibility\":\"PUBLIC\"}", request.body.readUtf8())
+        assertEquals(WorkoutVisibility.Public, result.value.detail.socialVisibility)
+        assertEquals(8, result.value.etag.version)
     }
 
     @Test
@@ -58,10 +79,17 @@ class DefaultWorkoutRepositoryTest {
 
     @Test
     fun `starts empty without body and starts from routine with exact body`() = runBlocking {
-        server.enqueue(jsonResponse(detailJson(version = 0), etag = "\"0\"", code = 201))
+        server.enqueue(
+            jsonResponse(
+                detailJson(version = 0, socialVisibility = "PUBLIC"),
+                etag = "\"0\"",
+                code = 201,
+            ),
+        )
         server.enqueue(jsonResponse(detailJson(version = 0), etag = "\"0\"", code = 201))
 
-        assertTrue(repository().startWorkout() is WorkoutRepositoryResult.Success)
+        val emptyResult = repository().startWorkout() as WorkoutRepositoryResult.Success
+        assertEquals(WorkoutVisibility.Public, emptyResult.value.detail.socialVisibility)
         val empty = server.takeRequest()
         assertEquals("POST", empty.method)
         assertEquals("/api/v1/workouts", empty.path)
@@ -260,6 +288,7 @@ class DefaultWorkoutRepositoryTest {
         version: Int = 7,
         status: String = "ACTIVE",
         includeSecondSet: Boolean = false,
+        socialVisibility: String? = null,
     ): String {
         val completedAt = if (status == "COMPLETED") "\"2026-08-08T11:00:00Z\"" else "null"
         val second = if (includeSecondSet) "," + setJson(NEW_SET_ID, 2, targets = false) else ""
@@ -267,7 +296,7 @@ class DefaultWorkoutRepositoryTest {
             {"id":"$WORKOUT_ID","sourceRoutineId":null,"sourceRoutineName":null,
              "title":"Workout","notes":null,"status":"$status","startedAt":"2026-08-08T10:00:00Z",
              "completedAt":$completedAt,"durationSeconds":3600,"createdAt":"2026-08-08T10:00:00Z",
-             "updatedAt":"2026-08-08T11:00:00Z","version":$version,"exercises":[{
+             "updatedAt":"2026-08-08T11:00:00Z","version":$version${socialVisibility?.let { ",\"socialVisibility\":\"$it\"" }.orEmpty()},"exercises":[{
                "id":"$EXERCISE_ID","sourceExerciseTemplateId":"$TEMPLATE_ID",
                "exerciseNameSnapshot":"Press","exerciseTypeSnapshot":"WEIGHT_REPS",
                "equipmentSnapshot":"BARBELL","position":1,"supersetGroup":null,"notes":null,"restSeconds":90,

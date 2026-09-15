@@ -8,14 +8,17 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.feature.profile.model.PrivateProfile
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfileActivityPoint
 import com.mar.gym.feature.profile.model.ProfilePrivacy
+import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Instant
@@ -37,6 +40,24 @@ class ProfileScreenTest {
         composeRule.onNodeWithText("Me gusta").assertDoesNotExist()
     }
 
+    @Test fun ownCompletedWorkoutOpensItsDetail() {
+        var opened: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ProfileScreen(
+                    state = contentState(),
+                    onEditProfile = {}, onShare = {}, onSettings = {}, onSelectMetric = {},
+                    onSelectRange = {}, onOpenStatistics = {}, onOpenMeasurements = {},
+                    onOpenExercises = {}, onOpenCalendar = {}, onRetry = {},
+                    onOpenWorkout = { opened = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("completed_workout_$WORKOUT_ID").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(WORKOUT_ID, opened) }
+    }
+
     @Test fun publicProfileOffersShare() {
         var shared = false
         setProfile(contentState(), onShare = { shared = true })
@@ -55,6 +76,36 @@ class ProfileScreenTest {
         setProfile(contentState(username = null))
         composeRule.onNodeWithTag("profile_share").assertDoesNotExist()
         composeRule.onNodeWithText("Añade un nombre de usuario para poder compartir tu perfil.").assertIsDisplayed()
+    }
+
+    @Test fun profileEditorShowsAndChangesDefaultWorkoutVisibility() {
+        var selected: WorkoutVisibility? = null
+        val profile = contentState().profile!!.value
+        composeRule.setContent {
+            GYmAppTheme {
+                ProfileEditScreen(
+                    state = contentState().copy(
+                        editing = true,
+                        draft = PrivateProfileDraft.from(profile),
+                    ),
+                    onBack = {},
+                    onDisplayNameChange = {},
+                    onUsernameChange = {},
+                    onPrivacyChange = {},
+                    onDefaultWorkoutVisibilityChange = { selected = it },
+                    onSave = {},
+                    onReload = {},
+                    onSaved = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Visibilidad predeterminada de entrenamientos").assertIsDisplayed()
+        composeRule.onNodeWithTag("default_workout_visibility_PUBLIC").performClick()
+        composeRule.runOnIdle { assertEquals(WorkoutVisibility.Public, selected) }
+        composeRule.onNodeWithText(
+            "Se aplicará a los entrenamientos nuevos. No cambia entrenamientos anteriores.",
+        ).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun durationVolumeAndRepetitionsSelectorChangesState() {

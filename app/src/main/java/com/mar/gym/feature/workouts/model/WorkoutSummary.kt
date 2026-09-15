@@ -15,6 +15,7 @@ data class WorkoutSummary(
     val volumeKgReps: BigDecimal,
     val completedSetCount: Int,
     val exercises: List<WorkoutExerciseSummary>,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 data class WorkoutExerciseSummary(
@@ -38,6 +39,7 @@ fun WorkoutDraft.toSummary(
     startedAt: Instant,
     now: Instant,
     sourceRoutineName: String? = null,
+    socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 ): WorkoutSummary {
     val exerciseSummaries = exercises.map { exercise ->
         WorkoutExerciseSummary(
@@ -62,6 +64,7 @@ fun WorkoutDraft.toSummary(
         completedAt = null,
         durationSeconds = Duration.between(startedAt, now).seconds.coerceAtLeast(0),
         exercises = exerciseSummaries,
+        socialVisibility = socialVisibility,
     )
 }
 
@@ -89,6 +92,7 @@ fun WorkoutDetail.toSummary(): WorkoutSummary {
         completedAt = completedAt,
         durationSeconds = durationSeconds,
         exercises = exerciseSummaries,
+        socialVisibility = socialVisibility,
     )
 }
 
@@ -99,6 +103,7 @@ private fun summary(
     completedAt: Instant?,
     durationSeconds: Long,
     exercises: List<WorkoutExerciseSummary>,
+    socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 ): WorkoutSummary {
     val completedSets = exercises.flatMap(WorkoutExerciseSummary::completedSets)
     val volume = completedSets.fold(BigDecimal.ZERO) { total, set ->
@@ -115,5 +120,6 @@ private fun summary(
         volumeKgReps = volume,
         completedSetCount = completedSets.size,
         exercises = exercises,
+        socialVisibility = socialVisibility,
     )
 }

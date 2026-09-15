@@ -226,6 +226,13 @@ class MainActivity : ComponentActivity() {
         val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
 
         val finishCompletedWorkout: () -> Unit = {
+            val completed = activeWorkoutState as? com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState.Completed
+            completed?.data?.draft?.workoutId?.let { workoutId ->
+                homeViewModel().refreshAfterOwnVisibilityChange(
+                    workoutId,
+                    completed.data.socialVisibility,
+                )
+            }
             activeWorkoutViewModel().clearCompletedWorkout()
             profileViewModel().refresh()
             deep = null
@@ -476,6 +483,11 @@ class MainActivity : ComponentActivity() {
                                 socialListParentUsername = null
                                 deep = DEEP_SOCIAL_LIST
                             },
+                            onOpenWorkout = { workoutId ->
+                                socialWorkoutId = workoutId
+                                socialWorkoutOrigin = TAB_PROFILE
+                                deep = DEEP_SOCIAL_WORKOUT
+                            },
                         )
                     }
                 }
@@ -692,6 +704,8 @@ class MainActivity : ComponentActivity() {
                 DEEP_WORKOUT_CONGRATS -> WorkoutCongratsRoute(
                     state = activeWorkoutState,
                     onDone = finishCompletedWorkout,
+                    onVisibilityChange = activeWorkoutViewModel()::updateVisibility,
+                    onReload = activeWorkoutViewModel()::reloadVisibility,
                 )
                 DEEP_WORKOUT_PICKER -> {
                     val pickerViewModel = remember(workoutPickerInitialIds) {
@@ -832,7 +846,9 @@ class MainActivity : ComponentActivity() {
                 }
                 DEEP_SOCIAL_WORKOUT -> socialWorkoutId?.let { workoutId ->
                     SocialWorkoutDetailRoute(
-                        viewModel = remember(workoutId) { socialWorkoutDetailViewModel(workoutId) },
+                        viewModel = remember(workoutId, user.id) {
+                            socialWorkoutDetailViewModel(workoutId, user.id)
+                        },
                         engagementViewModel = socialEngagementViewModel(user.id),
                         onBack = {
                             deep = socialWorkoutOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
@@ -849,6 +865,10 @@ class MainActivity : ComponentActivity() {
                             deep = DEEP_SOCIAL_COMMENTS
                         },
                         onShareWorkout = ::shareWorkout,
+                        onVisibilityChanged = { changedWorkoutId, visibility ->
+                            homeViewModel().refreshAfterOwnVisibilityChange(changedWorkoutId, visibility)
+                            profileViewModel().refresh()
+                        },
                     )
                 }
                 DEEP_SHARED_ROUTINE -> sharedRoutineId?.let { shareId ->
@@ -1034,10 +1054,18 @@ class MainActivity : ComponentActivity() {
             ),
         )["public-profile-$username", PublicProfileViewModel::class.java]
 
-    private fun socialWorkoutDetailViewModel(workoutId: String): SocialWorkoutDetailViewModel =
+    private fun socialWorkoutDetailViewModel(
+        workoutId: String,
+        currentUserId: String,
+    ): SocialWorkoutDetailViewModel =
         ViewModelProvider(
             userSessionViewModels,
-            SocialWorkoutDetailViewModelFactory(workoutId, AppContainer.socialFeedRepository),
+            SocialWorkoutDetailViewModelFactory(
+                workoutId,
+                AppContainer.socialFeedRepository,
+                currentUserId,
+                AppContainer.workoutRepository,
+            ),
         )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 
     private fun sharedRoutineViewModel(shareId: String): SharedRoutineViewModel = ViewModelProvider(

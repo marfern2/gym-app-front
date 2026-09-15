@@ -39,6 +39,7 @@ import com.mar.gym.feature.workouts.model.WorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.feature.workouts.rest.RestTimerController
 import com.mar.gym.feature.workouts.rest.RestTimerNotifier
@@ -88,6 +89,79 @@ class WorkoutViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(ROUTINE_ID), repository.startedWith)
+    }
+
+    @Test
+    fun `active visibility loads changes both ways adopts ETag and preserves draft`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(
+                document(visibility = WorkoutVisibility.Private),
+            )
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+        assertEquals(WorkoutVisibility.Private, viewModel.uiState.value.data.socialVisibility)
+        viewModel.updateTitle("Local title")
+
+        repository.visibilityResult = WorkoutRepositoryResult.Success(
+            document(version = 1, visibility = WorkoutVisibility.Public),
+        )
+        viewModel.updateVisibility(WorkoutVisibility.Public)
+        advanceUntilIdle()
+
+        assertEquals(WorkoutVisibility.Public, viewModel.uiState.value.data.socialVisibility)
+        assertEquals(1L, viewModel.uiState.value.data.etag?.version)
+        assertEquals("Local title", viewModel.uiState.value.data.draft?.title)
+        assertEquals(0L, repository.visibilityRequests.single().second.version)
+
+        repository.visibilityResult = WorkoutRepositoryResult.Success(
+            document(version = 2, visibility = WorkoutVisibility.Private),
+        )
+        viewModel.updateVisibility(WorkoutVisibility.Private)
+        advanceUntilIdle()
+
+        assertEquals(WorkoutVisibility.Private, viewModel.uiState.value.data.socialVisibility)
+        assertEquals(2L, viewModel.uiState.value.data.etag?.version)
+        assertEquals(listOf(0L, 1L), repository.visibilityRequests.map { it.second.version })
+    }
+
+    @Test
+    fun `visibility failure rolls back safely and stale is exposed without retry`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            visibilityResult = failure(409, "WORKOUT_VERSION_CONFLICT")
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.updateVisibility(WorkoutVisibility.Public)
+        advanceUntilIdle()
+
+        assertEquals(WorkoutVisibility.Private, viewModel.uiState.value.data.socialVisibility)
+        assertEquals(WorkoutUiErrorKind.Conflict, viewModel.uiState.value.data.visibilityError?.kind)
+        assertEquals(1, repository.visibilityRequests.size)
+        assertFalse(viewModel.uiState.value.data.visibilityChanging)
+    }
+
+    @Test
+    fun `visibility maps network not found and invalid canonical response safely`() = runTest {
+        val failures = listOf(
+            WorkoutRepositoryResult.Failure(NetworkFailure.Network()) to WorkoutUiErrorKind.Network,
+            failure(404, "WORKOUT_NOT_FOUND") to WorkoutUiErrorKind.NotFound,
+            WorkoutRepositoryResult.Success(
+                document(version = 1, visibility = WorkoutVisibility.Private),
+            ) to WorkoutUiErrorKind.InvalidResponse,
+        )
+
+        failures.forEach { (result, expected) ->
+            val repository = FakeWorkoutRepository().apply { visibilityResult = result }
+            val viewModel = viewModel(repository)
+            advanceUntilIdle()
+            viewModel.updateVisibility(WorkoutVisibility.Public)
+            advanceUntilIdle()
+
+            assertEquals(expected, viewModel.uiState.value.data.visibilityError?.kind)
+            assertEquals(WorkoutVisibility.Private, viewModel.uiState.value.data.socialVisibility)
+        }
     }
 
     @Test
@@ -599,11 +673,15 @@ class WorkoutViewModelTest {
         var startResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document())
         var updateResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document(version = 1))
         var completeResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document(status = WorkoutStatus.Completed))
+        var visibilityResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(
+            document(version = 1).let { it.copy(detail = it.detail.copy(socialVisibility = WorkoutVisibility.Public)) },
+        )
         var discardResult: WorkoutRepositoryResult<Unit> = WorkoutRepositoryResult.Success(Unit)
         var completeGate: CompletableDeferred<WorkoutRepositoryResult<WorkoutDocument>>? = null
         val startedWith = mutableListOf<String?>()
         val completeEtags = mutableListOf<WorkoutEtag>()
         val discardEtags = mutableListOf<WorkoutEtag>()
+        val visibilityRequests = mutableListOf<Pair<WorkoutVisibility, WorkoutEtag>>()
         var updateCalls = 0
 
         override suspend fun getActiveWorkout() = activeResult
@@ -619,6 +697,14 @@ class WorkoutViewModelTest {
         override suspend fun completeWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<WorkoutDocument> {
             completeEtags += etag
             return completeGate?.await() ?: completeResult
+        }
+        override suspend fun updateWorkoutVisibility(
+            workoutId: String,
+            visibility: WorkoutVisibility,
+            etag: WorkoutEtag,
+        ): WorkoutRepositoryResult<WorkoutDocument> {
+            visibilityRequests += visibility to etag
+            return visibilityResult
         }
         override suspend fun discardWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<Unit> {
             discardEtags += etag
@@ -675,12 +761,13 @@ class WorkoutViewModelTest {
             version: Long = 0,
             title: String = "Workout",
             status: WorkoutStatus = WorkoutStatus.Active,
+            visibility: WorkoutVisibility = WorkoutVisibility.Private,
         ): WorkoutDocument {
             val started = Instant.parse("2026-08-08T10:00:00Z")
             val detail = WorkoutDetail(
                 WORKOUT_ID, null, null, title, null, status, started,
                 if (status == WorkoutStatus.Completed) started.plusSeconds(600) else null,
-                600, started, started.plusSeconds(600), version, emptyList(),
+                600, started, started.plusSeconds(600), version, emptyList(), visibility,
             )
             return WorkoutDocument(detail, WorkoutEtag.fromVersion(version)!!)
         }

@@ -25,6 +25,7 @@ data class FeedWorkoutSummaryDto(
     val likesCount: Long = 0,
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
+    val socialVisibility: String = "PRIVATE",
 )
 
 @Serializable
@@ -80,6 +81,7 @@ data class SocialWorkoutDetailDto(
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
     val shareUrl: String? = null,
+    val socialVisibility: String = "PRIVATE",
 )
 
 @Serializable

@@ -21,6 +21,7 @@ import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.retainActualsSupportedBy
 import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.feature.workouts.model.validate
@@ -77,6 +78,67 @@ class ActiveWorkoutViewModel(
     fun startEmpty() = start(null)
 
     fun startFromRoutine(routineId: String) = start(routineId)
+
+    fun updateVisibility(visibility: WorkoutVisibility) {
+        val state = _uiState.value
+        if (state !is ActiveWorkoutUiState.Active && state !is ActiveWorkoutUiState.Error &&
+            state !is ActiveWorkoutUiState.Completed
+        ) return
+        val data = state.data
+        val draft = data.draft ?: return
+        val etag = data.etag ?: return
+        if (data.visibilityChanging || data.socialVisibility == visibility) return
+        val pendingData = data.copy(visibilityChanging = true, visibilityError = null)
+        _uiState.value = when (state) {
+            is ActiveWorkoutUiState.Completed -> state.copy(data = pendingData)
+            else -> ActiveWorkoutUiState.Active(pendingData)
+        }
+        viewModelScope.launch {
+            when (val result = repository.updateWorkoutVisibility(draft.workoutId, visibility, etag)) {
+                is WorkoutRepositoryResult.Success -> {
+                    val document = result.value
+                    val expectedStatus = if (state is ActiveWorkoutUiState.Completed) {
+                        WorkoutStatus.Completed
+                    } else {
+                        WorkoutStatus.Active
+                    }
+                    if (document.detail.id != draft.workoutId || document.detail.status != expectedStatus ||
+                        document.detail.socialVisibility != visibility
+                    ) {
+                        val failedData = data.copy(
+                            visibilityChanging = false,
+                            visibilityError = WorkoutUiError(WorkoutUiErrorKind.InvalidResponse),
+                        )
+                        _uiState.value = if (state is ActiveWorkoutUiState.Completed) {
+                            state.copy(data = failedData)
+                        } else ActiveWorkoutUiState.Active(failedData)
+                    } else {
+                        val updatedData = data.copy(
+                            etag = document.etag,
+                            socialVisibility = document.detail.socialVisibility,
+                            visibilityChanging = false,
+                            visibilityError = null,
+                        )
+                        _uiState.value = if (state is ActiveWorkoutUiState.Completed) {
+                            state.copy(
+                                data = updatedData,
+                                summary = state.summary.copy(socialVisibility = visibility),
+                            )
+                        } else ActiveWorkoutUiState.Active(updatedData)
+                    }
+                }
+                is WorkoutRepositoryResult.Failure -> {
+                    val failedData = data.copy(
+                        visibilityChanging = false,
+                        visibilityError = result.error.toWorkoutUiError(),
+                    )
+                    _uiState.value = if (state is ActiveWorkoutUiState.Completed) {
+                        state.copy(data = failedData)
+                    } else ActiveWorkoutUiState.Active(failedData)
+                }
+            }
+        }
+    }
 
     private fun start(routineId: String?) {
         loadJob?.cancel()
@@ -355,7 +417,17 @@ class ActiveWorkoutViewModel(
                     retryAction = null
                     manualClockState.clear()
                     restTimerController.cancel()
-                    _uiState.value = ActiveWorkoutUiState.Completed(summary = detail.toSummary())
+                    _uiState.value = ActiveWorkoutUiState.Completed(
+                        data = data.copy(
+                            draft = canonicalDraft,
+                            etag = completed.value.etag,
+                            socialVisibility = detail.socialVisibility,
+                            visibilityChanging = false,
+                            visibilityError = null,
+                            hasUnsavedChanges = false,
+                        ),
+                        summary = detail.toSummary(),
+                    )
                 }
             }
         }
@@ -391,6 +463,46 @@ class ActiveWorkoutViewModel(
     }
 
     fun reloadDiscardingLocalChanges() = loadActive()
+    fun reloadVisibility() {
+        val completed = _uiState.value as? ActiveWorkoutUiState.Completed
+        val workoutId = completed?.data?.draft?.workoutId
+        if (completed == null || workoutId == null) {
+            loadActive()
+            return
+        }
+        _uiState.value = completed.copy(
+            data = completed.data.copy(visibilityChanging = true, visibilityError = null),
+        )
+        viewModelScope.launch {
+            _uiState.value = when (val result = repository.getWorkout(workoutId)) {
+                is WorkoutRepositoryResult.Failure -> completed.copy(
+                    data = completed.data.copy(
+                        visibilityChanging = false,
+                        visibilityError = result.error.toWorkoutUiError(),
+                    ),
+                )
+                is WorkoutRepositoryResult.Success -> {
+                    val document = result.value
+                    if (document.detail.status != WorkoutStatus.Completed || document.detail.id != workoutId) {
+                        completed.copy(
+                            data = completed.data.copy(
+                                visibilityChanging = false,
+                                visibilityError = WorkoutUiError(WorkoutUiErrorKind.InvalidResponse),
+                            ),
+                        )
+                    } else completed.copy(
+                        data = completed.data.copy(
+                            etag = document.etag,
+                            socialVisibility = document.detail.socialVisibility,
+                            visibilityChanging = false,
+                            visibilityError = null,
+                        ),
+                        summary = document.detail.toSummary(),
+                    )
+                }
+            }
+        }
+    }
     fun retry() = retryAction?.invoke()
     fun retryPreviousPerformance() = _uiState.value.data.draft?.let(::loadPreviousPerformance)
 
@@ -479,6 +591,7 @@ class ActiveWorkoutViewModel(
                 etag = document.etag,
                 startedAt = document.detail.startedAt,
                 sourceRoutineName = document.detail.sourceRoutineName,
+                socialVisibility = document.detail.socialVisibility,
             ),
         )
         loadPreviousPerformance(draft)

@@ -12,6 +12,7 @@ import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.social.model.SuggestedAthlete
 import com.mar.gym.feature.social.ui.SocialUiError
 import com.mar.gym.feature.social.ui.toSocialUiError
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,6 +86,18 @@ class HomeViewModel(
         attemptedModes += mode
         loadFeed(mode, refresh = true)
         if (mode == HomeFeedMode.Home) loadSuggestions(clearCurrent = false)
+    }
+
+    fun refreshAfterOwnVisibilityChange(workoutId: String, visibility: WorkoutVisibility) {
+        if (visibility == WorkoutVisibility.Private) {
+            updateFeed(HomeFeedMode.Home) { feed ->
+                feed.copy(workouts = feed.workouts.filterNot { it.workoutId == workoutId })
+            }
+            updateFeed(HomeFeedMode.Discover) { feed ->
+                feed.copy(workouts = feed.workouts.filterNot { it.workoutId == workoutId })
+            }
+        }
+        attemptedModes.forEach { mode -> loadFeed(mode, refresh = true) }
     }
 
     fun loadMore() {

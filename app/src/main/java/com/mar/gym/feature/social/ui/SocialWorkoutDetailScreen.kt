@@ -12,18 +12,29 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.social.model.SocialWorkoutExercise
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetSummary
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.feature.workouts.ui.WorkoutVisibilityDialog
+import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
+import com.mar.gym.feature.workouts.ui.WorkoutUiErrorKind
+import com.mar.gym.feature.workouts.ui.messageResource
 import com.mar.gym.feature.workouts.ui.formatWorkoutSetResult
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
@@ -41,9 +52,16 @@ fun SocialWorkoutDetailRoute(
     onOpenProfile: (String) -> Unit,
     onOpenComments: (String) -> Unit,
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
+    onVisibilityChanged: (String, WorkoutVisibility) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
+    val content = state as? SocialWorkoutDetailUiState.Content
+    LaunchedEffect(content?.visibilityChangeVersion) {
+        if (content != null && content.visibilityChangeVersion > 0) {
+            onVisibilityChanged(content.workout.workoutId, content.workout.socialVisibility)
+        }
+    }
     SocialWorkoutDetailScreen(
         state = state,
         onBack = onBack,
@@ -58,6 +76,8 @@ fun SocialWorkoutDetailRoute(
             onOpenComments(workout.workoutId)
         },
         onShareWorkout = onShareWorkout,
+        onVisibilityChange = viewModel::updateVisibility,
+        onReloadVisibility = viewModel::reloadOwnerDocument,
     )
 }
 
@@ -71,7 +91,10 @@ fun SocialWorkoutDetailScreen(
     onToggleLike: (SocialWorkoutDetail) -> Unit = {},
     onOpenComments: (SocialWorkoutDetail) -> Unit = {},
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
+    onVisibilityChange: (WorkoutVisibility) -> Unit = {},
+    onReloadVisibility: () -> Unit = {},
 ) {
+    var visibilityDialogOpen by remember { mutableStateOf(false) }
     Scaffold(topBar = { AppTopBar("Entrenamiento", onBack = onBack) }) { padding ->
         when (state) {
             SocialWorkoutDetailUiState.Loading -> LoadingState(
@@ -117,6 +140,19 @@ fun SocialWorkoutDetailScreen(
                                 onClick = { displayedWorkout.author.username?.let(onOpenProfile) },
                             )
                             Text(displayedWorkout.title, style = MaterialTheme.typography.headlineSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                WorkoutVisibilityIndicator(
+                                    displayedWorkout.socialVisibility,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (state.ownerDocument != null) {
+                                    TextButton(
+                                        onClick = { visibilityDialogOpen = true },
+                                        enabled = !state.visibilityChanging,
+                                        modifier = Modifier.testTag("completed_workout_visibility_action"),
+                                    ) { Text("Cambiar") }
+                                }
+                            }
                             displayedWorkout.notes?.let {
                                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -133,6 +169,7 @@ fun SocialWorkoutDetailScreen(
                                 onCommentsClick = { onOpenComments(displayedWorkout) },
                                 likeError = engagementState.likeErrors[displayedWorkout.workoutId]?.workoutActionMessage(),
                                 onShare = { onShareWorkout(displayedWorkout) },
+                                canShare = displayedWorkout.socialVisibility == WorkoutVisibility.Public,
                             )
                         }
                     }
@@ -143,6 +180,18 @@ fun SocialWorkoutDetailScreen(
                 }
             }
         }
+    }
+    val content = state as? SocialWorkoutDetailUiState.Content
+    if (visibilityDialogOpen && content?.ownerDocument != null) {
+        WorkoutVisibilityDialog(
+            visibility = content.workout.socialVisibility,
+            changing = content.visibilityChanging,
+            errorMessage = content.visibilityError?.let { stringResource(it.messageResource()) },
+            conflict = content.visibilityError?.kind == WorkoutUiErrorKind.Conflict,
+            onSelect = onVisibilityChange,
+            onReload = onReloadVisibility,
+            onDismiss = { visibilityDialogOpen = false },
+        )
     }
 }
 

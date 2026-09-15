@@ -30,6 +30,7 @@ import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.feature.progress.model.PreviousExercisePerformance
@@ -49,6 +50,37 @@ import org.junit.Test
 
 class WorkoutScreensTest {
     @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun activeWorkoutShowsCurrentVisibilityAndRoutesPrivateSelection() {
+        var selected: WorkoutVisibility? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(
+                        ActiveWorkoutData(
+                            draft = WorkoutDraft("workout", "Fuerza"),
+                            socialVisibility = WorkoutVisibility.Public,
+                        ),
+                    ),
+                    clock = Clock.systemUTC(),
+                    onBack = {}, onOpenPicker = {}, onStartEmpty = {},
+                    onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> },
+                    onUpdateSet = { _, _, _ -> }, onSave = {}, onFinish = {}, onDiscard = {},
+                    onReload = {}, onRetry = {}, onVisibilityChange = { selected = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("active_workout_menu").performClick()
+        composeRule.onNodeWithTag("active_workout_visibility_action").performClick()
+        composeRule.onNodeWithTag("workout_visibility_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("workout_visibility_option_PUBLIC").assertIsSelected()
+        composeRule.onNodeWithTag("workout_visibility_option_PRIVATE").performClick()
+        composeRule.runOnIdle { assertEquals(WorkoutVisibility.Private, selected) }
+    }
 
     @Test
     fun activeRestTimerShowsMinimalControlsAndRoutesActions() {

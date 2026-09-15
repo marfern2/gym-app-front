@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -52,6 +53,7 @@ import com.mar.gym.feature.routines.model.SetType
 import com.mar.gym.feature.workouts.model.WorkoutExerciseSummary
 import com.mar.gym.feature.workouts.model.WorkoutSetSummary
 import com.mar.gym.feature.workouts.model.WorkoutSummary
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.ui.components.PrimaryButton
@@ -156,11 +158,12 @@ fun SaveWorkoutScreen(
                 delay(1_000)
             }
         }
-        val summary = remember(draft, data.sourceRoutineName, startedAt, elapsed) {
+        val summary = remember(draft, data.sourceRoutineName, data.socialVisibility, startedAt, elapsed) {
             draft.toSummary(
                 startedAt = startedAt,
                 now = startedAt.plusSeconds(elapsed),
                 sourceRoutineName = data.sourceRoutineName,
+                socialVisibility = data.socialVisibility,
             )
         }
         SummaryList(
@@ -204,6 +207,8 @@ fun SaveWorkoutScreen(
 fun WorkoutCongratsRoute(
     state: ActiveWorkoutUiState,
     onDone: () -> Unit,
+    onVisibilityChange: (WorkoutVisibility) -> Unit = {},
+    onReload: () -> Unit = {},
 ) {
     BackHandler(onBack = onDone)
     val summary = (state as? ActiveWorkoutUiState.Completed)?.summary
@@ -211,14 +216,24 @@ fun WorkoutCongratsRoute(
         LaunchedEffect(Unit) { onDone() }
         return
     }
-    WorkoutCongratsScreen(summary = summary, onOk = onDone)
+    WorkoutCongratsScreen(
+        summary = summary,
+        data = state.data,
+        onOk = onDone,
+        onVisibilityChange = onVisibilityChange,
+        onReload = onReload,
+    )
 }
 
 @Composable
 fun WorkoutCongratsScreen(
     summary: WorkoutSummary,
     onOk: () -> Unit,
+    data: ActiveWorkoutData = ActiveWorkoutData(socialVisibility = summary.socialVisibility),
+    onVisibilityChange: (WorkoutVisibility) -> Unit = {},
+    onReload: () -> Unit = {},
 ) {
+    var visibilityDialogOpen by remember { mutableStateOf(false) }
     Scaffold(containerColor = InkDark) { padding ->
         SummaryList(
             summary = summary,
@@ -256,6 +271,11 @@ fun WorkoutCongratsScreen(
                         color = InkDarkOnSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
+                    TextButton(
+                        onClick = { visibilityDialogOpen = true },
+                        enabled = !data.visibilityChanging,
+                        modifier = Modifier.testTag("completed_workout_visibility_action"),
+                    ) { Text("Cambiar visibilidad") }
                 }
             },
             footer = {
@@ -266,6 +286,17 @@ fun WorkoutCongratsScreen(
                 )
                 Spacer(Modifier.height(20.dp))
             },
+        )
+    }
+    if (visibilityDialogOpen) {
+        WorkoutVisibilityDialog(
+            visibility = summary.socialVisibility,
+            changing = data.visibilityChanging,
+            errorMessage = data.visibilityError?.let { stringResource(it.messageResource()) },
+            conflict = data.visibilityError?.kind == WorkoutUiErrorKind.Conflict,
+            onSelect = onVisibilityChange,
+            onReload = onReload,
+            onDismiss = { visibilityDialogOpen = false },
         )
     }
 }
@@ -303,6 +334,7 @@ private fun SummaryList(
                     style = MaterialTheme.typography.bodyMedium,
                     color = InkDarkOnSurfaceVariant,
                 )
+                WorkoutVisibilityIndicator(summary.socialVisibility, color = InkDarkOnSurfaceVariant)
             }
         }
         item {

@@ -4,6 +4,7 @@ import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutEtag
 import com.mar.gym.feature.workouts.model.WorkoutSummary
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import java.time.Instant
 
@@ -18,6 +19,9 @@ data class ActiveWorkoutData(
     val previousPerformance: List<PreviousPerformanceItem> = emptyList(),
     val previousPerformanceLoading: Boolean = false,
     val previousPerformanceError: WorkoutUiError? = null,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val visibilityChanging: Boolean = false,
+    val visibilityError: WorkoutUiError? = null,
 )
 
 sealed interface ActiveWorkoutUiState {
@@ -59,6 +63,7 @@ internal fun NetworkFailure.toWorkoutUiError(): WorkoutUiError {
         is NetworkFailure.Unexpected -> WorkoutUiErrorKind.Unknown
         is NetworkFailure.HttpUnknown -> when {
             statusCode == 401 -> WorkoutUiErrorKind.Unauthorized
+            statusCode == 409 -> WorkoutUiErrorKind.Conflict
             statusCode == 404 -> WorkoutUiErrorKind.NotFound
             statusCode >= 500 -> WorkoutUiErrorKind.Server
             else -> WorkoutUiErrorKind.Unknown
@@ -69,6 +74,7 @@ internal fun NetworkFailure.toWorkoutUiError(): WorkoutUiError {
             problem.errorCode == "ROUTINE_ARCHIVED" -> WorkoutUiErrorKind.RoutineArchived
             problem.errorCode == "WORKOUT_ALREADY_COMPLETED" -> WorkoutUiErrorKind.AlreadyCompleted
             statusCode == 401 -> WorkoutUiErrorKind.Unauthorized
+            statusCode == 409 -> WorkoutUiErrorKind.Conflict
             statusCode == 404 -> WorkoutUiErrorKind.NotFound
             statusCode == 400 -> WorkoutUiErrorKind.Validation
             statusCode >= 500 -> WorkoutUiErrorKind.Server

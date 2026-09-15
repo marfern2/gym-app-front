@@ -40,6 +40,8 @@ import coil3.compose.SubcomposeAsyncImageContent
 import com.mar.gym.feature.social.model.SocialAuthor
 import com.mar.gym.feature.social.model.SocialExerciseSummary
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.ZoneId
@@ -91,7 +93,10 @@ fun SocialWorkoutCard(
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(workout.title, style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(workout.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    WorkoutVisibilityIndicator(workout.socialVisibility)
+                }
                 workout.notes?.takeIf(String::isNotBlank)?.let {
                     Text(
                         text = it,
@@ -120,6 +125,7 @@ fun SocialWorkoutCard(
                 onCommentsClick = { onCommentsClick(workout.workoutId) },
                 likeError = likeError,
                 onShare = { onShare(workout.workoutId) },
+                canShare = workout.socialVisibility == WorkoutVisibility.Public,
             )
         }
     }
@@ -136,6 +142,7 @@ internal fun SocialWorkoutActions(
     modifier: Modifier = Modifier,
     likeError: String? = null,
     onShare: () -> Unit = {},
+    canShare: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -172,15 +179,17 @@ internal fun SocialWorkoutActions(
                 modifier = Modifier.testTag("social_comments_count"),
             )
             Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = onShare,
-                modifier = Modifier.testTag("social_share_action"),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Share,
-                    contentDescription = "Compartir entrenamiento",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (canShare) {
+                IconButton(
+                    onClick = onShare,
+                    modifier = Modifier.testTag("social_share_action"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "Compartir entrenamiento",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         likeError?.let {

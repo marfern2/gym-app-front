@@ -1,6 +1,7 @@
 package com.mar.gym.feature.profile.model
 
 import com.mar.gym.core.network.VersionedDocument
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.time.Instant
 
 enum class ProfilePrivacy(val apiValue: String) {
@@ -20,6 +21,7 @@ data class PrivateProfile(
     val updatedAt: Instant,
     val version: Long,
     val privacy: ProfilePrivacy,
+    val defaultWorkoutVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 typealias PrivateProfileDocument = VersionedDocument<PrivateProfile>
@@ -28,12 +30,14 @@ data class PrivateProfileDraft(
     val displayName: String,
     val username: String,
     val privacy: ProfilePrivacy,
+    val defaultWorkoutVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 ) {
     companion object {
         fun from(profile: PrivateProfile) = PrivateProfileDraft(
             displayName = profile.displayName,
             username = profile.username.orEmpty(),
             privacy = profile.privacy,
+            defaultWorkoutVisibility = profile.defaultWorkoutVisibility,
         )
     }
 }

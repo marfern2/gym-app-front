@@ -10,10 +10,12 @@ import kotlinx.serialization.Serializable
     val updatedAt: String,
     val version: Long,
     val privacy: String = "PRIVATE",
+    val defaultWorkoutVisibility: String = "PRIVATE",
 )
 
 @Serializable data class UpdatePrivateProfileDto(
     val displayName: String?,
     val username: String?,
     val privacy: String,
+    val defaultWorkoutVisibility: String,
 )

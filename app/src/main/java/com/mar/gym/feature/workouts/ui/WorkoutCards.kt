@@ -85,6 +85,10 @@ fun ActiveWorkoutCard(
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
+                    WorkoutVisibilityIndicator(
+                        data.socialVisibility,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),

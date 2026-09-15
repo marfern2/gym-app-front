@@ -11,6 +11,15 @@ import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import com.mar.gym.feature.social.model.SocialWorkoutPage
 import com.mar.gym.feature.social.model.SuggestedAthletePage
 import com.mar.gym.feature.system.MainDispatcherRule
+import com.mar.gym.feature.workouts.data.WorkoutRepository
+import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
+import com.mar.gym.feature.workouts.model.WorkoutDetail
+import com.mar.gym.feature.workouts.model.WorkoutDocument
+import com.mar.gym.feature.workouts.model.WorkoutDraft
+import com.mar.gym.feature.workouts.model.WorkoutEtag
+import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
+import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -45,6 +54,48 @@ class SocialWorkoutDetailViewModelTest {
         assertEquals(listOf(WORKOUT_ID, WORKOUT_ID), repository.ids)
     }
 
+    @Test fun `owner completed workout changes visibility and adopts new ETag`() = runTest {
+        val workouts = FakeWorkoutRepository().apply {
+            updateResult = WorkoutRepositoryResult.Success(document(1, WorkoutVisibility.Public))
+        }
+        val viewModel = SocialWorkoutDetailViewModel(
+            WORKOUT_ID,
+            FakeFeedRepository(),
+            USER_ID,
+            workouts,
+        )
+        advanceUntilIdle()
+        val loaded = viewModel.uiState.value as SocialWorkoutDetailUiState.Content
+        assertEquals(WorkoutVisibility.Private, loaded.workout.socialVisibility)
+        assertTrue(loaded.ownerDocument != null)
+
+        viewModel.updateVisibility(WorkoutVisibility.Public)
+        advanceUntilIdle()
+
+        val updated = viewModel.uiState.value as SocialWorkoutDetailUiState.Content
+        assertEquals(WorkoutVisibility.Public, updated.workout.socialVisibility)
+        assertEquals(1L, updated.ownerDocument?.etag?.version)
+        assertEquals(0L, workouts.requests.single().second.version)
+        assertEquals(1L, updated.visibilityChangeVersion)
+    }
+
+    @Test fun `foreign workout has no owner document or visibility mutation`() = runTest {
+        val workouts = FakeWorkoutRepository()
+        val viewModel = SocialWorkoutDetailViewModel(
+            WORKOUT_ID,
+            FakeFeedRepository(),
+            OTHER_USER_ID,
+            workouts,
+        )
+        advanceUntilIdle()
+
+        val content = viewModel.uiState.value as SocialWorkoutDetailUiState.Content
+        assertEquals(null, content.ownerDocument)
+        viewModel.updateVisibility(WorkoutVisibility.Public)
+        advanceUntilIdle()
+        assertTrue(workouts.requests.isEmpty())
+    }
+
     private class FakeFeedRepository : SocialFeedRepository {
         var result: SocialResult<SocialWorkoutDetail> = SocialResult.Success(detail())
         val ids = mutableListOf<String>()
@@ -74,13 +125,66 @@ class SocialWorkoutDetailViewModelTest {
             error("Not used")
     }
 
+    private class FakeWorkoutRepository : WorkoutRepository {
+        var getResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document())
+        var updateResult: WorkoutRepositoryResult<WorkoutDocument> = WorkoutRepositoryResult.Success(document())
+        val requests = mutableListOf<Pair<WorkoutVisibility, WorkoutEtag>>()
+        override suspend fun getWorkout(workoutId: String) = getResult
+        override suspend fun updateWorkoutVisibility(
+            workoutId: String,
+            visibility: WorkoutVisibility,
+            etag: WorkoutEtag,
+        ): WorkoutRepositoryResult<WorkoutDocument> {
+            requests += visibility to etag
+            return updateResult
+        }
+        override suspend fun getActiveWorkout(): WorkoutRepositoryResult<WorkoutDocument> = failure()
+        override suspend fun startWorkout(routineId: String?): WorkoutRepositoryResult<WorkoutDocument> = failure()
+        override suspend fun updateWorkout(
+            workoutId: String,
+            draft: WorkoutDraft,
+            etag: WorkoutEtag,
+        ): WorkoutRepositoryResult<WorkoutDocument> = failure()
+        override suspend fun completeWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<WorkoutDocument> = failure()
+        override suspend fun discardWorkout(workoutId: String, etag: WorkoutEtag): WorkoutRepositoryResult<Unit> = failure()
+        override suspend fun getWorkoutHistory(page: Int, size: Int): WorkoutRepositoryResult<WorkoutHistoryPage> = failure()
+        private fun <T> failure(): WorkoutRepositoryResult<T> = WorkoutRepositoryResult.Failure(NetworkFailure.Network())
+    }
+
     private companion object {
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000010"
+        const val USER_ID = "00000000-0000-4000-8000-000000000001"
+        const val OTHER_USER_ID = "00000000-0000-4000-8000-000000000002"
         fun detail() = SocialWorkoutDetail(
             WORKOUT_ID, "Workout", null,
             Instant.parse("2026-08-25T09:00:00Z"), Instant.parse("2026-08-25T10:00:00Z"), 3600,
-            SocialAuthor("00000000-0000-4000-8000-000000000001", "alice", "Alice", null),
+            SocialAuthor(USER_ID, "alice", "Alice", null),
             emptyList(),
         )
+        fun document(
+            version: Long = 0,
+            visibility: WorkoutVisibility = WorkoutVisibility.Private,
+        ): WorkoutDocument {
+            val started = Instant.parse("2026-08-25T09:00:00Z")
+            return WorkoutDocument(
+                WorkoutDetail(
+                    WORKOUT_ID,
+                    null,
+                    null,
+                    "Workout",
+                    null,
+                    WorkoutStatus.Completed,
+                    started,
+                    started.plusSeconds(3600),
+                    3600,
+                    started,
+                    started.plusSeconds(3600),
+                    version,
+                    emptyList(),
+                    visibility,
+                ),
+                WorkoutEtag.fromVersion(version)!!,
+            )
+        }
     }
 }

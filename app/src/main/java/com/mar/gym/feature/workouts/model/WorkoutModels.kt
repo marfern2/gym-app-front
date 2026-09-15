@@ -16,6 +16,14 @@ enum class WorkoutStatus(val apiValue: String) {
     }
 }
 
+enum class WorkoutVisibility(val apiValue: String) {
+    Public("PUBLIC"), Private("PRIVATE");
+
+    companion object {
+        fun fromApiValue(value: String): WorkoutVisibility? = entries.find { it.apiValue == value }
+    }
+}
+
 data class WorkoutDetail(
     val id: String,
     val sourceRoutineId: String?,
@@ -30,6 +38,7 @@ data class WorkoutDetail(
     val updatedAt: Instant,
     val version: Long,
     val exercises: List<WorkoutExercise>,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 data class WorkoutExercise(
@@ -75,6 +84,7 @@ data class WorkoutHistoryItem(
     val durationSeconds: Long,
     val exerciseCount: Int,
     val completedSetCount: Int,
+    val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
 )
 
 data class WorkoutHistoryPage(
