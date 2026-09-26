@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.progress.model.ActualPerformanceSet
 import com.mar.gym.feature.progress.model.PersonalRecords
 import com.mar.gym.ui.components.AppTopBar
@@ -32,9 +34,20 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun ExerciseProgressRoute(viewModel: ExerciseProgressViewModel, onBack: () -> Unit) {
+fun ExerciseProgressRoute(
+    viewModel: ExerciseProgressViewModel,
+    onBack: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
+) {
     val state by viewModel.uiState.collectAsState()
-    ExerciseProgressScreen(state, onBack, viewModel::loadMore, viewModel::retryHistory, viewModel::retryRecords)
+    ExerciseProgressScreen(
+        state,
+        onBack,
+        viewModel::loadMore,
+        viewModel::retryHistory,
+        viewModel::retryRecords,
+        preferences,
+    )
 }
 
 @Composable
@@ -44,6 +57,7 @@ fun ExerciseProgressScreen(
     onLoadMore: () -> Unit,
     onRetryHistory: () -> Unit,
     onRetryRecords: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     Scaffold(topBar = { AppTopBar("Progreso del ejercicio", onBack = onBack) }) { padding ->
         Column(
@@ -54,7 +68,7 @@ fun ExerciseProgressScreen(
             when {
                 state.recordsLoading -> CircularProgressIndicator()
                 state.recordsError != null -> ErrorBlock("No se pudieron cargar los PRs.", onRetryRecords)
-                state.records != null -> PersonalRecordsCard(state.records)
+                state.records != null -> PersonalRecordsCard(state.records, preferences)
             }
             Text("Sesiones completadas", style = MaterialTheme.typography.titleLarge)
             when {
@@ -68,7 +82,7 @@ fun ExerciseProgressScreen(
                                 Text(session.exerciseNameSnapshot, fontWeight = FontWeight.Bold)
                                 Text(DATE.format(session.completedAt.atZone(ZoneId.systemDefault())))
                                 session.sets.forEach { set ->
-                                    Text("Serie ${set.position}: ${actualSetText(set)}")
+                                    Text("Serie ${set.position}: ${actualSetText(set, preferences)}")
                                     HorizontalDivider()
                                 }
                             }
@@ -84,28 +98,28 @@ fun ExerciseProgressScreen(
 }
 
 @Composable
-private fun PersonalRecordsCard(records: PersonalRecords) {
+private fun PersonalRecordsCard(records: PersonalRecords, preferences: UnitPreferences) {
     val rows = buildList {
-        records.maximumWeightKg?.let { add("Peso máximo" to "${it.stripTrailingZeros().toPlainString()} kg") }
+        records.maximumWeightKg?.let { add("Peso máximo" to UnitConverter.formatWeight(it, preferences.weight)) }
         records.maximumReps?.let { add("Repeticiones máximas" to it.toString()) }
         records.maximumDurationSeconds?.let { add("Duración máxima" to duration(it)) }
-        records.maximumDistanceMeters?.let { add("Distancia máxima" to "${it.stripTrailingZeros().toPlainString()} m") }
-        records.minimumAssistanceKg?.let { add("Asistencia mínima" to "${it.stripTrailingZeros().toPlainString()} kg") }
+        records.maximumDistanceMeters?.let { add("Distancia máxima" to UnitConverter.formatDistance(it, preferences.distance)) }
+        records.minimumAssistanceKg?.let { add("Asistencia mínima" to UnitConverter.formatWeight(it, preferences.weight)) }
     }
     Card(Modifier.fillMaxWidth().testTag("personal_records")) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (rows.isEmpty() && records.bestWeightsForReps.isEmpty()) Text("Aún no hay récords.")
             rows.forEach { (label, value) -> Row(Modifier.fillMaxWidth()) { Text(label, Modifier.weight(1f)); Text(value, fontWeight = FontWeight.Bold) } }
-            records.bestWeightsForReps.forEach { Text("${it.reps} reps: ${it.weightKg.stripTrailingZeros().toPlainString()} kg") }
+            records.bestWeightsForReps.forEach { Text("${it.reps} reps: ${UnitConverter.formatWeight(it.weightKg, preferences.weight)}") }
         }
     }
 }
 
-private fun actualSetText(set: ActualPerformanceSet): String = buildList {
-    set.weightKg?.let { add("${it.stripTrailingZeros().toPlainString()} kg") }
+private fun actualSetText(set: ActualPerformanceSet, preferences: UnitPreferences): String = buildList {
+    set.weightKg?.let { add(UnitConverter.formatWeight(it, preferences.weight)) }
     set.reps?.let { add("$it reps") }
     set.durationSeconds?.let { add(duration(it)) }
-    set.distanceMeters?.let { add("${it.stripTrailingZeros().toPlainString()} m") }
+    set.distanceMeters?.let { add(UnitConverter.formatDistance(it, preferences.distance)) }
     set.rpe?.let { add("RPE ${it.stripTrailingZeros().toPlainString()}") }
 }.joinToString(" · ").ifBlank { "—" }
 

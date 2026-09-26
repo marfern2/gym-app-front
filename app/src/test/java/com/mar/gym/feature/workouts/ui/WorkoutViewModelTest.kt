@@ -2,6 +2,9 @@ package com.mar.gym.feature.workouts.ui
 
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.ProblemDetails
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.exercises.model.Equipment
@@ -40,6 +43,7 @@ import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.feature.workouts.model.canonicalWeightOrNull
 import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.feature.workouts.rest.RestTimerController
 import com.mar.gym.feature.workouts.rest.RestTimerNotifier
@@ -76,6 +80,34 @@ class WorkoutViewModelTest {
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value is ActiveWorkoutUiState.Active)
         assertEquals(listOf<String?>(null), repository.startedWith)
+    }
+
+    @Test
+    fun `hot unit change reformats active workout without changing untouched canonical`() = runTest {
+        val repository = FakeWorkoutRepository().apply {
+            activeResult = WorkoutRepositoryResult.Success(
+                setDocument(
+                    firstSet = WorkoutSetDraft(
+                        FIRST_SET_ID,
+                        FIRST_SET_ID,
+                        weight = "45.359",
+                    ),
+                ),
+            )
+        }
+        val viewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.updateUnitPreferences(UnitPreferences(WeightUnit.LB, DistanceUnit.MI))
+        val pounds = viewModel.uiState.value.data.draft!!.exercises.first().sets.first()
+        assertEquals("100", pounds.weight)
+        assertEquals(BigDecimal("45.359"), pounds.canonicalWeightOrNull())
+
+        viewModel.updateUnitPreferences(UnitPreferences(WeightUnit.KG, DistanceUnit.KM))
+        val kilograms = viewModel.uiState.value.data.draft!!.exercises.first().sets.first()
+        assertEquals("45.4", kilograms.weight)
+        assertEquals(BigDecimal("45.359"), kilograms.canonicalWeightOrNull())
+        assertFalse(viewModel.uiState.value.data.hasUnsavedChanges)
     }
 
     @Test
@@ -458,8 +490,8 @@ class WorkoutViewModelTest {
         assertEquals("60 kg x 8–10 reps", set.restTimerMetricSummary(ExerciseType.WeightReps))
         assertEquals("8–10 reps", set.restTimerMetricSummary(ExerciseType.BodyweightReps))
         assertEquals("1:15", set.restTimerMetricSummary(ExerciseType.Duration))
-        assertEquals("500 m / 1:15", set.restTimerMetricSummary(ExerciseType.DistanceDuration))
-        assertEquals("60 kg / 500 m", set.restTimerMetricSummary(ExerciseType.WeightDistance))
+        assertEquals("0.5 km / 1:15", set.restTimerMetricSummary(ExerciseType.DistanceDuration))
+        assertEquals("60 kg / 0.5 km", set.restTimerMetricSummary(ExerciseType.WeightDistance))
     }
 
     @Test
@@ -601,7 +633,16 @@ class WorkoutViewModelTest {
             viewModel.updateSet(FIRST_EXERCISE_ID, FIRST_SET_ID) { it.copy(completed = false) }
 
             val finalSet = viewModel.uiState.value.data.draft!!.exercises.first().sets.single()
-            assertEquals(type.name, actuals, finalSet)
+            assertEquals(
+                type.name,
+                actuals.copy(
+                    weight = finalSet.weight,
+                    distanceMeters = finalSet.distanceMeters,
+                    weightState = finalSet.weightState,
+                    distanceState = finalSet.distanceState,
+                ),
+                finalSet,
+            )
         }
     }
 

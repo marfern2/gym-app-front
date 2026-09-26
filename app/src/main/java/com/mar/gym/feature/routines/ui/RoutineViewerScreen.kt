@@ -43,6 +43,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mar.gym.R
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.routines.model.RoutineExercise
 import com.mar.gym.feature.routines.model.RoutineSet
@@ -62,6 +64,7 @@ import com.mar.gym.ui.theme.SetWarmup
 @Composable
 fun RoutineViewerRoute(
     viewModel: RoutineViewerViewModel,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onStartRoutine: () -> Unit,
@@ -84,6 +87,7 @@ fun RoutineViewerRoute(
     }
     RoutineViewerScreen(
         state = state,
+        preferences = preferences,
         onBack = onBack,
         onEdit = onEdit,
         onStartRoutine = onStartRoutine,
@@ -101,6 +105,7 @@ fun RoutineViewerRoute(
 @Composable
 fun RoutineViewerScreen(
     state: RoutineViewerUiState,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onStartRoutine: () -> Unit,
@@ -210,6 +215,7 @@ fun RoutineViewerScreen(
                     itemsIndexed(detail.exercises, key = { _, exercise -> exercise.exerciseTemplateId }) { index, exercise ->
                         ViewerExercise(
                             exercise = exercise,
+                            preferences = preferences,
                             onOpenExercise = { onOpenExercise(exercise.exerciseTemplateId) },
                         )
                     }
@@ -265,9 +271,10 @@ fun RoutineViewerScreen(
 @Composable
 private fun ViewerExercise(
     exercise: RoutineExercise,
+    preferences: UnitPreferences,
     onOpenExercise: () -> Unit,
 ) {
-    val fields = routineViewerFields(exercise.exerciseType)
+    val fields = routineViewerFields(exercise.exerciseType, preferences)
     Column(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -330,7 +337,7 @@ private fun ViewerExercise(
                 ) {
                     ViewerHeaderCell(stringResource(R.string.workout_series_header), Modifier.width(40.dp))
                     fields.forEach { field ->
-                        ViewerHeaderCell(stringResource(field.header), Modifier.weight(1f))
+                        ViewerHeaderCell(field.header, Modifier.weight(1f))
                     }
                 }
                 exercise.sets.forEachIndexed { setIndex, set ->
@@ -347,27 +354,38 @@ private fun ViewerExercise(
 }
 
 private data class ViewerColumn(
-    val header: Int,
+    val header: String,
     val value: (RoutineSet) -> String,
 )
 
-private fun routineViewerFields(type: ExerciseType): List<ViewerColumn> = buildList {
+@Composable
+private fun routineViewerFields(type: ExerciseType, preferences: UnitPreferences): List<ViewerColumn> = buildList {
     if (type.supportsWeight()) {
         val header = when (type) {
-            ExerciseType.WeightedBodyweight -> R.string.workout_metric_lastre
-            ExerciseType.AssistedBodyweight -> R.string.workout_metric_asistencia
-            else -> R.string.workout_metric_kg
+            ExerciseType.WeightedBodyweight ->
+                "${stringResource(R.string.workout_metric_lastre)} (${preferences.weight.apiValue})"
+            ExerciseType.AssistedBodyweight ->
+                "${stringResource(R.string.workout_metric_asistencia)} (${preferences.weight.apiValue})"
+            else -> preferences.weight.apiValue
         }
-        add(ViewerColumn(header) { it.targetWeight.trim() })
+        add(ViewerColumn(header) { set ->
+            set.targetWeight.toBigDecimalOrNull()?.let {
+                UnitConverter.weightInput(it, preferences.weight)
+            }.orEmpty()
+        })
     }
     if (type.supportsRepetitions()) {
-        add(ViewerColumn(R.string.workout_metric_reps) { repsRange(it) })
+        add(ViewerColumn(stringResource(R.string.workout_metric_reps)) { repsRange(it) })
     }
     if (type.supportsDuration()) {
-        add(ViewerColumn(R.string.workout_metric_time) { it.targetDurationSeconds.trim() })
+        add(ViewerColumn(stringResource(R.string.workout_metric_time)) { it.targetDurationSeconds.trim() })
     }
     if (type.supportsDistance()) {
-        add(ViewerColumn(R.string.workout_metric_distance) { it.targetDistanceMeters.trim() })
+        add(ViewerColumn(preferences.distance.apiValue) { set ->
+            set.targetDistanceMeters.toBigDecimalOrNull()?.let {
+                UnitConverter.distanceInput(it, preferences.distance)
+            }.orEmpty()
+        })
     }
 }
 

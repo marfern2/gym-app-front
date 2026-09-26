@@ -5,6 +5,8 @@ import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import okhttp3.MediaType.Companion.toMediaType
@@ -59,6 +61,19 @@ class DefaultProfileRepositoryTest {
         assertEquals(WorkoutVisibility.Private, result.value.value.defaultWorkoutVisibility)
     }
 
+    @Test fun `loads unit preferences and falls back defensively`() = runTest {
+        enqueue(profile(0, "alice", weightUnit = "LB", distanceUnit = "MI"), etag = "\"0\"")
+        val configured = (repository.getProfile() as ProfileResult.Success).value.value
+        assertEquals(WeightUnit.LB, configured.preferredWeightUnit)
+        assertEquals(DistanceUnit.MI, configured.preferredDistanceUnit)
+        server.takeRequest()
+
+        enqueue(profile(0, "alice", includeUnits = false), etag = "\"0\"")
+        val fallback = (repository.getProfile() as ProfileResult.Success).value.value
+        assertEquals(WeightUnit.KG, fallback.preferredWeightUnit)
+        assertEquals(DistanceUnit.KM, fallback.preferredDistanceUnit)
+    }
+
     @Test fun `profile response without privacy defaults safely to private`() = runTest {
         enqueue(
             """{"userId":"$ID","displayName":"Mar","username":"alice","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":0}""",
@@ -83,6 +98,8 @@ class DefaultProfileRepositoryTest {
                 " Alice.Profile ",
                 ProfilePrivacy.Private,
                 WorkoutVisibility.Public,
+                WeightUnit.LB,
+                DistanceUnit.MI,
             ), current,
         ) as ProfileResult.Success
         val request = server.takeRequest()
@@ -91,6 +108,8 @@ class DefaultProfileRepositoryTest {
         assertTrue(requestBody.contains("Alice.Profile"))
         assertTrue(requestBody.contains("PRIVATE"))
         assertTrue(requestBody.contains("\"defaultWorkoutVisibility\":\"PUBLIC\""))
+        assertTrue(requestBody.contains("\"preferredWeightUnit\":\"LB\""))
+        assertTrue(requestBody.contains("\"preferredDistanceUnit\":\"MI\""))
         assertEquals("alice.profile", result.value.value.username)
         assertEquals(WorkoutVisibility.Public, result.value.value.defaultWorkoutVisibility)
     }
@@ -130,7 +149,15 @@ class DefaultProfileRepositoryTest {
         username: String?,
         privacy: String = "PUBLIC",
         defaultWorkoutVisibility: String = "PUBLIC",
-    ) = """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"privacy":"$privacy","defaultWorkoutVisibility":"$defaultWorkoutVisibility","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version}"""
+        weightUnit: String = "KG",
+        distanceUnit: String = "KM",
+        includeUnits: Boolean = true,
+    ): String {
+        val units = if (includeUnits) {
+            "\"preferredWeightUnit\":\"$weightUnit\",\"preferredDistanceUnit\":\"$distanceUnit\","
+        } else ""
+        return """{"userId":"$ID","displayName":"${if (version == 0) "Mar" else "Updated"}",${username?.let { "\"username\":\"$it\"," }.orEmpty()}"privacy":"$privacy","defaultWorkoutVisibility":"$defaultWorkoutVisibility",$units"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z","version":$version}"""
+    }
 
     private companion object { const val ID = "00000000-0000-4000-8000-000000000001" }
 }

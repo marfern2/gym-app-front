@@ -43,6 +43,7 @@ import com.mar.gym.ui.components.ErrorState
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.components.SecondaryButton
+import com.mar.gym.core.units.UnitPreferences
 
 @Composable
 fun PublicProfileRoute(
@@ -58,6 +59,7 @@ fun PublicProfileRoute(
     onShareProfile: (displayName: String, username: String) -> Unit = { _, _ -> },
     onShareWorkout: (String) -> Unit = {},
     onUserBlocked: (userId: String, username: String) -> Unit = { _, _ -> },
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -74,6 +76,7 @@ fun PublicProfileRoute(
     }
     PublicProfileScreen(
         state = state,
+        preferences = preferences,
         onBack = onBack,
         onFollow = viewModel::toggleFollow,
         onOpenFollowers = onOpenFollowers,
@@ -120,6 +123,7 @@ fun PublicProfileScreen(
     onConfirmBlock: () -> Unit = {},
     onReportUser: (String) -> Unit = {},
     onReportWorkout: (String) -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val content = state as? PublicProfileUiState.Content
     var menuExpanded by remember { mutableStateOf(false) }
@@ -177,6 +181,7 @@ fun PublicProfileScreen(
                 onShareWorkout,
                 onReportWorkout,
                 Modifier.padding(padding),
+                preferences,
             )
         }
     }
@@ -221,6 +226,7 @@ private fun PublicProfileContent(
     onShareWorkout: (String) -> Unit,
     onReportWorkout: (String) -> Unit,
     modifier: Modifier,
+    preferences: UnitPreferences,
 ) {
     val profile = state.profile
     LazyColumn(
@@ -311,6 +317,7 @@ private fun PublicProfileContent(
                 likeInFlight = workout.workoutId in engagementState.likesInFlight,
                 likeError = engagementState.likeErrors[workout.workoutId]?.workoutActionMessage(),
                 modifier = Modifier.padding(horizontal = 12.dp),
+                preferences = preferences,
             )
             if (index == state.workouts.lastIndex && state.workoutsHasMore && !state.workoutsLoadingMore) {
                 LaunchedEffect(state.workoutsNextCursor, state.workouts.size) { onLoadMoreWorkouts() }

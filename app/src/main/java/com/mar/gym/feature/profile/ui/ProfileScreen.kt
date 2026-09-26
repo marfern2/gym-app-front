@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.mar.gym.feature.social.model.PublicProfile
+import com.mar.gym.feature.profile.model.unitPreferences
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.progress.model.HistoryRange
@@ -137,6 +138,7 @@ fun ProfileScreen(
                 onMetricSelected = onSelectMetric,
                 onRangeSelected = onSelectRange,
                 onRetry = onRetry,
+                preferences = state.profile?.value?.unitPreferences ?: com.mar.gym.core.units.UnitPreferences(),
             )
         }
         item {

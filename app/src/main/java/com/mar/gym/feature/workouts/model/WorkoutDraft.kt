@@ -2,6 +2,10 @@ package com.mar.gym.feature.workouts.model
 
 import com.mar.gym.core.model.hasValidLocalSupersetGroups
 import com.mar.gym.core.model.normalizedSupersetOrdinals
+import com.mar.gym.core.units.EditableDistanceState
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
 import com.mar.gym.feature.exercises.model.ExerciseType
@@ -116,9 +120,13 @@ data class WorkoutDraft(
         const val MAX_EXERCISES = 30
         const val MAX_TOTAL_SETS = 200
 
+        fun from(document: WorkoutDocument, ids: LocalIdSource): WorkoutDraft =
+            from(document, ids, UnitPreferences())
+
         fun from(
             document: WorkoutDocument,
             ids: LocalIdSource = RandomLocalIdSource,
+            preferences: UnitPreferences = UnitPreferences(),
         ): WorkoutDraft = with(document.detail) {
             val localGroups = mutableMapOf<Int, String>()
             WorkoutDraft(
@@ -145,11 +153,18 @@ data class WorkoutDraft(
                                 setType = set.setType,
                                 targets = set.targets,
                                 reps = set.reps?.toString().orEmpty(),
-                                weight = set.weight.editText(),
+                                weight = set.weight?.let { UnitConverter.weightInput(it, preferences.weight) }.orEmpty(),
                                 durationSeconds = set.durationSeconds?.toString().orEmpty(),
-                                distanceMeters = set.distanceMeters.editText(),
+                                distanceMeters = set.distanceMeters?.let {
+                                    UnitConverter.distanceInput(it, preferences.distance)
+                                }.orEmpty(),
                                 rpe = set.rpe.editText(),
                                 completed = set.completed,
+                                weightState = EditableWeightState.fromCanonical(set.weight, preferences.weight),
+                                distanceState = EditableDistanceState.fromCanonical(
+                                    set.distanceMeters,
+                                    preferences.distance,
+                                ),
                             )
                         },
                     )
@@ -196,6 +211,58 @@ data class WorkoutSetDraft(
     val distanceMeters: String = "",
     val rpe: String = "",
     val completed: Boolean = false,
+    val weightState: EditableWeightState? = null,
+    val distanceState: EditableDistanceState? = null,
+)
+
+fun WorkoutSetDraft.updateWeight(value: String, preferences: UnitPreferences): WorkoutSetDraft = copy(
+    weight = value,
+    weightState = (weightState ?: EditableWeightState.fromCanonical(
+        weight.toBigDecimalOrNull(),
+        preferences.weight,
+    )).let { state ->
+        if (state.displayUnit == preferences.weight) state.edited()
+        else state.rebase(weight, preferences.weight).first.edited()
+    },
+)
+
+fun WorkoutSetDraft.updateDistance(value: String, preferences: UnitPreferences): WorkoutSetDraft = copy(
+    distanceMeters = value,
+    distanceState = (distanceState ?: EditableDistanceState.fromCanonical(
+        distanceMeters.toBigDecimalOrNull(),
+        preferences.distance,
+    )).let { state ->
+        if (state.displayUnit == preferences.distance) state.edited()
+        else state.rebase(distanceMeters, preferences.distance).first.edited()
+    },
+)
+
+fun WorkoutSetDraft.canonicalWeightOrNull(): BigDecimal? =
+    weightState?.canonicalOrNull(weight) ?: weight.toBigDecimalOrNull()
+
+fun WorkoutSetDraft.canonicalDistanceMetersOrNull(): BigDecimal? =
+    distanceState?.canonicalOrNull(distanceMeters) ?: distanceMeters.toBigDecimalOrNull()
+
+private fun WorkoutSetDraft.withUnitPreferences(preferences: UnitPreferences): WorkoutSetDraft {
+    val currentWeight = weightState ?: EditableWeightState.fromCanonical(weight.toBigDecimalOrNull(), preferences.weight)
+    val (newWeightState, newWeight) = currentWeight.rebase(weight, preferences.weight)
+    val currentDistance = distanceState ?: EditableDistanceState.fromCanonical(
+        distanceMeters.toBigDecimalOrNull(),
+        preferences.distance,
+    )
+    val (newDistanceState, newDistance) = currentDistance.rebase(distanceMeters, preferences.distance)
+    return copy(
+        weight = newWeight,
+        distanceMeters = newDistance,
+        weightState = newWeightState,
+        distanceState = newDistanceState,
+    )
+}
+
+fun WorkoutDraft.withUnitPreferences(preferences: UnitPreferences): WorkoutDraft = copy(
+    exercises = exercises.map { exercise ->
+        exercise.copy(sets = exercise.sets.map { it.withUnitPreferences(preferences) })
+    },
 )
 
 internal fun WorkoutSetDraft.retainActualsSupportedBy(type: ExerciseType): WorkoutSetDraft {
@@ -204,6 +271,8 @@ internal fun WorkoutSetDraft.retainActualsSupportedBy(type: ExerciseType): Worko
         weight = weight.takeIf { type in WEIGHT_TYPES }.orEmpty(),
         durationSeconds = durationSeconds.takeIf { type in DURATION_TYPES }.orEmpty(),
         distanceMeters = distanceMeters.takeIf { type in DISTANCE_TYPES }.orEmpty(),
+        weightState = weightState.takeIf { type in WEIGHT_TYPES },
+        distanceState = distanceState.takeIf { type in DISTANCE_TYPES },
     )
     if (!compatible.completed) return compatible
     val hasRequiredActuals = when (type) {
@@ -255,14 +324,16 @@ private fun validateResult(
     val durationAllowed = type in DURATION_TYPES
     val distanceAllowed = type in DISTANCE_TYPES
     val reps = set.reps.optionalInt("$prefix.reps", 0..1_000, errors, repsAllowed)
-    val weight = set.weight.optionalDecimal(
-        "$prefix.weight", BigDecimal.ZERO, BigDecimal("10000.000"), 3, errors, weightAllowed,
+    val weight = set.weight.canonicalDecimal(
+        set.canonicalWeightOrNull(), "$prefix.weight", BigDecimal.ZERO, BigDecimal("10000.000"),
+        3, errors, weightAllowed,
     )
     val duration = set.durationSeconds.optionalInt(
         "$prefix.durationSeconds", 1..86_400, errors, durationAllowed,
     )
-    val distance = set.distanceMeters.optionalDecimal(
-        "$prefix.distanceMeters", BigDecimal("0.001"), BigDecimal("1000000.000"), 3, errors, distanceAllowed,
+    val distance = set.distanceMeters.canonicalDecimal(
+        set.canonicalDistanceMetersOrNull(), "$prefix.distanceMeters", BigDecimal("0.001"),
+        BigDecimal("1000000.000"), 3, errors, distanceAllowed,
     )
     set.rpe.optionalDecimal(
         "$prefix.rpe", BigDecimal("1.0"), BigDecimal("10.0"), 1, errors, allowed = true,
@@ -317,6 +388,30 @@ private fun String.optionalDecimal(
         return null
     }
     return value
+}
+
+private fun String.canonicalDecimal(
+    canonical: BigDecimal?,
+    key: String,
+    minimum: BigDecimal,
+    maximum: BigDecimal,
+    inputScale: Int,
+    errors: MutableMap<String, String>,
+    allowed: Boolean,
+): BigDecimal? {
+    if (isBlank()) return null
+    if (!allowed) {
+        errors[key] = "workout_error_incompatible_metric"
+        return null
+    }
+    val input = toBigDecimalOrNull()
+    if (input == null || input.scale().coerceAtLeast(0) > inputScale || canonical == null ||
+        canonical < minimum || canonical > maximum
+    ) {
+        errors[key] = "workout_error_number_range"
+        return null
+    }
+    return canonical
 }
 
 private fun BigDecimal?.editText(): String = this?.stripTrailingZeros()?.toPlainString().orEmpty()

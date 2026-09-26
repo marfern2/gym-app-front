@@ -62,6 +62,8 @@ import com.mar.gym.ui.theme.InkDark
 import com.mar.gym.ui.theme.InkDarkOnSurface
 import com.mar.gym.ui.theme.InkDarkOnSurfaceVariant
 import com.mar.gym.ui.theme.InkDarkSurface
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -73,12 +75,14 @@ import kotlinx.coroutines.delay
 @Composable
 fun SaveWorkoutRoute(
     viewModel: ActiveWorkoutViewModel,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onCompleted: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     SaveWorkoutScreen(
         state = state,
+        preferences = preferences,
         clock = viewModel.clock,
         onBack = onBack,
         onSave = viewModel::complete,
@@ -93,6 +97,7 @@ fun SaveWorkoutRoute(
 fun SaveWorkoutScreen(
     state: ActiveWorkoutUiState,
     clock: Clock,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit,
@@ -168,6 +173,7 @@ fun SaveWorkoutScreen(
         }
         SummaryList(
             summary = summary,
+            preferences = preferences,
             modifier = Modifier.padding(padding),
             header = {
                 when (state) {
@@ -207,6 +213,7 @@ fun SaveWorkoutScreen(
 fun WorkoutCongratsRoute(
     state: ActiveWorkoutUiState,
     onDone: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
     onVisibilityChange: (WorkoutVisibility) -> Unit = {},
     onReload: () -> Unit = {},
 ) {
@@ -218,6 +225,7 @@ fun WorkoutCongratsRoute(
     }
     WorkoutCongratsScreen(
         summary = summary,
+        preferences = preferences,
         data = state.data,
         onOk = onDone,
         onVisibilityChange = onVisibilityChange,
@@ -229,6 +237,7 @@ fun WorkoutCongratsRoute(
 fun WorkoutCongratsScreen(
     summary: WorkoutSummary,
     onOk: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
     data: ActiveWorkoutData = ActiveWorkoutData(socialVisibility = summary.socialVisibility),
     onVisibilityChange: (WorkoutVisibility) -> Unit = {},
     onReload: () -> Unit = {},
@@ -237,6 +246,7 @@ fun WorkoutCongratsScreen(
     Scaffold(containerColor = InkDark) { padding ->
         SummaryList(
             summary = summary,
+            preferences = preferences,
             modifier = Modifier.padding(padding),
             header = {
                 Column(
@@ -304,6 +314,7 @@ fun WorkoutCongratsScreen(
 @Composable
 private fun SummaryList(
     summary: WorkoutSummary,
+    preferences: UnitPreferences,
     modifier: Modifier = Modifier,
     header: @Composable () -> Unit = {},
     footer: @Composable () -> Unit = {},
@@ -349,10 +360,7 @@ private fun SummaryList(
                 )
                 SummaryMetric(
                     label = stringResource(R.string.workout_summary_volume),
-                    value = stringResource(
-                        R.string.workout_summary_volume_value,
-                        summary.volumeKgReps.displayDecimal(),
-                    ),
+                    value = UnitConverter.formatVolume(summary.volumeKgReps, preferences.weight),
                     modifier = Modifier.weight(1f).testTag("workout_summary_volume"),
                 )
                 SummaryMetric(
@@ -379,7 +387,7 @@ private fun SummaryList(
             }
         } else {
             items(summary.exercises) { exercise ->
-                ExerciseSummaryCard(exercise)
+                ExerciseSummaryCard(exercise, preferences)
             }
         }
         item { footer() }
@@ -415,7 +423,7 @@ private fun SummaryMetric(label: String, value: String, modifier: Modifier = Mod
 }
 
 @Composable
-private fun ExerciseSummaryCard(exercise: WorkoutExerciseSummary) {
+private fun ExerciseSummaryCard(exercise: WorkoutExerciseSummary, preferences: UnitPreferences) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = InkDarkSurface),
@@ -454,7 +462,7 @@ private fun ExerciseSummaryCard(exercise: WorkoutExerciseSummary) {
                         text = stringResource(
                             R.string.workout_summary_set_result,
                             index + 1,
-                            formatWorkoutSetResult(set),
+                            formatWorkoutSetResult(set, preferences),
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = InkDarkOnSurfaceVariant,
@@ -499,25 +507,30 @@ private fun ErrorCard(
     }
 }
 
-internal fun formatWorkoutSetResult(set: WorkoutSetSummary): String {
+internal fun formatWorkoutSetResult(
+    set: WorkoutSetSummary,
+    preferences: UnitPreferences = UnitPreferences(),
+): String {
+    val weight = set.weight?.let { UnitConverter.weightInput(it, preferences.weight) }
+    val distance = set.distanceMeters?.let { UnitConverter.formatDistance(it, preferences.distance) }
     val main = when (set.exerciseType) {
-        ExerciseType.WeightReps -> values(set.weight?.let { "${it.displayDecimal()} kg" }, set.reps, " × ")
+        ExerciseType.WeightReps -> values(weight?.let { "$it ${preferences.weight.symbol}" }, set.reps, " × ")
         ExerciseType.BodyweightReps -> set.reps?.let { "$it reps" }
-        ExerciseType.WeightedBodyweight -> values(set.weight?.let { "+${it.displayDecimal()} kg" }, set.reps, " × ")
+        ExerciseType.WeightedBodyweight -> values(weight?.let { "+$it ${preferences.weight.symbol}" }, set.reps, " × ")
         ExerciseType.AssistedBodyweight -> values(
-            set.weight?.let { "${it.displayDecimal()} kg asistencia" },
+            weight?.let { "$it ${preferences.weight.symbol} asistencia" },
             set.reps,
             " × ",
         )
         ExerciseType.Duration -> set.durationSeconds?.let { formatDuration(it.toLong()) }
         ExerciseType.DistanceDuration -> values(
-            set.distanceMeters?.let { "${it.displayDecimal()} m" },
+            distance,
             set.durationSeconds?.let { formatDuration(it.toLong()) },
             " · ",
         )
         ExerciseType.WeightDistance -> values(
-            set.weight?.let { "${it.displayDecimal()} kg" },
-            set.distanceMeters?.let { "${it.displayDecimal()} m" },
+            weight?.let { "$it ${preferences.weight.symbol}" },
+            distance,
             " · ",
         )
     } ?: "—"

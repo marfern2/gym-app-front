@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.exercises.model.isSelectable
@@ -15,6 +16,7 @@ import com.mar.gym.feature.routines.model.RoutineDraft
 import com.mar.gym.feature.routines.model.RoutineExerciseDraft
 import com.mar.gym.feature.routines.model.RoutineSetDraft
 import com.mar.gym.feature.routines.model.validate
+import com.mar.gym.feature.routines.model.withUnitPreferences
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,11 +40,18 @@ class RoutineEditorViewModel(
     val effects: SharedFlow<RoutineEditorEffect> = _effects.asSharedFlow()
     private var baseline = RoutineDraft()
     private var retryAction: (() -> Unit)? = null
+    private var unitPreferences = UnitPreferences()
 
     init { if (routineId != null) load(routineId, replacingLocalChanges = true) }
 
     fun updateName(value: String) = edit { copy(name = value) }
     fun updateDescription(value: String) = edit { copy(description = value) }
+    fun updateUnitPreferences(value: UnitPreferences) {
+        if (value == unitPreferences) return
+        unitPreferences = value
+        baseline = baseline.withUnitPreferences(value)
+        publishEditing(_uiState.value.data.draft.withUnitPreferences(value))
+    }
     fun removeExercise(localId: String) = edit { removeExercise(localId) }
     fun moveExercise(localId: String, offset: Int) = edit { moveExercise(localId, offset) }
     fun groupWithAdjacent(localId: String, offset: Int) = edit { groupWithAdjacent(localId, offset, ids) }
@@ -158,7 +167,7 @@ class RoutineEditorViewModel(
     private fun handleWrite(result: RoutineRepositoryResult<com.mar.gym.feature.routines.model.RoutineDocument>) {
         when (result) {
             is RoutineRepositoryResult.Success -> {
-                val draft = RoutineDraft.from(result.value, ids)
+                val draft = RoutineDraft.from(result.value, ids, unitPreferences)
                 baseline = draft
                 _uiState.value = RoutineEditorUiState.Saved(RoutineEditorData(draft, result.value.etag))
                 retryAction = null
@@ -186,7 +195,7 @@ class RoutineEditorViewModel(
                     current.copy(operation = null), result.error.toRoutineUiError()
                 )
                 is RoutineRepositoryResult.Success -> {
-                    val draft = RoutineDraft.from(result.value, ids)
+                    val draft = RoutineDraft.from(result.value, ids, unitPreferences)
                     if (replacingLocalChanges) baseline = draft
                     _uiState.value = RoutineEditorUiState.Editing(RoutineEditorData(draft, result.value.etag))
                     retryAction = null

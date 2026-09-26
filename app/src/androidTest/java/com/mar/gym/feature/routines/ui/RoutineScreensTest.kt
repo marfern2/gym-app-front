@@ -17,6 +17,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.routines.model.RoutineDetail
 import com.mar.gym.feature.routines.model.RoutineDocument
 import com.mar.gym.feature.routines.model.RoutineDraft
@@ -136,6 +139,26 @@ class RoutineScreensTest {
             assertEquals("exercise-local", addedTo)
             assertEquals("exercise-local" to "set-local", removed)
         }
+    }
+
+    @Test
+    fun weightDistanceEditorUsesPreferredImperialHeaders() {
+        val exercise = exercise(ExerciseType.WeightDistance).copy(
+            sets = listOf(RoutineSetDraft(
+                "set-local",
+                targetWeight = "220.5",
+                targetDistanceMeters = "1",
+            )),
+        )
+        setEditor(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(name = "Mixta", exercises = listOf(exercise)),
+            )),
+            preferences = UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+        )
+
+        composeRule.onNodeWithText("LB").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("MI").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -397,12 +420,14 @@ class RoutineScreensTest {
         onGroupWithAdjacent: (String, Int) -> Unit = { _, _ -> },
         onDissolveSuperset: (String) -> Unit = {},
         onUpdateExercise: (String, (RoutineExerciseDraft) -> RoutineExerciseDraft) -> Unit = { _, _ -> },
+        preferences: UnitPreferences = UnitPreferences(),
         stateProvider: () -> RoutineEditorUiState = { state },
     ) {
         composeRule.setContent {
             GYmAppTheme {
                 RoutineEditorScreen(
                     state = stateProvider(),
+                    preferences = preferences,
                     onBack = onBack,
                     onOpenPicker = onOpenPicker,
                     onNameChanged = {},

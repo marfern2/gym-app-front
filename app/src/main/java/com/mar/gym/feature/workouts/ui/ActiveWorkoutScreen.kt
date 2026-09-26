@@ -101,6 +101,10 @@ import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.feature.workouts.model.updateDistance
+import com.mar.gym.feature.workouts.model.updateWeight
 import com.mar.gym.feature.workouts.model.elapsedWorkoutSeconds
 import com.mar.gym.feature.workouts.model.formatPreviousPerformance
 import com.mar.gym.feature.workouts.model.previousSetFor
@@ -131,6 +135,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ActiveWorkoutRoute(
     viewModel: ActiveWorkoutViewModel,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onOpenSaveWorkout: () -> Unit,
     onOpenPicker: (Set<String>) -> Unit,
@@ -138,6 +143,7 @@ fun ActiveWorkoutRoute(
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(preferences) { viewModel.updateUnitPreferences(preferences) }
     val restTimer by viewModel.restTimer.collectAsState()
     RestTimerNotificationPermissionEffect(
         timerActive = restTimer != null,
@@ -145,6 +151,7 @@ fun ActiveWorkoutRoute(
     )
     ActiveWorkoutScreen(
         state = state,
+        preferences = preferences,
         clock = viewModel.clock,
         restTimer = restTimer,
         onBack = onBack,
@@ -183,6 +190,7 @@ fun ActiveWorkoutRoute(
 @Composable
 fun ActiveWorkoutScreen(
     state: ActiveWorkoutUiState,
+    preferences: UnitPreferences = UnitPreferences(),
     clock: Clock,
     onBack: () -> Unit,
     onOpenPicker: () -> Unit,
@@ -272,7 +280,7 @@ fun ActiveWorkoutScreen(
                 )
                 state.data.draft?.let { draft ->
                     WorkoutEditorContent(
-                        draft, state.data, clock, enabled = false,
+                        draft, state.data, clock, false, preferences,
                         onOpenPicker, onOpenReplacementPicker,
                         onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
                         { reorderOpen = true },
@@ -325,7 +333,7 @@ fun ActiveWorkoutScreen(
                         else -> Unit
                     }
                     WorkoutEditorContent(
-                        draft, state.data, clock, enabled = editorEnabled,
+                        draft, state.data, clock, editorEnabled, preferences,
                         onOpenPicker, onOpenReplacementPicker,
                         onUpdateTitle, onUpdateNotes, onRemoveExercise, onMoveExercise,
                         { reorderOpen = true },
@@ -949,6 +957,7 @@ private fun WorkoutEditorContent(
     data: ActiveWorkoutData,
     clock: Clock,
     enabled: Boolean,
+    preferences: UnitPreferences,
     onOpenPicker: () -> Unit,
     onOpenReplacementPicker: (String) -> Unit,
     onUpdateTitle: (String) -> Unit,
@@ -1014,6 +1023,7 @@ private fun WorkoutEditorContent(
     draft.exercises.forEachIndexed { index, exercise ->
         WorkoutExerciseEditor(
             exercise, index, draft.exercises.size, data.fieldErrors, enabled,
+            preferences = preferences,
             previousSupersetLocalId = draft.exercises.getOrNull(index - 1)?.supersetLocalId,
             nextSupersetLocalId = draft.exercises.getOrNull(index + 1)?.supersetLocalId,
             supersetOrdinal = draft.supersetOrdinal(exercise.localId),
@@ -1032,6 +1042,7 @@ private fun WorkoutEditorContent(
                 formatPreviousPerformance(
                     exercise.exerciseTypeSnapshot,
                     previousSetFor(draft, data.previousPerformance, exercise.localId, setId),
+                    preferences,
                 )
             },
         )
@@ -1075,6 +1086,7 @@ private fun WorkoutExerciseEditor(
     count: Int,
     errors: Map<String, String>,
     enabled: Boolean,
+    preferences: UnitPreferences,
     previousSupersetLocalId: String?,
     nextSupersetLocalId: String?,
     supersetOrdinal: Int?,
@@ -1171,6 +1183,7 @@ private fun WorkoutExerciseEditor(
         if (exercise.sets.isNotEmpty()) {
             WorkoutSetTable(
                 exercise = exercise,
+                preferences = preferences,
                 prefix = prefix,
                 errors = errors,
                 enabled = enabled,
@@ -1304,19 +1317,19 @@ private data class MetricColumn(
 )
 
 @Composable
-private fun WorkoutExerciseDraft.metricColumns(): List<MetricColumn> = buildList {
+private fun WorkoutExerciseDraft.metricColumns(preferences: UnitPreferences): List<MetricColumn> = buildList {
     val type = exerciseTypeSnapshot
     if (type.supportsWeight()) add(
         MetricColumn(
-            header = stringResource(
-                when (type) {
-                    ExerciseType.WeightedBodyweight -> R.string.workout_metric_lastre
-                    ExerciseType.AssistedBodyweight -> R.string.workout_metric_asistencia
-                    else -> R.string.workout_metric_kg
-                }
-            ),
+            header = when (type) {
+                ExerciseType.WeightedBodyweight ->
+                    "${stringResource(R.string.workout_metric_lastre)} (${preferences.weight.apiValue})"
+                ExerciseType.AssistedBodyweight ->
+                    "${stringResource(R.string.workout_metric_asistencia)} (${preferences.weight.apiValue})"
+                else -> preferences.weight.apiValue
+            },
             value = { it.weight },
-            update = { set, v -> set.copy(weight = v) },
+            update = { set, v -> set.updateWeight(v, preferences) },
             errorKey = { p -> "$p.weight" },
             keyboardType = KeyboardType.Decimal,
         )
@@ -1341,9 +1354,9 @@ private fun WorkoutExerciseDraft.metricColumns(): List<MetricColumn> = buildList
     )
     if (type.supportsDistance()) add(
         MetricColumn(
-            header = stringResource(R.string.workout_metric_distance),
+            header = preferences.distance.apiValue,
             value = { it.distanceMeters },
-            update = { set, v -> set.copy(distanceMeters = v) },
+            update = { set, v -> set.updateDistance(v, preferences) },
             errorKey = { p -> "$p.distanceMeters" },
             keyboardType = KeyboardType.Decimal,
         )
@@ -1353,6 +1366,7 @@ private fun WorkoutExerciseDraft.metricColumns(): List<MetricColumn> = buildList
 @Composable
 private fun WorkoutSetTable(
     exercise: WorkoutExerciseDraft,
+    preferences: UnitPreferences,
     prefix: String,
     errors: Map<String, String>,
     enabled: Boolean,
@@ -1360,7 +1374,7 @@ private fun WorkoutSetTable(
     onUpdateSet: (String, (WorkoutSetDraft) -> WorkoutSetDraft) -> Unit,
     previousValue: (String) -> String,
 ) {
-    val columns = exercise.metricColumns()
+    val columns = exercise.metricColumns(preferences)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier
@@ -1778,9 +1792,12 @@ private fun ConfirmDialog(
     dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.routine_cancel)) } },
 )
 
-internal fun targetSummary(set: WorkoutSetDraft): String = buildList {
+internal fun targetSummary(
+    set: WorkoutSetDraft,
+    preferences: UnitPreferences = UnitPreferences(),
+): String = buildList {
     val target = set.targets
-    if (target.targetWeight != null) add("${target.targetWeight.stripTrailingZeros().toPlainString()} kg")
+    if (target.targetWeight != null) add(UnitConverter.formatWeight(target.targetWeight, preferences.weight))
     if (target.targetRepsMin != null || target.targetRepsMax != null) {
         add(when {
             target.targetRepsMin != null && target.targetRepsMax != null && target.targetRepsMin != target.targetRepsMax ->
@@ -1789,7 +1806,9 @@ internal fun targetSummary(set: WorkoutSetDraft): String = buildList {
         })
     }
     if (target.targetDurationSeconds != null) add("${target.targetDurationSeconds} s")
-    if (target.targetDistanceMeters != null) add("${target.targetDistanceMeters.stripTrailingZeros().toPlainString()} m")
+    if (target.targetDistanceMeters != null) {
+        add(UnitConverter.formatDistance(target.targetDistanceMeters, preferences.distance))
+    }
     if (target.targetRpe != null) add("RPE ${target.targetRpe.stripTrailingZeros().toPlainString()}")
 }.joinToString(" · ").ifBlank { "Sin objetivo" }
 

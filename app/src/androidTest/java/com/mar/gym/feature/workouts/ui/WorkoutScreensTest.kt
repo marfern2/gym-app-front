@@ -26,6 +26,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.workouts.model.WorkoutDraft
 import com.mar.gym.feature.workouts.model.WorkoutExerciseDraft
 import com.mar.gym.feature.workouts.model.WorkoutSetDraft
@@ -224,6 +227,35 @@ class WorkoutScreensTest {
         }
         composeRule.onNodeWithText("9876 kg · 876–877 reps · 5432 s · 6543 m · RPE 9.5")
             .assertDoesNotExist()
+    }
+
+    @Test
+    fun weightDistanceActiveEditorUsesPreferredImperialHeaders() {
+        val draft = WorkoutDraft(
+            workoutId = "workout",
+            title = "Mixto",
+            exercises = listOf(WorkoutExerciseDraft(
+                "exercise", "exercise", TEMPLATE, "Carga",
+                ExerciseType.WeightDistance, Equipment.Barbell,
+                sets = listOf(WorkoutSetDraft("set", "set", weight = "220.5", distanceMeters = "1")),
+            )),
+        )
+        composeRule.setContent {
+            GYmAppTheme {
+                ActiveWorkoutScreen(
+                    state = ActiveWorkoutUiState.Active(ActiveWorkoutData(draft = draft)),
+                    preferences = UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+                    clock = Clock.systemUTC(), onBack = {}, onOpenPicker = {},
+                    onStartEmpty = {}, onUpdateTitle = {}, onUpdateNotes = {}, onRemoveExercise = {},
+                    onMoveExercise = { _, _ -> }, onUpdateExercise = { _, _ -> }, onAddSet = {},
+                    onRemoveSet = { _, _ -> }, onMoveSet = { _, _, _ -> }, onUpdateSet = { _, _, _ -> },
+                    onSave = {}, onFinish = {}, onDiscard = {}, onReload = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("LB").assertIsDisplayed()
+        composeRule.onNodeWithText("MI").assertIsDisplayed()
     }
 
     @Test
@@ -656,9 +688,9 @@ class WorkoutScreensTest {
         composeRule.onNodeWithTag("save_workout_action").assertIsDisplayed()
         composeRule.onNodeWithText("Sesión real").assertIsDisplayed()
         composeRule.onNodeWithText("00:10:00").assertIsDisplayed()
-        composeRule.onNodeWithText("640 kg·rep").assertIsDisplayed()
+        composeRule.onNodeWithText("640 kg").assertIsDisplayed()
         composeRule.onNodeWithText("80 kg × 8", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("19980 kg·rep").assertDoesNotExist()
+        composeRule.onNodeWithText("19980 kg").assertDoesNotExist()
         composeRule.onNodeWithTag("save_workout_action").performClick()
         composeRule.onNodeWithContentDescription("Volver").performClick()
         composeRule.runOnIdle {
@@ -689,9 +721,35 @@ class WorkoutScreensTest {
         composeRule.onNodeWithText("¡Bien hecho!").assertIsDisplayed()
         composeRule.onNodeWithText("Completado").assertIsDisplayed()
         composeRule.onNodeWithText("01:00:00").assertIsDisplayed()
-        composeRule.onNodeWithText("500 kg·rep").assertIsDisplayed()
+        composeRule.onNodeWithText("500 kg").assertIsDisplayed()
         composeRule.onNodeWithTag("workout_congrats_ok").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, ok) }
+    }
+
+    @Test
+    fun completedSummaryUsesCurrentViewerImperialUnits() {
+        val started = Instant.parse("2026-08-08T10:00:00Z")
+        val summary = WorkoutDraft(
+            workoutId = "workout",
+            title = "Imperial",
+            exercises = listOf(
+                workoutExerciseDraft("first", TEMPLATE, "Carga").copy(
+                    sets = listOf(WorkoutSetDraft("set", "set", reps = "1", weight = "100", completed = true)),
+                ),
+            ),
+        ).toSummary(started, started.plusSeconds(60))
+        composeRule.setContent {
+            GYmAppTheme(darkTheme = true) {
+                WorkoutCongratsScreen(
+                    summary = summary,
+                    preferences = UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+                    onOk = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("220.5 lb").assertIsDisplayed()
+        composeRule.onNodeWithText("220.5 lb × 1", substring = true).assertIsDisplayed()
     }
 
     @Test

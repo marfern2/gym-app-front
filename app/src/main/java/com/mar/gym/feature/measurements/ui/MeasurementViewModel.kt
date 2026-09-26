@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.VersionedDocument
@@ -14,6 +17,8 @@ import com.mar.gym.feature.measurements.model.BodyMeasurementDocument
 import com.mar.gym.feature.measurements.model.BodyMeasurementDraft
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
 import com.mar.gym.feature.measurements.model.validate
+import com.mar.gym.feature.measurements.model.updateValue
+import com.mar.gym.feature.measurements.model.withUnitPreferences
 import com.mar.gym.feature.progress.model.HistoryRange
 import java.time.Clock
 import kotlinx.coroutines.Job
@@ -48,6 +53,7 @@ class MeasurementViewModel(
     private val _uiState = MutableStateFlow(MeasurementUiState())
     val uiState: StateFlow<MeasurementUiState> = _uiState.asStateFlow()
     private var listJob: Job? = null
+    private var unitPreferences = UnitPreferences()
 
     init { refresh() }
 
@@ -117,7 +123,14 @@ class MeasurementViewModel(
             formVisible = true,
             editing = VersionedDocument(measurement, etag),
             draft = BodyMeasurementDraft(
-                measurement.type, measurement.value.stripTrailingZeros().toPlainString(), measurement.measuredAt,
+                measurement.type,
+                if (measurement.type == BodyMeasurementType.BodyWeight) {
+                    UnitConverter.weightInput(measurement.value, unitPreferences.weight)
+                } else measurement.value.stripTrailingZeros().toPlainString(),
+                measurement.measuredAt,
+                weightState = if (measurement.type == BodyMeasurementType.BodyWeight) {
+                    EditableWeightState.fromCanonical(measurement.value, unitPreferences.weight)
+                } else null,
             ),
             fieldErrors = emptyMap(), formError = null, conflict = false,
         )
@@ -128,9 +141,17 @@ class MeasurementViewModel(
         _uiState.value = _uiState.value.copy(formVisible = false, editing = null, draft = null)
     }
 
-    fun updateType(type: BodyMeasurementType) = updateDraft { copy(type = type) }
-    fun updateValue(value: String) = updateDraft { copy(value = value) }
+    fun updateType(type: BodyMeasurementType) = updateDraft {
+        if (type == this.type) this else copy(type = type, value = "", weightState = null)
+    }
+    fun updateValue(value: String) = updateDraft { updateValue(value, unitPreferences) }
     fun updateMeasuredAt(value: java.time.Instant) = updateDraft { copy(measuredAt = value) }
+
+    fun updateUnitPreferences(value: UnitPreferences) {
+        if (value == unitPreferences) return
+        unitPreferences = value
+        _uiState.value = _uiState.value.copy(draft = _uiState.value.draft?.withUnitPreferences(value))
+    }
 
     private fun updateDraft(transform: BodyMeasurementDraft.() -> BodyMeasurementDraft) {
         val draft = _uiState.value.draft ?: return

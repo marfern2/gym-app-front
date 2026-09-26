@@ -49,8 +49,9 @@ import com.mar.gym.feature.social.model.SocialExerciseSummary
 import com.mar.gym.feature.social.model.SocialWorkoutSummary
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import java.math.BigDecimal
-import java.text.NumberFormat
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -72,6 +73,7 @@ fun SocialWorkoutCard(
     followError: String? = null,
     canReport: Boolean = false,
     onReport: (String) -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     Card(
         onClick = { onWorkoutClick(workout.workoutId) },
@@ -118,7 +120,7 @@ fun SocialWorkoutCard(
                     )
                 }
             }
-            WorkoutSummaryRow(workout)
+            WorkoutSummaryRow(workout, preferences)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 workout.exercises.take(MAX_EXERCISE_PREVIEWS).forEach { ExercisePreview(it) }
                 if (workout.remainingExercisesCount > 0) {
@@ -290,13 +292,13 @@ internal fun AuthorHeader(
 }
 
 @Composable
-private fun WorkoutSummaryRow(workout: SocialWorkoutSummary) {
+private fun WorkoutSummaryRow(workout: SocialWorkoutSummary, preferences: UnitPreferences) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         SummaryMetric("Duración", compactDuration(workout.durationSeconds), Modifier.weight(1f))
-        SummaryMetric("Volumen", formatVolume(workout.totalVolumeKg), Modifier.weight(1f))
+        SummaryMetric("Volumen", formatVolume(workout.totalVolumeKg, preferences), Modifier.weight(1f))
         SummaryMetric(
             "Completado",
             "${workout.completedSetsCount} series · ${workout.exercisesCount} ejercicios",
@@ -380,10 +382,10 @@ internal fun compactDuration(seconds: Long): String {
     }
 }
 
-internal fun formatVolume(volume: BigDecimal): String {
-    val formatter = NumberFormat.getNumberInstance(Locale.getDefault()).apply { maximumFractionDigits = 1 }
-    return "${formatter.format(volume)} kg"
-}
+internal fun formatVolume(
+    volume: BigDecimal,
+    preferences: UnitPreferences = UnitPreferences(),
+): String = UnitConverter.formatVolume(volume, preferences.weight)
 
 private fun workoutDateFormatter(): DateTimeFormatter =
     DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())

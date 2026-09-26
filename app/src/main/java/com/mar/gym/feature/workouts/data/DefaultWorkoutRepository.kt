@@ -18,6 +18,8 @@ import com.mar.gym.feature.workouts.model.WorkoutHistoryPage
 import com.mar.gym.feature.workouts.model.WorkoutSet
 import com.mar.gym.feature.workouts.model.WorkoutSetTargets
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.canonicalDistanceMetersOrNull
+import com.mar.gym.feature.workouts.model.canonicalWeightOrNull
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -232,9 +234,9 @@ class DefaultWorkoutRepository(
                             setType = set.setType.apiValue,
                             completed = set.completed,
                             reps = set.reps.toIntOrNull(),
-                            weight = set.weight.toDoubleOrNull(),
+                            weight = set.canonicalWeightOrNull()?.toDouble(),
                             durationSeconds = set.durationSeconds.toIntOrNull(),
-                            distanceMeters = set.distanceMeters.toDoubleOrNull(),
+                            distanceMeters = set.canonicalDistanceMetersOrNull()?.toDouble(),
                             rpe = set.rpe.toDoubleOrNull(),
                         )
                     },

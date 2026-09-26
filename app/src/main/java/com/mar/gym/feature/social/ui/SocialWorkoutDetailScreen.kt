@@ -43,6 +43,7 @@ import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
 import com.mar.gym.feature.workouts.ui.WorkoutUiErrorKind
 import com.mar.gym.feature.workouts.ui.messageResource
 import com.mar.gym.feature.workouts.ui.formatWorkoutSetResult
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
 import com.mar.gym.ui.components.LoadingState
@@ -61,6 +62,7 @@ fun SocialWorkoutDetailRoute(
     onOpenComments: (String) -> Unit,
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
     onVisibilityChanged: (String, WorkoutVisibility) -> Unit = { _, _ -> },
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -72,6 +74,7 @@ fun SocialWorkoutDetailRoute(
     }
     SocialWorkoutDetailScreen(
         state = state,
+        preferences = preferences,
         onBack = onBack,
         onOpenProfile = onOpenProfile,
         onRetry = viewModel::retry,
@@ -104,6 +107,7 @@ fun SocialWorkoutDetailScreen(
     onVisibilityChange: (WorkoutVisibility) -> Unit = {},
     onReloadVisibility: () -> Unit = {},
     onReportWorkout: (String) -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     var visibilityDialogOpen by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -210,7 +214,11 @@ fun SocialWorkoutDetailScreen(
                         }
                     }
                     items(displayedWorkout.exercises, key = SocialWorkoutExercise::id) { exercise ->
-                        SocialExerciseDetail(exercise, Modifier.padding(horizontal = 12.dp))
+                        SocialExerciseDetail(
+                            exercise,
+                            Modifier.padding(horizontal = 12.dp),
+                            preferences,
+                        )
                     }
                     item("bottom_spacing") { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 12.dp)) }
                 }
@@ -233,7 +241,11 @@ fun SocialWorkoutDetailScreen(
 private fun SocialWorkoutDetail.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)
 
 @Composable
-private fun SocialExerciseDetail(exercise: SocialWorkoutExercise, modifier: Modifier = Modifier) {
+private fun SocialExerciseDetail(
+    exercise: SocialWorkoutExercise,
+    modifier: Modifier = Modifier,
+    preferences: UnitPreferences = UnitPreferences(),
+) {
     Card(modifier.fillMaxWidth().testTag("social_detail_exercise_${exercise.id}")) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -245,13 +257,17 @@ private fun SocialExerciseDetail(exercise: SocialWorkoutExercise, modifier: Modi
                     modifier = Modifier.padding(start = 12.dp).weight(1f),
                 )
             }
-            exercise.sets.forEach { set -> SocialSetResult(exercise, set) }
+            exercise.sets.forEach { set -> SocialSetResult(exercise, set, preferences) }
         }
     }
 }
 
 @Composable
-private fun SocialSetResult(exercise: SocialWorkoutExercise, set: SocialWorkoutSet) {
+private fun SocialSetResult(
+    exercise: SocialWorkoutExercise,
+    set: SocialWorkoutSet,
+    preferences: UnitPreferences,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().testTag("social_detail_set_${set.id}"),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -268,6 +284,7 @@ private fun SocialSetResult(exercise: SocialWorkoutExercise, set: SocialWorkoutS
                     distanceMeters = set.distanceMeters,
                     rpe = set.rpe,
                 ),
+                preferences,
             ),
             style = MaterialTheme.typography.bodyMedium,
         )

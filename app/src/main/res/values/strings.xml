@@ -79,8 +79,6 @@
     <string name="rest_time_done">Listo</string>
     <string name="rest_time_button">Descanso %1$s</string>
     <string name="rest_time_configure">Configurar descanso. Actual: %1$s</string>
-    <string name="routine_kilograms_unit">kg</string>
-    <string name="routine_meters_unit">m</string>
     <string name="routine_move_up">Mover arriba</string>
     <string name="routine_move_down">Mover abajo</string>
     <string name="routine_remove_exercise">Eliminar ejercicio</string>
@@ -159,10 +157,6 @@
     <string name="workout_exercise_notes_hint">Añadir notas…</string>
     <string name="workout_rest_off">Descanso: Apagado</string>
     <string name="workout_rest_time">Descanso: %1$s</string>
-    <string name="workout_result_reps">Repeticiones realizadas</string>
-    <string name="workout_result_weight">Peso realizado</string>
-    <string name="workout_result_duration">Duración realizada (segundos)</string>
-    <string name="workout_result_distance">Distancia realizada (metros)</string>
     <string name="workout_set_completed">Serie completada</string>
     <string name="workout_save">Guardar cambios</string>
     <string name="workout_saving">Guardando entrenamiento…</string>
@@ -209,7 +203,6 @@
     <string name="workout_save_unavailable">El resumen del entrenamiento no está disponible.</string>
     <string name="workout_summary_duration">Duración</string>
     <string name="workout_summary_volume">Volumen</string>
-    <string name="workout_summary_volume_value">%1$s kg·rep</string>
     <string name="workout_summary_sets">Series</string>
     <string name="workout_summary_exercises">Ejercicios realizados</string>
     <string name="workout_summary_no_completed_sets">Sin series completadas</string>
@@ -427,15 +420,12 @@
 
     <!-- Tabla de series del workout activo -->
     <string name="workout_series_header">SERIE</string>
-    <string name="workout_metric_kg">KG</string>
     <string name="workout_metric_reps">REPS</string>
     <string name="workout_metric_lastre">LASTRE</string>
     <string name="workout_metric_asistencia">ASISTENCIA</string>
     <string name="workout_metric_time">TIEMPO</string>
     <string name="workout_metric_distance">DISTANCIA</string>
-    <string name="workout_metric_unit_kg">kg</string>
     <string name="workout_metric_unit_s">s</string>
-    <string name="workout_metric_unit_m">m</string>
     <string name="workout_check_set">Completar serie %1$d</string>
     <string name="workout_uncheck_set">Desmarcar serie %1$d</string>
     <string name="workout_finish">Terminar</string>

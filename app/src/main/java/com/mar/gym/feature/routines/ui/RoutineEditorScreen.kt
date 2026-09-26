@@ -58,7 +58,10 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.routines.model.RoutineExerciseDraft
 import com.mar.gym.feature.routines.model.RoutineSetDraft
+import com.mar.gym.feature.routines.model.updateTargetDistance
+import com.mar.gym.feature.routines.model.updateTargetWeight
 import com.mar.gym.feature.routines.model.SetType
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ExerciseNameLink
 import com.mar.gym.ui.components.ExerciseThumbnail
@@ -75,6 +78,7 @@ import com.mar.gym.ui.theme.SetWarmup
 @Composable
 fun RoutineEditorRoute(
     viewModel: RoutineEditorViewModel,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onOpenPicker: (Set<String>) -> Unit,
     onOpenRoutine: (String) -> Unit,
@@ -82,6 +86,7 @@ fun RoutineEditorRoute(
     onOpenExercise: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(preferences) { viewModel.updateUnitPreferences(preferences) }
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             if (effect is RoutineEditorEffect.OpenRoutine) onOpenRoutine(effect.routineId)
@@ -89,6 +94,7 @@ fun RoutineEditorRoute(
     }
     RoutineEditorScreen(
         state = state,
+        preferences = preferences,
         onBack = onBack,
         onOpenExercise = onOpenExercise,
         onOpenPicker = { onOpenPicker(state.data.draft.exercises.mapTo(linkedSetOf()) { it.exerciseTemplateId }) },
@@ -116,6 +122,7 @@ fun RoutineEditorRoute(
 @Composable
 fun RoutineEditorScreen(
     state: RoutineEditorUiState,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onOpenPicker: () -> Unit,
     onOpenExercise: (String) -> Unit = {},
@@ -173,6 +180,7 @@ fun RoutineEditorScreen(
                     onUpdateExercise, onAddSet, onRemoveSet, onMoveSet, onUpdateSet,
                     onSave, onDuplicate,
                     onStartRoutine = onStartRoutine,
+                    preferences = preferences,
                 )
             }
             else -> EditorContent(
@@ -183,6 +191,7 @@ fun RoutineEditorScreen(
                 Modifier.padding(padding),
                 onReload,
                 onStartRoutine,
+                preferences,
             )
         }
     }
@@ -219,6 +228,7 @@ private fun EditorContent(
     modifier: Modifier = Modifier,
     onReload: () -> Unit = {},
     onStartRoutine: () -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val data = state.data
     val enabled = data.operation == null
@@ -281,6 +291,7 @@ private fun EditorContent(
                 supersetOrdinal = data.draft.supersetOrdinal(exercise.localId),
                 errors = data.fieldErrors,
                 enabled = enabled,
+                preferences = preferences,
                 onOpenExercise = { onOpenExercise(exercise.exerciseTemplateId) },
                 onRemove = { onRemoveExercise(exercise.localId) },
                 onMove = { onMoveExercise(exercise.localId, it) },
@@ -335,6 +346,7 @@ private fun ExerciseEditor(
     supersetOrdinal: Int?,
     errors: Map<String, String>,
     enabled: Boolean,
+    preferences: UnitPreferences,
     onOpenExercise: () -> Unit,
     onRemove: () -> Unit,
     onMove: (Int) -> Unit,
@@ -439,7 +451,7 @@ private fun ExerciseEditor(
             testTag = "routine_rest_${exercise.localId}",
             errorMessage = errors["$prefix.restSeconds"]?.let { stringResource(errorResource(it)) },
         )
-        val fields = routineSetFields(exercise.exerciseType)
+        val fields = routineSetFields(exercise.exerciseType, preferences)
         if (exercise.sets.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
@@ -448,7 +460,7 @@ private fun ExerciseEditor(
                 ) {
                     RoutineHeaderCell(stringResource(R.string.workout_series_header), Modifier.width(40.dp))
                     fields.forEach { field ->
-                        RoutineHeaderCell(stringResource(field.header), Modifier.weight(1f))
+                        RoutineHeaderCell(field.header, Modifier.weight(1f))
                     }
                 }
                 exercise.sets.forEachIndexed { setIndex, set ->
@@ -479,7 +491,7 @@ private fun ExerciseEditor(
 }
 
 private data class RoutineSetField(
-    val header: Int,
+    val header: String,
     val repsRange: Boolean = false,
     val value: (RoutineSetDraft) -> String = { "" },
     val update: (RoutineSetDraft, String) -> RoutineSetDraft = { set, _ -> set },
@@ -488,18 +500,21 @@ private data class RoutineSetField(
     val keyboardType: KeyboardType = KeyboardType.Text,
 )
 
-private fun routineSetFields(type: ExerciseType): List<RoutineSetField> = buildList {
+@Composable
+private fun routineSetFields(type: ExerciseType, preferences: UnitPreferences): List<RoutineSetField> = buildList {
     if (type.supportsWeight()) {
         val header = when (type) {
-            ExerciseType.WeightedBodyweight -> R.string.workout_metric_lastre
-            ExerciseType.AssistedBodyweight -> R.string.workout_metric_asistencia
-            else -> R.string.workout_metric_kg
+            ExerciseType.WeightedBodyweight ->
+                "${stringResource(R.string.workout_metric_lastre)} (${preferences.weight.apiValue})"
+            ExerciseType.AssistedBodyweight ->
+                "${stringResource(R.string.workout_metric_asistencia)} (${preferences.weight.apiValue})"
+            else -> preferences.weight.apiValue
         }
         add(
             RoutineSetField(
                 header = header,
                 value = { it.targetWeight },
-                update = { set, v -> set.copy(targetWeight = v) },
+                update = { set, v -> set.updateTargetWeight(v, preferences) },
                 errorKey = { p -> "$p.targetWeight" },
                 keyboardType = KeyboardType.Decimal,
             )
@@ -508,7 +523,7 @@ private fun routineSetFields(type: ExerciseType): List<RoutineSetField> = buildL
     if (type.supportsRepetitions()) {
         add(
             RoutineSetField(
-                header = R.string.workout_metric_reps,
+                header = stringResource(R.string.workout_metric_reps),
                 repsRange = true,
                 errorKey = { p -> "$p.targetRepsMin" },
                 errorKeySecond = { p -> "$p.targetRepsMax" },
@@ -519,7 +534,7 @@ private fun routineSetFields(type: ExerciseType): List<RoutineSetField> = buildL
     if (type.supportsDuration()) {
         add(
             RoutineSetField(
-                header = R.string.workout_metric_time,
+                header = stringResource(R.string.workout_metric_time),
                 value = { it.targetDurationSeconds },
                 update = { set, v -> set.copy(targetDurationSeconds = v) },
                 errorKey = { p -> "$p.targetDurationSeconds" },
@@ -530,9 +545,9 @@ private fun routineSetFields(type: ExerciseType): List<RoutineSetField> = buildL
     if (type.supportsDistance()) {
         add(
             RoutineSetField(
-                header = R.string.workout_metric_distance,
+                header = preferences.distance.apiValue,
                 value = { it.targetDistanceMeters },
-                update = { set, v -> set.copy(targetDistanceMeters = v) },
+                update = { set, v -> set.updateTargetDistance(v, preferences) },
                 errorKey = { p -> "$p.targetDistanceMeters" },
                 keyboardType = KeyboardType.Decimal,
             )
@@ -600,7 +615,7 @@ private fun RoutineSetRow(
                         keyboardType = field.keyboardType,
                         enabled = enabled,
                         isError = errors.containsKey(field.errorKey(prefix)),
-                        contentDescription = "${stringResource(field.header)} ${index + 1}",
+                        contentDescription = "${field.header} ${index + 1}",
                     )
                 }
             }

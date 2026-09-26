@@ -5,6 +5,8 @@ import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.measurements.model.BodyMeasurementDraft
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
 import com.mar.gym.feature.measurements.model.BodyMeasurementUnit
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.WeightUnit
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -51,6 +53,20 @@ class DefaultMeasurementRepositoryTest {
         val values = (repository.latest() as MeasurementResult.Success).value
         assertEquals(listOf(BodyMeasurementType.BodyWeight, BodyMeasurementType.Waist), values.map { it.type })
         assertEquals(listOf(BodyMeasurementUnit.Kg, BodyMeasurementUnit.Cm), values.map { it.unit })
+    }
+
+    @Test fun `untouched displayed pounds save the exact original body weight kilograms`() = runTest {
+        enqueue(measurement("BODY_WEIGHT", "45.359", "KG", 1), etag = "\"1\"")
+        val draft = BodyMeasurementDraft(
+            BodyMeasurementType.BodyWeight,
+            "100",
+            MEASURED,
+            EditableWeightState.fromCanonical(java.math.BigDecimal("45.359"), WeightUnit.LB),
+        )
+
+        repository.create(draft, NOW)
+
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"value\":45.359"))
     }
 
     @Test fun `list sends type filter and preserves pagination`() = runTest {

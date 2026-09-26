@@ -3,6 +3,8 @@ package com.mar.gym.feature.profile.ui
 import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.VersionedDocument
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.profile.data.ProfileRepository
@@ -152,6 +154,35 @@ class ProfileViewModelTest {
         assertEquals("mar.gym", saved.username)
         assertEquals(ProfilePrivacy.Public, saved.privacy)
         assertEquals(0L, profiles.lastCurrent?.etag?.version)
+    }
+
+    @Test fun `unit preferences save together with all existing profile fields and ETag`() = runTest {
+        val profiles = FakeProfileRepository().apply {
+            updateResult = ProfileResult.Success(
+                document().let { current ->
+                    current.copy(value = current.value.copy(
+                        preferredWeightUnit = WeightUnit.LB,
+                        preferredDistanceUnit = DistanceUnit.MI,
+                    ))
+                },
+            )
+        }
+        val viewModel = viewModel(profiles)
+        advanceUntilIdle()
+
+        viewModel.saveUnitPreferences(WeightUnit.LB, DistanceUnit.MI)
+        advanceUntilIdle()
+
+        val saved = profiles.lastDraft!!
+        assertEquals(WeightUnit.LB, saved.preferredWeightUnit)
+        assertEquals(DistanceUnit.MI, saved.preferredDistanceUnit)
+        assertEquals("Mar", saved.displayName)
+        assertEquals("mar.gym", saved.username)
+        assertEquals(ProfilePrivacy.Public, saved.privacy)
+        assertEquals(WorkoutVisibility.Private, saved.defaultWorkoutVisibility)
+        assertEquals(0L, profiles.lastCurrent?.etag?.version)
+        assertEquals(WeightUnit.LB, viewModel.uiState.value.profile?.value?.preferredWeightUnit)
+        assertEquals(DistanceUnit.MI, viewModel.uiState.value.profile?.value?.preferredDistanceUnit)
     }
 
     @Test fun `PUBLIC profile loads when optional social profile fails`() = runTest {

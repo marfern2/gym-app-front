@@ -62,6 +62,7 @@ import com.mar.gym.feature.social.ui.workoutActionMessage
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.EmptyState
 import com.mar.gym.ui.components.ErrorState
+import com.mar.gym.core.units.UnitPreferences
 
 @Composable
 fun HomeRoute(
@@ -75,6 +76,7 @@ fun HomeRoute(
     onOpenWorkout: (String) -> Unit,
     onOpenComments: (String) -> Unit,
     onShareWorkout: (String) -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val engagementState by engagementViewModel.uiState.collectAsState()
@@ -82,6 +84,7 @@ fun HomeRoute(
     LaunchedEffect(Unit) { notificationsViewModel.onHomeVisible() }
     HomeScreen(
         state = state,
+        preferences = preferences,
         unreadNotificationCount = notificationsState.unreadCount,
         onOpenNotifications = onOpenNotifications,
         onSearchPeople = onSearchPeople,
@@ -129,6 +132,7 @@ fun HomeScreen(
     onShareWorkout: (String) -> Unit = {},
     canReportWorkout: (SocialWorkoutSummary) -> Boolean = { false },
     onReportWorkout: (String) -> Unit = {},
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     val feed = state.activeFeed
     Scaffold(
@@ -235,6 +239,7 @@ fun HomeScreen(
                         followError = workout.author.username?.let(state.discoverFollowErrors::get)?.userMessage(),
                         canReport = canReportWorkout(displayedWorkout),
                         onReport = onReportWorkout,
+                        preferences = preferences,
                     )
                     if (
                         state.selectedMode == HomeFeedMode.Home &&

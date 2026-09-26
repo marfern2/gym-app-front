@@ -20,6 +20,8 @@ import com.mar.gym.feature.routines.model.RoutineShare
 import com.mar.gym.feature.routines.model.RoutineShareVisibility
 import com.mar.gym.feature.routines.model.RoutineSort
 import com.mar.gym.feature.routines.model.RoutineSummary
+import com.mar.gym.feature.routines.model.canonicalTargetDistanceMetersOrNull
+import com.mar.gym.feature.routines.model.canonicalTargetWeightOrNull
 import com.mar.gym.feature.routines.model.SharedRoutine
 import com.mar.gym.feature.routines.model.SharedRoutineExercise
 import com.mar.gym.feature.routines.model.SetType
@@ -319,9 +321,9 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
                             setType = set.setType.apiValue,
                             targetRepsMin = set.targetRepsMin.toIntOrNull(),
                             targetRepsMax = set.targetRepsMax.toIntOrNull(),
-                            targetWeight = set.targetWeight.toDoubleOrNull(),
+                            targetWeight = set.canonicalTargetWeightOrNull()?.toDouble(),
                             targetDurationSeconds = set.targetDurationSeconds.toIntOrNull(),
-                            targetDistanceMeters = set.targetDistanceMeters.toDoubleOrNull(),
+                            targetDistanceMeters = set.canonicalTargetDistanceMetersOrNull()?.toDouble(),
                             targetRpe = set.targetRpe.toDoubleOrNull(),
                         )
                     },

@@ -28,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.measurements.model.BodyMeasurement
 import com.mar.gym.feature.measurements.model.BodyMeasurementDraft
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.profile.ui.label as rangeLabel
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.ui.components.AppTopBar
@@ -60,13 +63,18 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun MeasurementRoute(viewModel: MeasurementViewModel, onBack: () -> Unit) {
+fun MeasurementRoute(
+    viewModel: MeasurementViewModel,
+    onBack: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
+) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(preferences) { viewModel.updateUnitPreferences(preferences) }
     MeasurementScreen(
         state, onBack, viewModel::selectFilter, viewModel::selectRange, viewModel::retryList,
         viewModel::openCreate, viewModel::openEdit, viewModel::delete, viewModel::dismissForm,
         viewModel::updateType, viewModel::updateValue, viewModel::updateMeasuredAt,
-        viewModel::save, viewModel::reloadEditingKeepingDraft,
+        viewModel::save, viewModel::reloadEditingKeepingDraft, preferences,
     )
 }
 
@@ -86,6 +94,7 @@ fun MeasurementScreen(
     onMeasuredAtChange: (java.time.Instant) -> Unit,
     onSave: () -> Unit,
     onReload: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     Scaffold(topBar = {
@@ -120,6 +129,7 @@ fun MeasurementScreen(
             )
             else -> MeasurementContent(
                 state = state,
+                preferences = preferences,
                 modifier = Modifier.padding(padding),
                 onFilter = onFilter,
                 onRange = onRange,
@@ -130,6 +140,7 @@ fun MeasurementScreen(
     }
     if (state.formVisible && state.draft != null) MeasurementForm(
         draft = state.draft,
+        preferences = preferences,
         fieldErrors = state.fieldErrors,
         saving = state.saving,
         conflict = state.conflict,
@@ -155,6 +166,7 @@ fun MeasurementScreen(
 @Composable
 private fun MeasurementContent(
     state: MeasurementUiState,
+    preferences: UnitPreferences,
     modifier: Modifier,
     onFilter: (BodyMeasurementType) -> Unit,
     onRange: (HistoryRange) -> Unit,
@@ -176,7 +188,7 @@ private fun MeasurementContent(
         item {
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${latest.value.stripTrailingZeros().toPlainString()} ${latest.unit.symbol}",
+                    latest.displayValue(preferences),
                     Modifier.weight(1f).testTag("measurement_latest_value"),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
@@ -191,7 +203,11 @@ private fun MeasurementContent(
         if (chartItems.isNotEmpty()) item {
             TemporalChart(
                 points = chartItems.map { TemporalChartPoint(it.measuredAt.atZone(zone).toLocalDate(), it.value.toFloat()) },
-                valueLabel = { "${it.decimal()} ${latest.unit.symbol}" },
+                valueLabel = { value ->
+                    if (latest.type == BodyMeasurementType.BodyWeight) {
+                        UnitConverter.formatWeight(value.toBigDecimal(), preferences.weight)
+                    } else "${value.decimal()} ${latest.unit.symbol}"
+                },
                 style = TemporalChartStyle.Line,
                 modifier = Modifier.testTag("measurement_chart"),
             )
@@ -211,18 +227,28 @@ private fun MeasurementContent(
             )
         }
         items(state.items, key = BodyMeasurement::id) { item ->
-            MeasurementHistoryRow(item, onEdit = { onEdit(item) }, onDelete = { onDelete(item.id) })
+            MeasurementHistoryRow(
+                item,
+                preferences,
+                onEdit = { onEdit(item) },
+                onDelete = { onDelete(item.id) },
+            )
         }
         if (state.loadingMore) item { CircularProgressIndicator() }
     }
 }
 
 @Composable
-private fun MeasurementHistoryRow(item: BodyMeasurement, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun MeasurementHistoryRow(
+    item: BodyMeasurement,
+    preferences: UnitPreferences,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onEdit).testTag("measurement_${item.id}")) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(DATE.format(item.measuredAt.atZone(ZoneId.systemDefault())), Modifier.weight(1f))
-            Text("${item.value.stripTrailingZeros().toPlainString()} ${item.unit.symbol}", fontWeight = FontWeight.SemiBold)
+            Text(item.displayValue(preferences), fontWeight = FontWeight.SemiBold)
             TextButton(onClick = onDelete) { Text("Eliminar") }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -262,6 +288,7 @@ private fun MetricMenu(selected: BodyMeasurementType, onSelected: (BodyMeasureme
 @Composable
 private fun MeasurementForm(
     draft: BodyMeasurementDraft,
+    preferences: UnitPreferences,
     fieldErrors: Map<String, String>,
     saving: Boolean,
     conflict: Boolean,
@@ -302,7 +329,7 @@ private fun MeasurementForm(
                 OutlinedTextField(
                     value = draft.value,
                     onValueChange = onValueChange,
-                    label = { Text("Valor (${draft.type.unit.symbol})") },
+                    label = { Text("Valor (${draft.displayUnit(preferences)})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = fieldErrors.containsKey("value"),
                     supportingText = fieldErrors["value"]?.let { { Text(it) } },
@@ -325,6 +352,12 @@ private fun MeasurementForm(
 }
 
 private fun Float.decimal(): String = toBigDecimal().stripTrailingZeros().toPlainString()
+private fun BodyMeasurement.displayValue(preferences: UnitPreferences): String =
+    if (type == BodyMeasurementType.BodyWeight) UnitConverter.formatWeight(value, preferences.weight)
+    else "${value.stripTrailingZeros().toPlainString()} ${unit.symbol}"
+
+private fun BodyMeasurementDraft.displayUnit(preferences: UnitPreferences): String =
+    if (type == BodyMeasurementType.BodyWeight) preferences.weight.symbol else type.unit.symbol
 internal fun BodyMeasurementType.metricLabel() = when (this) {
     BodyMeasurementType.BodyWeight -> "Peso corporal"
     BodyMeasurementType.BodyFatPercentage -> "Grasa corporal"

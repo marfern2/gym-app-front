@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfileActivityPoint
 import com.mar.gym.feature.progress.model.HistoryRange
@@ -45,6 +47,7 @@ fun ProfileActivityChart(
     onRangeSelected: (HistoryRange) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     var rangeMenu by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().testTag("profile_activity"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -87,7 +90,7 @@ fun ProfileActivityChart(
             )
             is ProfileSection.Content -> TemporalChart(
                 points = section.value.map { TemporalChartPoint(it.date, it.value(metric)) },
-                valueLabel = metric.valueLabel,
+                valueLabel = metric.valueLabel(preferences),
                 style = TemporalChartStyle.Bars,
             )
         }
@@ -138,11 +141,10 @@ private fun ProfileActivityPoint.value(metric: ProfileActivityMetric): Float = w
     ProfileActivityMetric.Repetitions -> repetitions.toFloat()
 }
 
-private val ProfileActivityMetric.valueLabel: (Float) -> String
-    get() = { value ->
+private fun ProfileActivityMetric.valueLabel(preferences: UnitPreferences): (Float) -> String = { value ->
         when (this) {
             ProfileActivityMetric.Duration -> "${value.decimal()} h"
-            ProfileActivityMetric.Volume -> "${value.decimal()} kg"
+            ProfileActivityMetric.Volume -> UnitConverter.formatVolume(value.toBigDecimal(), preferences.weight)
             ProfileActivityMetric.Repetitions -> "${value.toLong()} rep"
         }
     }

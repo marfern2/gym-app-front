@@ -7,6 +7,9 @@ import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import com.mar.gym.feature.progress.model.PreviousPerformanceSet
 import com.mar.gym.feature.routines.model.SetType
 import java.math.BigDecimal
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -82,9 +85,21 @@ class PreviousPerformanceTest {
         assertEquals("+20 kg × 8", formatPreviousPerformance(ExerciseType.WeightedBodyweight, set(1, 1, 8, "20")))
         assertEquals("40 kg asistencia × 8", formatPreviousPerformance(ExerciseType.AssistedBodyweight, set(1, 1, 8, "40")))
         assertEquals("01:30", formatPreviousPerformance(ExerciseType.Duration, set(1, 1, duration = 90)))
-        assertEquals("5.00 km / 25:00", formatPreviousPerformance(ExerciseType.DistanceDuration, set(1, 1, duration = 1500, distance = "5000")))
-        assertEquals("20 kg / 100 m", formatPreviousPerformance(ExerciseType.WeightDistance, set(1, 1, weight = "20", distance = "100")))
+        assertEquals("5 km / 25:00", formatPreviousPerformance(ExerciseType.DistanceDuration, set(1, 1, duration = 1500, distance = "5000")))
+        assertEquals("20 kg / 0.1 km", formatPreviousPerformance(ExerciseType.WeightDistance, set(1, 1, weight = "20", distance = "100")))
         assertEquals("—", formatPreviousPerformance(ExerciseType.WeightReps, null))
+    }
+
+    @Test
+    fun `formats previous weight and distance in viewer preferences`() {
+        assertEquals(
+            "220.5 lb / 1 mi",
+            formatPreviousPerformance(
+                ExerciseType.WeightDistance,
+                set(1, 1, weight = "100", distance = "1609.344"),
+                UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+            ),
+        )
     }
 
     private fun draft(vararg exercises: WorkoutExerciseDraft) = WorkoutDraft("workout", "Workout", exercises = exercises.toList())

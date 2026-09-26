@@ -2,6 +2,10 @@ package com.mar.gym.feature.workouts.data
 
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
+import com.mar.gym.core.units.EditableDistanceState
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
@@ -25,6 +29,7 @@ import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import okhttp3.MediaType.Companion.toMediaType
+import java.math.BigDecimal
 
 class DefaultWorkoutRepositoryTest {
     private lateinit var server: MockWebServer
@@ -188,6 +193,31 @@ class DefaultWorkoutRepositoryTest {
         )
 
         assertEquals(expectedKeys, serializedSets.map { it.keys.intersect(actualKeys) })
+    }
+
+    @Test
+    fun `update preserves untouched canonical values behind rounded imperial text`() = runBlocking {
+        server.enqueue(jsonResponse(detailJson(version = 8), etag = "\"8\""))
+        val set = WorkoutSetDraft(
+            SET_ID,
+            SET_ID,
+            weight = "100",
+            distanceMeters = "1",
+            weightState = EditableWeightState.fromCanonical(BigDecimal("45.359"), WeightUnit.LB),
+            distanceState = EditableDistanceState.fromCanonical(BigDecimal("1609.344"), DistanceUnit.MI),
+        )
+        val draft = draft().copy(exercises = listOf(
+            draft().exercises.single().copy(
+                exerciseTypeSnapshot = ExerciseType.WeightDistance,
+                sets = listOf(set),
+            ),
+        ))
+
+        repository().updateWorkout(WORKOUT_ID, draft, WorkoutEtag.fromVersion(7)!!)
+
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"weight\":45.359"))
+        assertTrue(body.contains("\"distanceMeters\":1609.344"))
     }
 
     @Test

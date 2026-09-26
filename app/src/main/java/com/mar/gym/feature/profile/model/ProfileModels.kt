@@ -1,6 +1,9 @@
 package com.mar.gym.feature.profile.model
 
 import com.mar.gym.core.network.VersionedDocument
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import java.time.Instant
 
@@ -22,7 +25,12 @@ data class PrivateProfile(
     val version: Long,
     val privacy: ProfilePrivacy,
     val defaultWorkoutVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val preferredWeightUnit: WeightUnit = WeightUnit.KG,
+    val preferredDistanceUnit: DistanceUnit = DistanceUnit.KM,
 )
+
+val PrivateProfile.unitPreferences: UnitPreferences
+    get() = UnitPreferences(preferredWeightUnit, preferredDistanceUnit)
 
 typealias PrivateProfileDocument = VersionedDocument<PrivateProfile>
 
@@ -31,6 +39,8 @@ data class PrivateProfileDraft(
     val username: String,
     val privacy: ProfilePrivacy,
     val defaultWorkoutVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val preferredWeightUnit: WeightUnit = WeightUnit.KG,
+    val preferredDistanceUnit: DistanceUnit = DistanceUnit.KM,
 ) {
     companion object {
         fun from(profile: PrivateProfile) = PrivateProfileDraft(
@@ -38,6 +48,8 @@ data class PrivateProfileDraft(
             username = profile.username.orEmpty(),
             privacy = profile.privacy,
             defaultWorkoutVisibility = profile.defaultWorkoutVisibility,
+            preferredWeightUnit = profile.preferredWeightUnit,
+            preferredDistanceUnit = profile.preferredDistanceUnit,
         )
     }
 }

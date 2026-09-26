@@ -2,6 +2,10 @@ package com.mar.gym.feature.routines.model
 
 import com.mar.gym.core.model.hasValidLocalSupersetGroups
 import com.mar.gym.core.model.normalizedSupersetOrdinals
+import com.mar.gym.core.units.EditableDistanceState
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDetail
 import com.mar.gym.feature.exercises.model.ExerciseType
@@ -102,7 +106,11 @@ data class RoutineDraft(
         const val MAX_EXERCISES = 30
         const val MAX_TOTAL_SETS = 200
 
-        fun from(document: RoutineDocument, ids: LocalIdSource): RoutineDraft = with(document.detail) {
+        fun from(
+            document: RoutineDocument,
+            ids: LocalIdSource,
+            preferences: UnitPreferences = UnitPreferences(),
+        ): RoutineDraft = with(document.detail) {
             val localGroups = mutableMapOf<Int, String>()
             RoutineDraft(
                 routineId = id,
@@ -121,7 +129,7 @@ data class RoutineDraft(
                         },
                         notes = exercise.notes.orEmpty(),
                         restSeconds = exercise.restSeconds.toString(),
-                        sets = exercise.sets.map { set -> set.toDraft(ids.nextId()) },
+                        sets = exercise.sets.map { set -> set.toDraft(ids.nextId(), preferences) },
                     )
                 },
             )
@@ -165,6 +173,55 @@ data class RoutineSetDraft(
     val targetDurationSeconds: String = "",
     val targetDistanceMeters: String = "",
     val targetRpe: String = "",
+    val weightState: EditableWeightState? = null,
+    val distanceState: EditableDistanceState? = null,
+)
+
+fun RoutineSetDraft.updateTargetWeight(value: String, preferences: UnitPreferences): RoutineSetDraft = copy(
+    targetWeight = value,
+    weightState = (weightState ?: EditableWeightState.fromCanonical(
+        targetWeight.toBigDecimalOrNull(),
+        preferences.weight,
+    )).edited(),
+)
+
+fun RoutineSetDraft.updateTargetDistance(value: String, preferences: UnitPreferences): RoutineSetDraft = copy(
+    targetDistanceMeters = value,
+    distanceState = (distanceState ?: EditableDistanceState.fromCanonical(
+        targetDistanceMeters.toBigDecimalOrNull(),
+        preferences.distance,
+    )).edited(),
+)
+
+fun RoutineSetDraft.canonicalTargetWeightOrNull(): BigDecimal? =
+    weightState?.canonicalOrNull(targetWeight) ?: targetWeight.toBigDecimalOrNull()
+
+fun RoutineSetDraft.canonicalTargetDistanceMetersOrNull(): BigDecimal? =
+    distanceState?.canonicalOrNull(targetDistanceMeters) ?: targetDistanceMeters.toBigDecimalOrNull()
+
+private fun RoutineSetDraft.withUnitPreferences(preferences: UnitPreferences): RoutineSetDraft {
+    val currentWeight = weightState ?: EditableWeightState.fromCanonical(
+        targetWeight.toBigDecimalOrNull(),
+        preferences.weight,
+    )
+    val (newWeightState, newWeight) = currentWeight.rebase(targetWeight, preferences.weight)
+    val currentDistance = distanceState ?: EditableDistanceState.fromCanonical(
+        targetDistanceMeters.toBigDecimalOrNull(),
+        preferences.distance,
+    )
+    val (newDistanceState, newDistance) = currentDistance.rebase(targetDistanceMeters, preferences.distance)
+    return copy(
+        targetWeight = newWeight,
+        targetDistanceMeters = newDistance,
+        weightState = newWeightState,
+        distanceState = newDistanceState,
+    )
+}
+
+fun RoutineDraft.withUnitPreferences(preferences: UnitPreferences): RoutineDraft = copy(
+    exercises = exercises.map { exercise ->
+        exercise.copy(sets = exercise.sets.map { it.withUnitPreferences(preferences) })
+    },
 )
 
 data class DraftValidation(val fieldErrors: Map<String, String>) {
@@ -211,9 +268,15 @@ private fun validateSet(
     val min = set.targetRepsMin.optionalInt("$prefix.targetRepsMin", 1..1_000, errors, repsAllowed)
     val max = set.targetRepsMax.optionalInt("$prefix.targetRepsMax", 1..1_000, errors, repsAllowed)
     if (min != null && max != null && min > max) errors["$prefix.targetRepsMin"] = "routine_error_reps_order"
-    set.targetWeight.optionalDecimal("$prefix.targetWeight", BigDecimal.ZERO, BigDecimal("10000"), 3, errors, weightAllowed)
+    set.targetWeight.canonicalDecimal(
+        set.canonicalTargetWeightOrNull(), "$prefix.targetWeight", BigDecimal.ZERO,
+        BigDecimal("10000"), 3, errors, weightAllowed,
+    )
     set.targetDurationSeconds.optionalInt("$prefix.targetDurationSeconds", 1..86_400, errors, durationAllowed)
-    set.targetDistanceMeters.optionalDecimal("$prefix.targetDistanceMeters", BigDecimal("0.001"), BigDecimal("1000000"), 3, errors, distanceAllowed)
+    set.targetDistanceMeters.canonicalDecimal(
+        set.canonicalTargetDistanceMetersOrNull(), "$prefix.targetDistanceMeters", BigDecimal("0.001"),
+        BigDecimal("1000000"), 3, errors, distanceAllowed,
+    )
     set.targetRpe.optionalDecimal("$prefix.targetRpe", BigDecimal("1.0"), BigDecimal("10.0"), 1, errors, true)
     val compatibleValues = buildList {
         if (repsAllowed) { add(set.targetRepsMin); add(set.targetRepsMax) }
@@ -254,15 +317,45 @@ private fun String.optionalDecimal(
     return value
 }
 
-private fun RoutineSet.toDraft(localId: String) = RoutineSetDraft(
+private fun String.canonicalDecimal(
+    canonical: BigDecimal?,
+    key: String,
+    minimum: BigDecimal,
+    maximum: BigDecimal,
+    inputScale: Int,
+    errors: MutableMap<String, String>,
+    allowed: Boolean,
+): BigDecimal? {
+    if (isBlank()) return null
+    if (!allowed) { errors[key] = "routine_error_incompatible_metric"; return null }
+    val input = toBigDecimalOrNull()
+    if (input == null || input.scale().coerceAtLeast(0) > inputScale || canonical == null ||
+        canonical < minimum || canonical > maximum
+    ) {
+        errors[key] = "routine_error_number_range"
+        return null
+    }
+    return canonical
+}
+
+private fun RoutineSet.toDraft(localId: String, preferences: UnitPreferences) = RoutineSetDraft(
     localId = localId,
     setType = setType,
     targetRepsMin = targetRepsMin,
     targetRepsMax = targetRepsMax,
-    targetWeight = targetWeight,
+    targetWeight = targetWeight.toBigDecimalOrNull()?.let {
+        UnitConverter.weightInput(it, preferences.weight)
+    }.orEmpty(),
     targetDurationSeconds = targetDurationSeconds,
-    targetDistanceMeters = targetDistanceMeters,
+    targetDistanceMeters = targetDistanceMeters.toBigDecimalOrNull()?.let {
+        UnitConverter.distanceInput(it, preferences.distance)
+    }.orEmpty(),
     targetRpe = targetRpe,
+    weightState = EditableWeightState.fromCanonical(targetWeight.toBigDecimalOrNull(), preferences.weight),
+    distanceState = EditableDistanceState.fromCanonical(
+        targetDistanceMeters.toBigDecimalOrNull(),
+        preferences.distance,
+    ),
 )
 
 private fun <T> List<T>.move(id: String, offset: Int, idOf: (T) -> String): List<T> {

@@ -49,9 +49,9 @@ fun WorkoutDraft.toSummary(
                     exerciseType = exercise.exerciseTypeSnapshot,
                     setType = set.setType,
                     reps = set.reps.toIntOrNull(),
-                    weight = set.weight.toBigDecimalOrNull(),
+                    weight = set.canonicalWeightOrNull(),
                     durationSeconds = set.durationSeconds.toIntOrNull(),
-                    distanceMeters = set.distanceMeters.toBigDecimalOrNull(),
+                    distanceMeters = set.canonicalDistanceMetersOrNull(),
                     rpe = set.rpe.toBigDecimalOrNull(),
                 )
             },

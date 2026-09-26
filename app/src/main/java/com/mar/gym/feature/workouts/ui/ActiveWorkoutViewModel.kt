@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.exercises.model.ExerciseMediaRole
@@ -25,6 +26,7 @@ import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.model.retainActualsSupportedBy
 import com.mar.gym.feature.workouts.model.toSummary
 import com.mar.gym.feature.workouts.model.validate
+import com.mar.gym.feature.workouts.model.withUnitPreferences
 import com.mar.gym.feature.workouts.rest.RestTimerAction
 import com.mar.gym.feature.workouts.rest.RestTimerController
 import com.mar.gym.feature.workouts.rest.RestTimerSetContext
@@ -52,6 +54,7 @@ class ActiveWorkoutViewModel(
     private var loadJob: Job? = null
     private var previousJob: Job? = null
     private var retryAction: (() -> Unit)? = null
+    private var unitPreferences = UnitPreferences()
 
     init { loadActive() }
 
@@ -165,6 +168,13 @@ class ActiveWorkoutViewModel(
 
     fun updateTitle(value: String) = edit { copy(title = value) }
     fun updateNotes(value: String) = edit { copy(notes = value) }
+
+    fun updateUnitPreferences(value: UnitPreferences) {
+        if (value == unitPreferences) return
+        unitPreferences = value
+        baseline = baseline?.withUnitPreferences(value)
+        updateData { copy(draft = draft?.withUnitPreferences(value)) }
+    }
     fun removeExercise(localId: String) = edit { removeExercise(localId) }
     fun moveExercise(localId: String, offset: Int) = edit { moveExercise(localId, offset) }
     fun reorderExercises(orderedLocalIds: List<String>) = edit { reorderExercises(orderedLocalIds) }
@@ -210,8 +220,16 @@ class ActiveWorkoutViewModel(
 
         when {
             !previous.completed && updated.completed -> {
-                val completedSet = updatedDraft.restTimerSetContext(exercise.localId, previous.localId)
-                val upcomingSet = updatedDraft.nextRestTimerSetContext(exercise.localId, previous.localId)
+                val completedSet = updatedDraft.restTimerSetContext(
+                    exercise.localId,
+                    previous.localId,
+                    unitPreferences,
+                )
+                val upcomingSet = updatedDraft.nextRestTimerSetContext(
+                    exercise.localId,
+                    previous.localId,
+                    unitPreferences,
+                )
                 val restDurationSeconds = exercise.restSeconds.toIntOrNull().orZero()
                 restTimerController.replaceFromCompletedSet(
                     workoutId = draft.workoutId,
@@ -390,7 +408,7 @@ class ActiveWorkoutViewModel(
                         return@launch
                     }
                     is WorkoutRepositoryResult.Success -> {
-                        canonicalDraft = WorkoutDraft.from(saved.value, ids)
+                        canonicalDraft = WorkoutDraft.from(saved.value, ids, unitPreferences)
                         currentEtag = saved.value.etag
                         baseline = canonicalDraft
                     }
@@ -567,7 +585,7 @@ class ActiveWorkoutViewModel(
             is ActiveWorkoutUiState.Completing -> ActiveWorkoutUiState.Completing(state.data.transform())
             is ActiveWorkoutUiState.Discarding -> ActiveWorkoutUiState.Discarding(state.data.transform())
             is ActiveWorkoutUiState.Conflict -> ActiveWorkoutUiState.Conflict(state.data.transform())
-            is ActiveWorkoutUiState.Completed -> state
+            is ActiveWorkoutUiState.Completed -> state.copy(data = state.data.transform())
             is ActiveWorkoutUiState.Error -> ActiveWorkoutUiState.Error(state.data.transform(), state.error)
         }
     }
@@ -580,7 +598,7 @@ class ActiveWorkoutViewModel(
             )
             return
         }
-        val draft = WorkoutDraft.from(document, ids)
+        val draft = WorkoutDraft.from(document, ids, unitPreferences)
         manualClockState.bindWorkout(draft.workoutId)
         restTimerController.bindWorkout(draft.workoutId)
         baseline = draft
@@ -662,6 +680,7 @@ private fun Int?.orZero(): Int = this ?: 0
 internal fun WorkoutDraft.nextRestTimerSetContext(
     originExerciseLocalId: String,
     originSetLocalId: String,
+    preferences: UnitPreferences = UnitPreferences(),
 ): RestTimerSetContext? {
     val originExerciseIndex = exercises.indexOfFirst { it.localId == originExerciseLocalId }
     if (originExerciseIndex < 0) return null
@@ -684,12 +703,14 @@ internal fun WorkoutDraft.nextRestTimerSetContext(
     return restTimerSetContext(
         exerciseLocalId = exercises[next.first].localId,
         setLocalId = next.third.localId,
+        preferences = preferences,
     )
 }
 
 internal fun WorkoutDraft.restTimerSetContext(
     exerciseLocalId: String,
     setLocalId: String,
+    preferences: UnitPreferences = UnitPreferences(),
 ): RestTimerSetContext? {
     val exercise = exercises.firstOrNull { it.localId == exerciseLocalId } ?: return null
     val setIndex = exercise.sets.indexOfFirst { it.localId == setLocalId }
@@ -699,36 +720,41 @@ internal fun WorkoutDraft.restTimerSetContext(
         exerciseName = exercise.exerciseNameSnapshot,
         setNumber = setIndex + 1,
         totalSets = exercise.sets.size,
-        metricSummary = exercise.sets[setIndex].restTimerMetricSummary(exercise.exerciseTypeSnapshot),
+        metricSummary = exercise.sets[setIndex].restTimerMetricSummary(exercise.exerciseTypeSnapshot, preferences),
     )
 }
 
-internal fun WorkoutSetDraft.restTimerMetricSummary(type: ExerciseType): String? {
+internal fun WorkoutSetDraft.restTimerMetricSummary(
+    type: ExerciseType,
+    preferences: UnitPreferences = UnitPreferences(),
+): String? {
     val weightValue = weight.trim().takeIf(String::isNotEmpty)
-        ?: targets.targetWeight.displayDecimal()
+        ?: targets.targetWeight?.let { com.mar.gym.core.units.UnitConverter.weightInput(it, preferences.weight) }
     val repsValue = reps.trim().takeIf(String::isNotEmpty) ?: targets.repsDisplay()
     val durationValue = durationSeconds.trim().takeIf(String::isNotEmpty)
         ?: targets.targetDurationSeconds?.toString()
     val distanceValue = distanceMeters.trim().takeIf(String::isNotEmpty)
-        ?: targets.targetDistanceMeters.displayDecimal()
+        ?: targets.targetDistanceMeters?.let {
+            com.mar.gym.core.units.UnitConverter.distanceInput(it, preferences.distance)
+        }
     return when (type) {
-        ExerciseType.WeightReps -> joinMetric(weightValue?.let { "$it kg" }, repsValue?.let { "$it reps" })
+        ExerciseType.WeightReps -> joinMetric(weightValue?.let { "$it ${preferences.weight.symbol}" }, repsValue?.let { "$it reps" })
         ExerciseType.BodyweightReps -> repsValue?.let { "$it reps" }
-        ExerciseType.WeightedBodyweight -> joinMetric(weightValue?.let { "+$it kg" }, repsValue?.let { "$it reps" })
+        ExerciseType.WeightedBodyweight -> joinMetric(weightValue?.let { "+$it ${preferences.weight.symbol}" }, repsValue?.let { "$it reps" })
         ExerciseType.AssistedBodyweight -> joinMetric(
-            weightValue?.let { "$it kg asistencia" },
+            weightValue?.let { "$it ${preferences.weight.symbol} asistencia" },
             repsValue?.let { "$it reps" },
         )
         ExerciseType.Duration -> durationValue?.toLongOrNull()?.let(::formatRestMetricDuration)
             ?: durationValue
         ExerciseType.DistanceDuration -> joinMetric(
-            distanceValue?.let { "$it m" },
+            distanceValue?.let { "$it ${preferences.distance.symbol}" },
             durationValue?.toLongOrNull()?.let(::formatRestMetricDuration) ?: durationValue,
             separator = " / ",
         )
         ExerciseType.WeightDistance -> joinMetric(
-            weightValue?.let { "$it kg" },
-            distanceValue?.let { "$it m" },
+            weightValue?.let { "$it ${preferences.weight.symbol}" },
+            distanceValue?.let { "$it ${preferences.distance.symbol}" },
             separator = " / ",
         )
     }

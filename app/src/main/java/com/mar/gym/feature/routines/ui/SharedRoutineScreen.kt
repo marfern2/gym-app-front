@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.routines.model.RoutineSet
 import com.mar.gym.feature.routines.model.SharedRoutineExercise
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.ErrorState
 import com.mar.gym.ui.components.LoadingState
@@ -30,15 +32,17 @@ import com.mar.gym.ui.components.formatRestSeconds
 @Composable
 fun SharedRoutineRoute(
     viewModel: SharedRoutineViewModel,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
-    SharedRoutineScreen(state = state, onBack = onBack, onRetry = viewModel::retry)
+    SharedRoutineScreen(state = state, preferences = preferences, onBack = onBack, onRetry = viewModel::retry)
 }
 
 @Composable
 fun SharedRoutineScreen(
     state: SharedRoutineUiState,
+    preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -67,6 +71,7 @@ fun SharedRoutineScreen(
                 state.routine.name,
                 state.routine.description,
                 state.routine.exercises,
+                preferences,
                 Modifier.padding(padding),
             )
         }
@@ -78,6 +83,7 @@ private fun SharedRoutineContent(
     name: String,
     description: String?,
     exercises: List<SharedRoutineExercise>,
+    preferences: UnitPreferences,
     modifier: Modifier,
 ) {
     LazyColumn(
@@ -97,7 +103,7 @@ private fun SharedRoutineContent(
             item("empty") { Text("Esta rutina no contiene ejercicios.") }
         } else {
             items(exercises, key = SharedRoutineExercise::exerciseTemplateId) { exercise ->
-                SharedExerciseCard(exercise)
+                SharedExerciseCard(exercise, preferences)
             }
         }
         item("import") {
@@ -119,7 +125,7 @@ private fun SharedRoutineContent(
 }
 
 @Composable
-private fun SharedExerciseCard(exercise: SharedRoutineExercise) {
+private fun SharedExerciseCard(exercise: SharedRoutineExercise, preferences: UnitPreferences) {
     Card(Modifier.fillMaxWidth().testTag("shared_routine_exercise_${exercise.exerciseTemplateId}")) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(exercise.exerciseName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -134,7 +140,7 @@ private fun SharedExerciseCard(exercise: SharedRoutineExercise) {
             Text("Descanso: ${formatRestSeconds(exercise.restSeconds)}", style = MaterialTheme.typography.bodySmall)
             exercise.sets.forEach { set ->
                 Text(
-                    text = "${set.label()}: ${set.targets()}",
+                    text = "${set.label()}: ${set.targets(preferences)}",
                     modifier = Modifier.testTag("shared_routine_set_${exercise.exerciseTemplateId}_${set.position}"),
                 )
             }
@@ -142,16 +148,18 @@ private fun SharedExerciseCard(exercise: SharedRoutineExercise) {
     }
 }
 
-private fun RoutineSet.targets(): String = buildList {
+private fun RoutineSet.targets(preferences: UnitPreferences): String = buildList {
     val min = targetRepsMin.takeIf(String::isNotBlank)
     val max = targetRepsMax.takeIf(String::isNotBlank)
     when {
         min != null && max != null && min != max -> add("$min–$max reps")
         min != null || max != null -> add("${min ?: max} reps")
     }
-    targetWeight.takeIf(String::isNotBlank)?.let { add("$it kg") }
+    targetWeight.toBigDecimalOrNull()?.let { add(UnitConverter.formatWeight(it, preferences.weight)) }
     targetDurationSeconds.takeIf(String::isNotBlank)?.let { add("$it s") }
-    targetDistanceMeters.takeIf(String::isNotBlank)?.let { add("$it m") }
+    targetDistanceMeters.toBigDecimalOrNull()?.let {
+        add(UnitConverter.formatDistance(it, preferences.distance))
+    }
     targetRpe.takeIf(String::isNotBlank)?.let { add("RPE $it") }
 }.joinToString(" · ").ifBlank { "Sin objetivo" }
 

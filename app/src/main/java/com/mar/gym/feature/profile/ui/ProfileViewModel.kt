@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.profile.data.ProfileRepository
 import com.mar.gym.feature.profile.data.ProfileResult
 import com.mar.gym.feature.profile.model.PrivateProfileDocument
@@ -127,6 +129,30 @@ class ProfileViewModel(
     fun updatePrivacy(value: ProfilePrivacy) = updateDraft { copy(privacy = value) }
     fun updateDefaultWorkoutVisibility(value: WorkoutVisibility) = updateDraft {
         copy(defaultWorkoutVisibility = value)
+    }
+    fun updatePreferredWeightUnit(value: WeightUnit) = updateDraft { copy(preferredWeightUnit = value) }
+    fun updatePreferredDistanceUnit(value: DistanceUnit) = updateDraft { copy(preferredDistanceUnit = value) }
+
+    fun saveUnitPreferences(weight: WeightUnit, distance: DistanceUnit) {
+        val current = _uiState.value.profile ?: return
+        if (_uiState.value.saving ||
+            (current.value.preferredWeightUnit == weight && current.value.preferredDistanceUnit == distance)
+        ) return
+        val draft = PrivateProfileDraft.from(current.value).copy(
+            preferredWeightUnit = weight,
+            preferredDistanceUnit = distance,
+        )
+        _uiState.update { it.copy(saving = true, profileError = null, conflict = false) }
+        viewModelScope.launch {
+            when (val result = profileRepository.updateProfile(draft, current)) {
+                is ProfileResult.Success -> _uiState.update {
+                    it.copy(profile = result.value, saving = false, profileError = null, conflict = false)
+                }
+                is ProfileResult.Failure -> _uiState.update {
+                    it.copy(saving = false, profileError = result.error)
+                }
+            }
+        }
     }
 
     private fun updateDraft(transform: PrivateProfileDraft.() -> PrivateProfileDraft) {

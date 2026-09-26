@@ -4,6 +4,10 @@ import com.mar.gym.core.network.AUTHENTICATION_REQUIRED_HEADER
 import com.mar.gym.core.network.AUTHENTICATION_NO_RETRY
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.NetworkJson
+import com.mar.gym.core.units.EditableDistanceState
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.RoutineDraft
@@ -23,6 +27,7 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.math.BigDecimal
 
 class DefaultRoutineRepositoryTest {
     private lateinit var server: MockWebServer
@@ -118,6 +123,32 @@ class DefaultRoutineRepositoryTest {
         assertEquals("PUT", request.method)
         assertEquals("\"7\"", request.getHeader("If-Match"))
         assertEquals("/api/v1/routines/$ROUTINE_ID", request.path)
+    }
+
+    @Test
+    fun updatePreservesUntouchedCanonicalTargetsBehindRoundedImperialText() = runBlocking {
+        server.enqueue(json(detailJson(version = 8), "\"8\""))
+        val set = RoutineSetDraft(
+            "local-set",
+            targetWeight = "100",
+            targetDistanceMeters = "1",
+            weightState = EditableWeightState.fromCanonical(BigDecimal("45.359"), WeightUnit.LB),
+            distanceState = EditableDistanceState.fromCanonical(BigDecimal("1609.344"), DistanceUnit.MI),
+        )
+        val draft = RoutineDraft(
+            routineId = ROUTINE_ID,
+            name = "Mixta",
+            exercises = listOf(RoutineExerciseDraft(
+                "local-exercise", TEMPLATE_ID, "Carga", ExerciseType.WeightDistance, Equipment.Barbell,
+                restSeconds = "90", sets = listOf(set),
+            )),
+        )
+
+        repository().replace(draft, RoutineEtag.fromVersion(7)!!)
+
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"targetWeight\":45.359"))
+        assertTrue(body.contains("\"targetDistanceMeters\":1609.344"))
     }
 
     @Test

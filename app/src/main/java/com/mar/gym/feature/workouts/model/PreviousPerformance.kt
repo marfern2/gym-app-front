@@ -3,7 +3,8 @@ package com.mar.gym.feature.workouts.model
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.progress.model.PreviousPerformanceItem
 import com.mar.gym.feature.progress.model.PreviousPerformanceSet
-import java.math.BigDecimal
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 
 fun previousSetFor(
     draft: WorkoutDraft,
@@ -40,31 +41,27 @@ fun previousSetFor(
     }
 }
 
-fun formatPreviousPerformance(type: ExerciseType, set: PreviousPerformanceSet?): String {
+fun formatPreviousPerformance(
+    type: ExerciseType,
+    set: PreviousPerformanceSet?,
+    preferences: UnitPreferences = UnitPreferences(),
+): String {
     set ?: return "—"
-    val weight = set.weightKg.display()
-    val distance = set.distanceMeters.distance()
+    val weight = set.weightKg?.let { UnitConverter.weightInput(it, preferences.weight) }
+    val distance = set.distanceMeters?.let { UnitConverter.formatDistance(it, preferences.distance) }
     return when (type) {
-        ExerciseType.WeightReps -> values(weight?.let { "$it kg" }, set.reps?.toString(), " × ")
+        ExerciseType.WeightReps -> values(weight?.let { "$it ${preferences.weight.symbol}" }, set.reps?.toString(), " × ")
         ExerciseType.BodyweightReps -> set.reps?.let { "$it reps" } ?: "—"
-        ExerciseType.WeightedBodyweight -> values(weight?.let { "+$it kg" }, set.reps?.toString(), " × ")
-        ExerciseType.AssistedBodyweight -> values(weight?.let { "$it kg asistencia" }, set.reps?.toString(), " × ")
+        ExerciseType.WeightedBodyweight -> values(weight?.let { "+$it ${preferences.weight.symbol}" }, set.reps?.toString(), " × ")
+        ExerciseType.AssistedBodyweight -> values(weight?.let { "$it ${preferences.weight.symbol} asistencia" }, set.reps?.toString(), " × ")
         ExerciseType.Duration -> set.durationSeconds?.duration() ?: "—"
         ExerciseType.DistanceDuration -> values(distance, set.durationSeconds?.duration(), " / ")
-        ExerciseType.WeightDistance -> values(weight?.let { "$it kg" }, distance, " / ")
+        ExerciseType.WeightDistance -> values(weight?.let { "$it ${preferences.weight.symbol}" }, distance, " / ")
     }
 }
 
 private fun values(first: String?, second: String?, separator: String): String =
     listOfNotNull(first, second).joinToString(separator).ifBlank { "—" }
-
-private fun BigDecimal?.display(): String? = this?.stripTrailingZeros()?.toPlainString()
-
-private fun BigDecimal?.distance(): String? = this?.let { meters ->
-    if (meters >= BigDecimal("1000")) {
-        "${meters.divide(BigDecimal("1000")).setScale(2)} km"
-    } else "${meters.stripTrailingZeros().toPlainString()} m"
-}
 
 private fun Int.duration(): String {
     val safe = coerceAtLeast(0)

@@ -15,6 +15,7 @@ import com.mar.gym.feature.measurements.model.BodyMeasurementPage
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
 import com.mar.gym.feature.measurements.model.BodyMeasurementUnit
 import com.mar.gym.feature.measurements.model.validate
+import com.mar.gym.feature.measurements.model.canonicalValueOrNull
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
@@ -66,7 +67,7 @@ class DefaultMeasurementRepository(private val api: MeasurementApi) : Measuremen
         }
 
     private fun BodyMeasurementDraft.dto() = BodyMeasurementWriteDto(
-        type.apiValue, value.toDouble(), measuredAt.toString(),
+        type.apiValue, canonicalValueOrNull()!!.toDouble(), measuredAt.toString(),
     )
 
     private fun BodyMeasurementPageDto.toDomain(): BodyMeasurementPage? {

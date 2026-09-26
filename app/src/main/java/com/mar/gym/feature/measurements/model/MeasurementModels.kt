@@ -1,6 +1,8 @@
 package com.mar.gym.feature.measurements.model
 
 import com.mar.gym.core.network.VersionedDocument
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.UnitPreferences
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -53,11 +55,35 @@ data class BodyMeasurementDraft(
     val type: BodyMeasurementType,
     val value: String,
     val measuredAt: Instant,
+    val weightState: EditableWeightState? = null,
 )
 
+fun BodyMeasurementDraft.canonicalValueOrNull(): BigDecimal? =
+    if (type == BodyMeasurementType.BodyWeight) {
+        weightState?.canonicalOrNull(value) ?: value.toBigDecimalOrNull()
+    } else value.toBigDecimalOrNull()
+
+fun BodyMeasurementDraft.updateValue(value: String, preferences: UnitPreferences): BodyMeasurementDraft = copy(
+    value = value,
+    weightState = if (type == BodyMeasurementType.BodyWeight) {
+        (weightState ?: EditableWeightState.fromCanonical(
+            this.value.toBigDecimalOrNull(),
+            preferences.weight,
+        )).edited()
+    } else null,
+)
+
+fun BodyMeasurementDraft.withUnitPreferences(preferences: UnitPreferences): BodyMeasurementDraft {
+    if (type != BodyMeasurementType.BodyWeight) return copy(weightState = null)
+    val current = weightState ?: EditableWeightState.fromCanonical(value.toBigDecimalOrNull(), preferences.weight)
+    val (newState, newValue) = current.rebase(value, preferences.weight)
+    return copy(value = newValue, weightState = newState)
+}
+
 fun BodyMeasurementDraft.validate(now: Instant): Map<String, String> = buildMap {
-    val decimal = value.toBigDecimalOrNull()
-    if (decimal == null || decimal.scale().coerceAtLeast(0) > 3 || decimal <= BigDecimal.ZERO ||
+    val input = value.toBigDecimalOrNull()
+    val decimal = canonicalValueOrNull()
+    if (input == null || input.scale().coerceAtLeast(0) > 3 || decimal == null || decimal <= BigDecimal.ZERO ||
         decimal > if (type == BodyMeasurementType.BodyFatPercentage) BigDecimal("100") else BigDecimal("500")) {
         put("value", "Introduce un valor válido, positivo y con hasta tres decimales.")
     }

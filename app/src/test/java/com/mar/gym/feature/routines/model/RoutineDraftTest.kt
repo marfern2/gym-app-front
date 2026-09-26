@@ -2,6 +2,13 @@ package com.mar.gym.feature.routines.model
 
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.EditableDistanceState
+import com.mar.gym.core.units.EditableWeightState
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
+import java.math.BigDecimal
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,6 +18,63 @@ class RoutineDraftTest {
     private val ids = object : LocalIdSource {
         private var value = 0
         override fun nextId() = (++value).toString()
+    }
+
+    @Test
+    fun convertedTargetsPreserveUntouchedCanonicalForWeightDistance() {
+        val preferences = UnitPreferences(WeightUnit.LB, DistanceUnit.MI)
+        val set = RoutineSetDraft(
+            localId = "set",
+            targetWeight = "100",
+            targetDistanceMeters = "1",
+            weightState = EditableWeightState.fromCanonical(BigDecimal("45.359"), WeightUnit.LB),
+            distanceState = EditableDistanceState.fromCanonical(BigDecimal("1609.344"), DistanceUnit.MI),
+        )
+
+        assertEquals(BigDecimal("45.359"), set.canonicalTargetWeightOrNull())
+        assertEquals(BigDecimal("1609.344"), set.canonicalTargetDistanceMetersOrNull())
+        assertEquals(
+            BigDecimal("3218.688"),
+            set.updateTargetDistance("2", preferences).canonicalTargetDistanceMetersOrNull(),
+        )
+    }
+
+    @Test
+    fun existingRoutineDisplaysWeightDistanceTargetsInPreferredUnits() {
+        val document = RoutineDocument(
+            RoutineDetail(
+                id = "routine",
+                name = "Mixta",
+                description = null,
+                archived = false,
+                version = 0,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+                exercises = listOf(RoutineExercise(
+                    exerciseTemplateId = "template",
+                    exerciseName = "Carga",
+                    exerciseType = ExerciseType.WeightDistance,
+                    equipment = Equipment.Barbell,
+                    position = 1,
+                    notes = null,
+                    restSeconds = 60,
+                    sets = listOf(RoutineSet(1, SetType.Normal, "", "", "100", "", "1609.344", "")),
+                )),
+            ),
+            RoutineEtag.fromVersion(0)!!,
+        )
+
+        val draft = RoutineDraft.from(
+            document,
+            LocalIdSource { "local" },
+            UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+        )
+        val set = draft.exercises.single().sets.single()
+
+        assertEquals("220.5", set.targetWeight)
+        assertEquals("1", set.targetDistanceMeters)
+        assertEquals(BigDecimal("100"), set.canonicalTargetWeightOrNull())
+        assertEquals(BigDecimal("1609.344"), set.canonicalTargetDistanceMetersOrNull())
     }
 
     @Test

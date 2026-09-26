@@ -62,7 +62,7 @@ import com.mar.gym.feature.profile.ui.ProfileCalendarRoute
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModel
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileEditRoute
-import com.mar.gym.feature.profile.ui.ProfileSettingsScreen
+import com.mar.gym.feature.profile.ui.ProfileSettingsRoute
 import com.mar.gym.feature.profile.ui.ProfileStatsRoute
 import com.mar.gym.feature.profile.ui.ProfileViewModel
 import com.mar.gym.feature.profile.ui.ProfileViewModelFactory
@@ -119,6 +119,8 @@ import com.mar.gym.ui.theme.GYmAppTheme
 import com.mar.gym.core.sharing.ShareDeepLink
 import com.mar.gym.core.sharing.ShareLinks
 import com.mar.gym.core.sharing.ShareMessages
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.feature.profile.model.unitPreferences
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -230,6 +232,9 @@ class MainActivity : ComponentActivity() {
             if (pendingDeepLink != null) incomingDeepLink.value = null
         }
 
+        val sessionProfileViewModel = profileViewModel()
+        val sessionProfileState by sessionProfileViewModel.uiState.collectAsStateWithLifecycle()
+        val unitPreferences = sessionProfileState.profile?.value?.unitPreferences ?: UnitPreferences()
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
         val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
 
@@ -409,6 +414,7 @@ class MainActivity : ComponentActivity() {
                             engagementViewModel = socialEngagementViewModel(user.id),
                             notificationsViewModel = socialNotificationsViewModel(),
                             reportViewModel = reportViewModel(),
+                            preferences = unitPreferences,
                             onOpenNotifications = { deep = DEEP_NOTIFICATIONS },
                             onSearchPeople = {
                                 userSearchOrigin = TAB_HOME
@@ -470,7 +476,7 @@ class MainActivity : ComponentActivity() {
                             onLoadMoreRoutines = { routineListViewModel().loadMore() },
                         )
                         TAB_PROFILE -> ProfileRoute(
-                            viewModel = profileViewModel(),
+                            viewModel = sessionProfileViewModel,
                             onOpenEdit = { deep = DEEP_PROFILE_EDIT },
                             onShare = ::shareProfile,
                             onOpenSettings = { deep = DEEP_PROFILE_SETTINGS },
@@ -591,6 +597,7 @@ class MainActivity : ComponentActivity() {
                     if (currentId != null) {
                         RoutineViewerRoute(
                             viewModel = remember(currentId) { routineViewerViewModel(currentId) },
+                            preferences = unitPreferences,
                             onBack = {
                                 routineListViewModel().refresh()
                                 deep = null
@@ -631,6 +638,7 @@ class MainActivity : ComponentActivity() {
                     val currentId = routineId
                     RoutineEditorRoute(
                         viewModel = remember(currentId) { routineEditorViewModel(currentId) },
+                        preferences = unitPreferences,
                         onBack = {
                             routineListViewModel().refresh()
                             when (routineEditorOrigin) {
@@ -691,6 +699,7 @@ class MainActivity : ComponentActivity() {
                     }
                     ActiveWorkoutRoute(
                         viewModel = viewModel,
+                        preferences = unitPreferences,
                         onBack = {
                             deep = null
                             tab = TAB_TRAINING
@@ -714,12 +723,14 @@ class MainActivity : ComponentActivity() {
                 }
                 DEEP_WORKOUT_SAVE -> SaveWorkoutRoute(
                     viewModel = remember { activeWorkoutViewModel() },
+                    preferences = unitPreferences,
                     onBack = { deep = DEEP_WORKOUT },
                     onCompleted = { deep = DEEP_WORKOUT_CONGRATS },
                 )
                 DEEP_WORKOUT_CONGRATS -> WorkoutCongratsRoute(
                     state = activeWorkoutState,
                     onDone = finishCompletedWorkout,
+                    preferences = unitPreferences,
                     onVisibilityChange = activeWorkoutViewModel()::updateVisibility,
                     onReload = activeWorkoutViewModel()::reloadVisibility,
                 )
@@ -765,10 +776,12 @@ class MainActivity : ComponentActivity() {
                     ExerciseProgressRoute(
                         viewModel = remember(id) { exerciseProgressViewModel(id) },
                         onBack = { deep = DEEP_DETAIL },
+                        preferences = unitPreferences,
                     )
                 }
                 DEEP_MEASUREMENTS -> MeasurementRoute(
                     viewModel = remember { measurementViewModel() },
+                    preferences = unitPreferences,
                     onBack = {
                         profileViewModel().refresh()
                         deep = null
@@ -782,7 +795,8 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                     },
                 )
-                DEEP_PROFILE_SETTINGS -> ProfileSettingsScreen(
+                DEEP_PROFILE_SETTINGS -> ProfileSettingsRoute(
+                    viewModel = sessionProfileViewModel,
                     onBack = {
                         deep = null
                         tab = TAB_PROFILE
@@ -795,7 +809,8 @@ class MainActivity : ComponentActivity() {
                     onBack = { deep = DEEP_PROFILE_SETTINGS },
                 )
                 DEEP_PROFILE_STATS -> ProfileStatsRoute(
-                    viewModel = profileViewModel(),
+                    viewModel = sessionProfileViewModel,
+                    preferences = unitPreferences,
                     onBack = {
                         deep = null
                         tab = TAB_PROFILE
@@ -849,6 +864,7 @@ class MainActivity : ComponentActivity() {
                         viewModel = remember(username) { publicProfileViewModel(username, user.id) },
                         engagementViewModel = socialEngagementViewModel(user.id),
                         reportViewModel = reportViewModel(),
+                        preferences = unitPreferences,
                         onBack = {
                             if (publicProfileOrigin == DEEP_USER_SEARCH) userSearchViewModel().refresh()
                             if (publicProfileOrigin == TAB_HOME) homeViewModel().refresh()
@@ -910,6 +926,7 @@ class MainActivity : ComponentActivity() {
                         },
                         engagementViewModel = socialEngagementViewModel(user.id),
                         reportViewModel = reportViewModel(),
+                        preferences = unitPreferences,
                         onBack = {
                             deep = socialWorkoutOrigin.takeUnless { it == TAB_HOME || it == TAB_PROFILE }
                             if (deep == null) tab = socialWorkoutOrigin
@@ -934,6 +951,7 @@ class MainActivity : ComponentActivity() {
                 DEEP_SHARED_ROUTINE -> sharedRoutineId?.let { shareId ->
                     SharedRoutineRoute(
                         viewModel = remember(shareId) { sharedRoutineViewModel(shareId) },
+                        preferences = unitPreferences,
                         onBack = {
                             sharedRoutineId = null
                             deep = null

@@ -5,6 +5,8 @@ import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.core.network.executeNetworkEntityRequest
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.feature.profile.model.PrivateProfile
 import com.mar.gym.feature.profile.model.PrivateProfileDocument
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
@@ -27,6 +29,8 @@ class DefaultProfileRepository(private val api: ProfileApi) : ProfileRepository 
             username = draft.username.trim().takeIf(String::isNotEmpty),
             privacy = draft.privacy.apiValue,
             defaultWorkoutVisibility = draft.defaultWorkoutVisibility.apiValue,
+            preferredWeightUnit = draft.preferredWeightUnit.apiValue,
+            preferredDistanceUnit = draft.preferredDistanceUnit.apiValue,
         )
         return execute { api.update(current.etag.headerValue, request) }
     }
@@ -53,6 +57,8 @@ class DefaultProfileRepository(private val api: ProfileApi) : ProfileRepository 
         val mappedWorkoutVisibility = WorkoutVisibility.fromApiValue(defaultWorkoutVisibility) ?: return null
         return PrivateProfile(
             userId, displayName, username, created, updated, version, mappedPrivacy, mappedWorkoutVisibility,
+            WeightUnit.fromApiValue(preferredWeightUnit),
+            DistanceUnit.fromApiValue(preferredDistanceUnit),
         )
     }
 

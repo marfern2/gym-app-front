@@ -1,6 +1,7 @@
 package com.mar.gym.feature.measurements.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -8,6 +9,9 @@ import com.mar.gym.feature.measurements.model.BodyMeasurement
 import com.mar.gym.feature.measurements.model.BodyMeasurementDraft
 import com.mar.gym.feature.measurements.model.BodyMeasurementType
 import com.mar.gym.feature.measurements.model.BodyMeasurementUnit
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.math.BigDecimal
 import java.time.Instant
@@ -47,13 +51,47 @@ class MeasurementScreenTest {
         composeRule.onNodeWithTag("measurement_datetime").assertIsDisplayed()
     }
 
-    private fun setMeasurement(state: MeasurementUiState) {
+    @Test fun bodyWeightDisplayAndInputUsePounds() {
+        val item = measurement().copy(value = BigDecimal("45.359"))
+        setMeasurement(
+            MeasurementUiState(
+                loading = false,
+                items = listOf(item),
+                hasMore = false,
+                formVisible = true,
+                draft = BodyMeasurementDraft(BodyMeasurementType.BodyWeight, "100", item.measuredAt),
+            ),
+            UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+        )
+
+        composeRule.onNodeWithTag("measurement_latest_value").assertTextEquals("100 lb")
+        composeRule.onNodeWithText("Valor (lb)").assertIsDisplayed()
+    }
+
+    @Test fun perimetersRemainCentimetersWithImperialPreferences() {
+        val measuredAt = Instant.parse("2026-08-01T08:30:00Z")
+        setMeasurement(
+            MeasurementUiState(
+                loading = false,
+                formVisible = true,
+                draft = BodyMeasurementDraft(BodyMeasurementType.Waist, "80", measuredAt),
+            ),
+            UnitPreferences(WeightUnit.LB, DistanceUnit.MI),
+        )
+        composeRule.onNodeWithText("Valor (cm)").assertIsDisplayed()
+    }
+
+    private fun setMeasurement(
+        state: MeasurementUiState,
+        preferences: UnitPreferences = UnitPreferences(),
+    ) {
         composeRule.setContent {
             GYmAppTheme {
                 MeasurementScreen(
                     state = state, onBack = {}, onFilter = {}, onRange = {}, onRetry = {}, onCreate = {}, onEdit = {},
                     onDelete = {}, onDismissForm = {}, onTypeChange = {}, onValueChange = {},
                     onMeasuredAtChange = {}, onSave = {}, onReload = {},
+                    preferences = preferences,
                 )
             }
         }

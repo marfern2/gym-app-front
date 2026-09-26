@@ -3,6 +3,9 @@ package com.mar.gym.feature.workouts.model
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
+import com.mar.gym.core.units.DistanceUnit
+import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.core.units.WeightUnit
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -104,6 +107,38 @@ class WorkoutDraftTest {
         assertEquals(WorkoutSetTargets(null, null, null, null, null, null), added.targets)
         assertEquals("", added.weight)
         assertEquals("", added.reps)
+    }
+
+    @Test
+    fun `loaded converted actuals preserve untouched canonical and convert only edited fields`() {
+        val base = document()
+        val canonicalSet = base.detail.exercises.single().sets.single().copy(
+            weight = BigDecimal("45.359"),
+            distanceMeters = BigDecimal("1609.344"),
+        )
+        val document = base.copy(detail = base.detail.copy(exercises = listOf(
+            base.detail.exercises.single().copy(
+                exerciseTypeSnapshot = ExerciseType.WeightDistance,
+                sets = listOf(canonicalSet),
+            ),
+        )))
+        val preferences = UnitPreferences(WeightUnit.LB, DistanceUnit.MI)
+        val loaded = WorkoutDraft.from(document, preferences = preferences)
+        val untouched = loaded.exercises.single().sets.single()
+
+        assertEquals("100", untouched.weight)
+        assertEquals("1", untouched.distanceMeters)
+        assertEquals(BigDecimal("45.359"), untouched.canonicalWeightOrNull())
+        assertEquals(BigDecimal("1609.344"), untouched.canonicalDistanceMetersOrNull())
+
+        val edited = untouched.updateWeight("220.5", preferences).updateDistance("2", preferences)
+        assertEquals(
+            0,
+            edited.canonicalWeightOrNull()!!.compareTo(
+                com.mar.gym.core.units.UnitConverter.weightToCanonical(BigDecimal("220.5"), WeightUnit.LB),
+            ),
+        )
+        assertEquals(BigDecimal("3218.688"), edited.canonicalDistanceMetersOrNull())
     }
 
     @Test

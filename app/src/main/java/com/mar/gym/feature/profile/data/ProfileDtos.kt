@@ -11,6 +11,8 @@ import kotlinx.serialization.Serializable
     val version: Long,
     val privacy: String = "PRIVATE",
     val defaultWorkoutVisibility: String = "PRIVATE",
+    val preferredWeightUnit: String? = null,
+    val preferredDistanceUnit: String? = null,
 )
 
 @Serializable data class UpdatePrivateProfileDto(
@@ -18,4 +20,6 @@ import kotlinx.serialization.Serializable
     val username: String?,
     val privacy: String,
     val defaultWorkoutVisibility: String,
+    val preferredWeightUnit: String,
+    val preferredDistanceUnit: String,
 )

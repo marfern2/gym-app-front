@@ -17,6 +17,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mar.gym.core.units.UnitConverter
+import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.exercises.ui.labelResource
 import com.mar.gym.feature.progress.model.AnalyticsPeriod
 import com.mar.gym.feature.progress.model.MuscleDistribution
@@ -26,9 +28,13 @@ import com.mar.gym.ui.components.SectionHeader
 import java.math.RoundingMode
 
 @Composable
-fun ProfileStatsRoute(viewModel: ProfileViewModel, onBack: () -> Unit) {
+fun ProfileStatsRoute(
+    viewModel: ProfileViewModel,
+    onBack: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
+) {
     val state by viewModel.uiState.collectAsState()
-    ProfileStatsScreen(state, viewModel::selectStatsPeriod, viewModel::refresh, onBack)
+    ProfileStatsScreen(state, viewModel::selectStatsPeriod, viewModel::refresh, onBack, preferences)
 }
 
 @Composable
@@ -37,6 +43,7 @@ fun ProfileStatsScreen(
     onPeriod: (AnalyticsPeriod) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    preferences: UnitPreferences = UnitPreferences(),
 ) {
     Scaffold(topBar = { AppTopBar("Estadísticas", onBack = onBack) }) { padding ->
         Column(
@@ -57,7 +64,7 @@ fun ProfileStatsScreen(
                 ProfileSection.Loading -> CenterLoading("Cargando resumen…")
                 is ProfileSection.Error -> ErrorCard("No se pudo cargar el resumen.", onRetry)
                 is ProfileSection.Empty -> Text("No hay entrenamientos en este periodo.")
-                is ProfileSection.Content -> SummaryCard(summary.value)
+                is ProfileSection.Content -> SummaryCard(summary.value, preferences)
             }
             SectionHeader("Distribución muscular")
             when (val distribution = state.distribution) {
@@ -71,12 +78,12 @@ fun ProfileStatsScreen(
 }
 
 @Composable
-private fun SummaryCard(summary: ProgressSummary) = Card(Modifier.fillMaxWidth()) {
+private fun SummaryCard(summary: ProgressSummary, preferences: UnitPreferences) = Card(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         MetricRow("Entrenamientos", summary.workoutCount.toString())
         MetricRow("Series completadas", summary.completedSetCount.toString())
         MetricRow("Duración", formatSeconds(summary.totalDurationSeconds))
-        MetricRow("Volumen", "${summary.totalVolumeKg.stripTrailingZeros().toPlainString()} kg")
+        MetricRow("Volumen", UnitConverter.formatVolume(summary.totalVolumeKg, preferences.weight))
         MetricRow("Días activos", summary.activeDays.toString())
     }
 }
