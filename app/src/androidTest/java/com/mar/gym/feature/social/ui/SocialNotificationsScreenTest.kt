@@ -1,10 +1,18 @@
 package com.mar.gym.feature.social.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.home.ui.NotificationBell
 import com.mar.gym.feature.social.model.SocialNotification
@@ -21,19 +29,16 @@ class SocialNotificationsScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test fun badgeIsVisibleOnlyWhenUnreadCountIsPositive() {
+        var unreadCount by mutableLongStateOf(3L)
         composeRule.setContent {
             GYmAppTheme {
-                NotificationBell(unreadCount = 3, onClick = {})
+                NotificationBell(unreadCount = unreadCount, onClick = {})
             }
         }
         composeRule.onNodeWithTag("notifications_badge", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
 
-        composeRule.setContent {
-            GYmAppTheme {
-                NotificationBell(unreadCount = 0, onClick = {})
-            }
-        }
+        composeRule.runOnIdle { unreadCount = 0L }
         composeRule.onNodeWithTag("notifications_badge", useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -62,10 +67,16 @@ class SocialNotificationsScreenTest {
         composeRule.onNodeWithText("Alice empezó a seguirte").assertIsDisplayed()
         composeRule.onNodeWithText("A Alice le gustó tu entrenamiento").assertIsDisplayed()
         composeRule.onNodeWithText("Alice comentó tu entrenamiento").assertIsDisplayed()
-        composeRule.onNodeWithText("Hace 5 min").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Hace 5 min").assertCountEquals(3)
         composeRule.onNodeWithTag("notification_unread_$ID_1", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("notification_unread_$ID_2", useUnmergedTree = true).assertDoesNotExist()
-        composeRule.onNodeWithTag("notification_unavailable_$ID_3").assertIsDisplayed()
+        composeRule.onNodeWithTag("notifications_list").performScrollToNode(
+            hasTestTag("notification_$ID_3"),
+        )
+        composeRule.onNodeWithTag(
+            "notification_unavailable_$ID_3",
+            useUnmergedTree = true,
+        ).assertExists()
     }
 
     @Test fun notificationRowsAndReadAllExposeEvents() {
@@ -96,25 +107,21 @@ class SocialNotificationsScreenTest {
     }
 
     @Test fun emptyAndErrorHaveStableRetryBehavior() {
+        var state by mutableStateOf(SocialNotificationsUiState(loaded = true))
+        var retried = false
         composeRule.setContent {
             GYmAppTheme {
                 SocialNotificationsScreen(
-                    state = SocialNotificationsUiState(loaded = true),
-                    onBack = {}, onNotificationClick = {}, onMarkAllRead = {}, onLoadMore = {}, onRetry = {},
+                    state = state,
+                    onBack = {}, onNotificationClick = {}, onMarkAllRead = {}, onLoadMore = {},
+                    onRetry = { retried = true },
                 )
             }
         }
         composeRule.onNodeWithText("No tienes notificaciones todavía").assertIsDisplayed()
 
-        var retried = false
-        composeRule.setContent {
-            GYmAppTheme {
-                SocialNotificationsScreen(
-                    state = SocialNotificationsUiState(loaded = true, error = SocialUiError.Network),
-                    onBack = {}, onNotificationClick = {}, onMarkAllRead = {}, onLoadMore = {},
-                    onRetry = { retried = true },
-                )
-            }
+        composeRule.runOnIdle {
+            state = SocialNotificationsUiState(loaded = true, error = SocialUiError.Network)
         }
         composeRule.onNodeWithText("No se pudieron cargar las notificaciones").assertIsDisplayed()
         composeRule.onNodeWithText("Reintentar").performClick()
