@@ -1,6 +1,7 @@
 package com.mar.gym.feature.social.data
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.mediaUrl
 import com.mar.gym.core.network.NetworkResponse
 import com.mar.gym.core.network.executeNetworkRequest
 import com.mar.gym.core.network.executeNetworkUnitRequest
@@ -90,7 +91,7 @@ class DefaultSocialNotificationsRepository(
         if (!userId.isUuid() || !USERNAME.matches(username) ||
             displayName?.length?.let { it > MAX_DISPLAY_NAME_LENGTH } == true
         ) return null
-        val normalizedAvatar = avatarUrl?.let { HttpsUrl.parse(it)?.value ?: return null }
+        val normalizedAvatar = avatarUrl?.let { mediaUrl(it) ?: return null }
         return SocialNotificationActor(userId, username, displayName?.takeIf(String::isNotBlank), normalizedAvatar)
     }
 

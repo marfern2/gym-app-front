@@ -1,5 +1,7 @@
 package com.mar.gym.feature.social.model
 
+import com.mar.gym.core.network.MediaImage
+
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
@@ -37,6 +39,8 @@ data class SocialWorkoutSummary(
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
     val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val imageCount: Long = 0,
+    val previewImageUrl: String? = null,
 )
 
 data class SocialWorkoutPage(
@@ -79,6 +83,7 @@ data class SocialWorkoutDetail(
     val commentsCount: Long = 0,
     val shareUrl: String? = null,
     val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val images: List<MediaImage> = emptyList(),
 )
 
 data class SocialComment(

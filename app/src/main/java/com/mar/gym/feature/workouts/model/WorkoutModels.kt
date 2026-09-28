@@ -1,5 +1,7 @@
 package com.mar.gym.feature.workouts.model
 
+import com.mar.gym.core.network.MediaImage
+
 import com.mar.gym.feature.exercises.model.Equipment
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.routines.model.SetType
@@ -39,7 +41,10 @@ data class WorkoutDetail(
     val version: Long,
     val exercises: List<WorkoutExercise>,
     val socialVisibility: WorkoutVisibility = WorkoutVisibility.Private,
+    val images: List<MediaImage> = emptyList(),
 )
+
+fun WorkoutDetail.canAddImage(): Boolean = status == WorkoutStatus.Completed && images.size < 5
 
 data class WorkoutExercise(
     val id: String,

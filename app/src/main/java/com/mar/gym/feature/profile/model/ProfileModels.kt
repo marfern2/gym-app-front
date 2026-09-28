@@ -27,6 +27,7 @@ data class PrivateProfile(
     val defaultWorkoutVisibility: WorkoutVisibility = WorkoutVisibility.Private,
     val preferredWeightUnit: WeightUnit = WeightUnit.KG,
     val preferredDistanceUnit: DistanceUnit = DistanceUnit.KM,
+    val avatarUrl: String? = null,
 )
 
 val PrivateProfile.unitPreferences: UnitPreferences

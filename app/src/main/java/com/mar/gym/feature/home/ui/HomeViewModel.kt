@@ -100,6 +100,10 @@ class HomeViewModel(
         attemptedModes.forEach { mode -> loadFeed(mode, refresh = true) }
     }
 
+    fun refreshAfterMediaChange() {
+        attemptedModes.forEach { mode -> loadFeed(mode, refresh = true) }
+    }
+
     fun onUserBlocked(userId: String, username: String) {
         val current = _uiState.value
         _uiState.value = current.copy(

@@ -1,6 +1,9 @@
 package com.mar.gym.feature.social.ui
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.MediaOperations
+import com.mar.gym.core.network.MediaResult
+import android.net.Uri
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.social.data.SocialFeedRepository
 import com.mar.gym.feature.social.data.SocialResult
@@ -96,6 +99,49 @@ class SocialWorkoutDetailViewModelTest {
         assertTrue(workouts.requests.isEmpty())
     }
 
+    @Test fun `owner image delete refreshes gallery and network error keeps existing images`() = runTest {
+        val image = com.mar.gym.core.network.MediaImage(IMAGE_ID, "https://example.test/image", 10, 10, 1)
+        val workouts = FakeWorkoutRepository().apply {
+            getResult = WorkoutRepositoryResult.Success(document().let { it.copy(
+                detail = it.detail.copy(images = listOf(image))) })
+        }
+        val feed = FakeFeedRepository().apply {
+            result = SocialResult.Success(detail().copy(images = listOf(image)))
+        }
+        val media = FakeMediaOperations()
+        val viewModel = SocialWorkoutDetailViewModel(WORKOUT_ID, feed, USER_ID, workouts, media)
+        advanceUntilIdle()
+
+        media.deleteResult = MediaResult.Error("Error de red. Inténtalo de nuevo")
+        viewModel.deleteImage(IMAGE_ID)
+        advanceUntilIdle()
+        val failed = viewModel.uiState.value as SocialWorkoutDetailUiState.Content
+        assertEquals("Error de red. Inténtalo de nuevo", failed.mediaError)
+        assertEquals(1, failed.ownerDocument?.detail?.images?.size)
+
+        media.deleteResult = MediaResult.Success
+        workouts.getResult = WorkoutRepositoryResult.Success(document())
+        feed.result = SocialResult.Success(detail())
+        viewModel.deleteImage(IMAGE_ID)
+        advanceUntilIdle()
+        val updated = viewModel.uiState.value as SocialWorkoutDetailUiState.Content
+        assertTrue(updated.ownerDocument!!.detail.images.isEmpty())
+        assertEquals(1L, updated.mediaChangeVersion)
+        assertEquals(listOf(IMAGE_ID, IMAGE_ID), media.deleted)
+    }
+
+    private class FakeMediaOperations : MediaOperations {
+        var deleteResult: MediaResult = MediaResult.Success
+        val deleted = mutableListOf<String>()
+        override suspend fun uploadAvatar(uri: Uri): MediaResult = error("unused")
+        override suspend fun deleteAvatar(): MediaResult = error("unused")
+        override suspend fun uploadWorkoutImage(workoutId: String, uri: Uri): MediaResult = error("unused")
+        override suspend fun deleteWorkoutImage(workoutId: String, imageId: String): MediaResult {
+            deleted += imageId
+            return deleteResult
+        }
+    }
+
     private class FakeFeedRepository : SocialFeedRepository {
         var result: SocialResult<SocialWorkoutDetail> = SocialResult.Success(detail())
         val ids = mutableListOf<String>()
@@ -155,6 +201,7 @@ class SocialWorkoutDetailViewModelTest {
         const val WORKOUT_ID = "00000000-0000-4000-8000-000000000010"
         const val USER_ID = "00000000-0000-4000-8000-000000000001"
         const val OTHER_USER_ID = "00000000-0000-4000-8000-000000000002"
+        const val IMAGE_ID = "00000000-0000-4000-8000-000000000003"
         fun detail() = SocialWorkoutDetail(
             WORKOUT_ID, "Workout", null,
             Instant.parse("2026-08-25T09:00:00Z"), Instant.parse("2026-08-25T10:00:00Z"), 3600,

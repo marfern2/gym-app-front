@@ -1,6 +1,8 @@
 package com.mar.gym.feature.social.data
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.mediaUrl
+import com.mar.gym.core.network.toMediaImage
 import com.mar.gym.core.network.NetworkResponse
 import com.mar.gym.core.network.executeNetworkRequest
 import com.mar.gym.core.network.executeNetworkUnitRequest
@@ -120,7 +122,7 @@ class DefaultSocialFeedRepository(
         if (!workoutId.isUuid() || title.isBlank() || durationSeconds < 0 ||
             !totalVolumeKg.isFinite() || totalVolumeKg < 0 || completedSetsCount < 0 ||
             exercisesCount < 0 || remainingExercisesCount < 0 || exercises.size > MAX_EXERCISE_PREVIEWS ||
-            likesCount < 0 || commentsCount < 0
+            likesCount < 0 || commentsCount < 0 || imageCount !in 0..5
         ) return null
         val mappedExercises = exercises.map { it.toDomain() ?: return null }
         val completion = completedAt.instant() ?: return null
@@ -139,6 +141,8 @@ class DefaultSocialFeedRepository(
             likesCount = likesCount,
             isLikedByMe = isLikedByMe,
             commentsCount = commentsCount,
+            imageCount = imageCount,
+            previewImageUrl = if (imageCount > 0) mediaUrl(previewImageUrl) else null,
             socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
         )
     }
@@ -151,7 +155,7 @@ class DefaultSocialFeedRepository(
             userId = userId,
             username = username,
             displayName = displayName,
-            avatarUrl = avatarUrl.normalizedHttpsUrl(),
+            avatarUrl = mediaUrl(avatarUrl),
         )
     }
 
@@ -183,7 +187,7 @@ class DefaultSocialFeedRepository(
             userId = userId,
             username = username,
             displayName = displayName,
-            avatarUrl = avatarUrl.normalizedHttpsUrl(),
+            avatarUrl = mediaUrl(avatarUrl),
             completedWorkoutsCount = completedWorkoutsCount,
             followersCount = followersCount,
             isFollowing = isFollowing,
@@ -200,6 +204,9 @@ class DefaultSocialFeedRepository(
             exercise.toDomain() ?: return null
         }
         if (mappedExercises.map(SocialWorkoutExercise::id).distinct().size != mappedExercises.size) return null
+        if (images.size > 5) return null
+        val mappedImages = images.sortedBy { it.position }.map { it.toMediaImage() ?: return null }
+        if (mappedImages.map { it.id }.distinct().size != mappedImages.size) return null
         return SocialWorkoutDetail(
             workoutId = workoutId,
             title = title,
@@ -214,6 +221,7 @@ class DefaultSocialFeedRepository(
             commentsCount = commentsCount,
             shareUrl = shareUrl?.validShareUrl("w", workoutId),
             socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
+            images = mappedImages,
         )
     }
 

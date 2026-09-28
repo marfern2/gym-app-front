@@ -1,6 +1,7 @@
 package com.mar.gym.feature.profile.data
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.BuildConfig
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.feature.profile.model.PrivateProfileDraft
 import com.mar.gym.feature.profile.model.ProfilePrivacy
@@ -35,6 +36,14 @@ class DefaultProfileRepositoryTest {
     }
 
     @After fun tearDown() = server.shutdown()
+
+    @Test fun `own avatar url maps backend media path`() = runTest {
+        val mediaId = "00000000-0000-4000-8000-000000000060"
+        enqueue(profile(0, "alice").replace("\"displayName\":\"Mar\"",
+            "\"displayName\":\"Mar\",\"avatarUrl\":\"/api/v1/media/$mediaId\""), "\"0\"")
+        val profile = (repository.getProfile() as ProfileResult.Success).value.value
+        assertEquals(BuildConfig.API_BASE_URL.trimEnd('/') + "/api/v1/media/$mediaId", profile.avatarUrl)
+    }
 
     @Test fun `loads nullable username and validates ETag against version`() = runTest {
         enqueue(profile(version = 0, username = null), etag = "\"0\"")

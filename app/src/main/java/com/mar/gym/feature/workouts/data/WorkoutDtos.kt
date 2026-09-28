@@ -1,5 +1,7 @@
 package com.mar.gym.feature.workouts.data
 
+import com.mar.gym.core.network.MediaImageDto
+
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -21,6 +23,7 @@ data class WorkoutDetailDto(
     val version: Long,
     val exercises: List<WorkoutExerciseDto>,
     val socialVisibility: String = "PRIVATE",
+    val images: List<MediaImageDto> = emptyList(),
 )
 
 @Serializable

@@ -5,6 +5,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,6 +52,7 @@ import com.mar.gym.feature.social.model.SocialWorkoutSet
 import com.mar.gym.feature.social.model.ReportTargetType
 import com.mar.gym.feature.workouts.model.WorkoutSetSummary
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
+import com.mar.gym.feature.workouts.model.canAddImage
 import com.mar.gym.feature.workouts.ui.WorkoutVisibilityDialog
 import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
 import com.mar.gym.feature.workouts.ui.WorkoutUiErrorKind
@@ -62,15 +77,22 @@ fun SocialWorkoutDetailRoute(
     onOpenComments: (String) -> Unit,
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
     onVisibilityChanged: (String, WorkoutVisibility) -> Unit = { _, _ -> },
+    onMediaChanged: () -> Unit = {},
     preferences: UnitPreferences = UnitPreferences(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(viewModel::addImage)
+    }
     val engagementState by engagementViewModel.uiState.collectAsState()
     val content = state as? SocialWorkoutDetailUiState.Content
     LaunchedEffect(content?.visibilityChangeVersion) {
         if (content != null && content.visibilityChangeVersion > 0) {
             onVisibilityChanged(content.workout.workoutId, content.workout.socialVisibility)
         }
+    }
+    LaunchedEffect(content?.mediaChangeVersion) {
+        if (content != null && content.mediaChangeVersion > 0) onMediaChanged()
     }
     SocialWorkoutDetailScreen(
         state = state,
@@ -89,6 +111,8 @@ fun SocialWorkoutDetailRoute(
         onShareWorkout = onShareWorkout,
         onVisibilityChange = viewModel::updateVisibility,
         onReloadVisibility = viewModel::reloadOwnerDocument,
+        onAddImage = { picker.launch("image/*") },
+        onDeleteImage = viewModel::deleteImage,
         onReportWorkout = { reportViewModel.open(ReportTargetType.WORKOUT, it) },
     )
     ReportOverlay(reportViewModel)
@@ -108,9 +132,13 @@ fun SocialWorkoutDetailScreen(
     onReloadVisibility: () -> Unit = {},
     onReportWorkout: (String) -> Unit = {},
     preferences: UnitPreferences = UnitPreferences(),
+    onAddImage: () -> Unit = {},
+    onDeleteImage: (String) -> Unit = {},
 ) {
     var visibilityDialogOpen by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var fullscreenUrl by remember { mutableStateOf<String?>(null) }
+    var imageToDelete by remember { mutableStateOf<String?>(null) }
     val content = state as? SocialWorkoutDetailUiState.Content
     Scaffold(topBar = {
         AppTopBar(
@@ -196,6 +224,32 @@ fun SocialWorkoutDetailScreen(
                             displayedWorkout.notes?.let {
                                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            val images = state.ownerDocument?.detail?.images ?: displayedWorkout.images
+                            if (images.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    contentPadding = PaddingValues(vertical = 4.dp)) {
+                                    items(images, key = { it.id }) { image ->
+                                        Column {
+                                            SocialMediaImage(image.url, "Imagen del entrenamiento",
+                                                Modifier.width(240.dp).height(180.dp)
+                                                    .clickable { fullscreenUrl = image.url }
+                                                    .testTag("workout_image_${image.id}"))
+                                            if (state.ownerDocument != null) TextButton(
+                                                onClick = { imageToDelete = image.id },
+                                                enabled = !state.mediaSaving,
+                                            ) { Text("Eliminar imagen") }
+                                        }
+                                    }
+                                }
+                            }
+                            if (state.ownerDocument != null) {
+                                TextButton(onClick = onAddImage,
+                                    enabled = !state.mediaSaving && state.ownerDocument.detail.canAddImage(),
+                                    modifier = Modifier.testTag("add_workout_image")) {
+                                    Text(if (state.mediaSaving) "Guardando imagen…" else "Añadir imagen (${images.size}/5)")
+                                }
+                                state.mediaError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
                             Text(
                                 "Duración · ${compactDuration(displayedWorkout.durationSeconds)}",
                                 style = MaterialTheme.typography.titleSmall,
@@ -236,6 +290,20 @@ fun SocialWorkoutDetailScreen(
             onDismiss = { visibilityDialogOpen = false },
         )
     }
+    imageToDelete?.let { id -> AlertDialog(
+        onDismissRequest = { imageToDelete = null },
+        title = { Text("Eliminar imagen") },
+        text = { Text("¿Eliminar esta imagen del entrenamiento?") },
+        confirmButton = { TextButton(onClick = { imageToDelete = null; onDeleteImage(id) }) { Text("Eliminar") } },
+        dismissButton = { TextButton(onClick = { imageToDelete = null }) { Text("Cancelar") } },
+    ) }
+    fullscreenUrl?.let { url -> Dialog(onDismissRequest = { fullscreenUrl = null },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black).testTag("workout_image_fullscreen")) {
+            SocialMediaImage(url, "Imagen ampliada", Modifier.fillMaxSize(), ContentScale.Fit)
+            TextButton(onClick = { fullscreenUrl = null }, Modifier.align(Alignment.TopStart)) { Text("Volver") }
+        }
+    } }
 }
 
 private fun SocialWorkoutDetail.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)

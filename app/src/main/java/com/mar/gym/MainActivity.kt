@@ -946,6 +946,15 @@ class MainActivity : ComponentActivity() {
                             homeViewModel().refreshAfterOwnVisibilityChange(changedWorkoutId, visibility)
                             profileViewModel().refresh()
                         },
+                        onMediaChanged = {
+                            homeViewModel().refreshAfterMediaChange()
+                            profileViewModel().refresh()
+                            if (socialWorkoutOrigin == DEEP_PUBLIC_PROFILE) {
+                                publicUsername?.let { username ->
+                                    publicProfileViewModel(username, user.id).refreshWorkouts()
+                                }
+                            }
+                        },
                     )
                 }
                 DEEP_SHARED_ROUTINE -> sharedRoutineId?.let { shareId ->
@@ -1109,6 +1118,7 @@ class MainActivity : ComponentActivity() {
             AppContainer.socialRepository,
             DeviceTimeZoneProvider,
             AppContainer.applicationClock,
+            AppContainer.mediaRepository,
         ),
     )[ProfileViewModel::class.java]
 
@@ -1145,6 +1155,7 @@ class MainActivity : ComponentActivity() {
                 AppContainer.socialFeedRepository,
                 currentUserId,
                 AppContainer.workoutRepository,
+                AppContainer.mediaRepository,
             ),
         )["social-workout-$workoutId", SocialWorkoutDetailViewModel::class.java]
 

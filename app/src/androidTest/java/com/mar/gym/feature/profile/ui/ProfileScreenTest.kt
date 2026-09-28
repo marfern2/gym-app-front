@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import com.mar.gym.AppContainer
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.core.network.EntityTag
@@ -38,6 +40,27 @@ class ProfileScreenTest {
         composeRule.onNodeWithText("Seguidores").assertDoesNotExist()
         composeRule.onNodeWithText("Seguidos").assertDoesNotExist()
         composeRule.onNodeWithText("Me gusta").assertDoesNotExist()
+        composeRule.onNodeWithTag("profile_avatar_fallback", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Eliminar avatar").assertDoesNotExist()
+    }
+
+    @Test fun avatarFallbackAndDeleteConfirmationFollowProfileState() {
+        var deleted = false
+        val profile = contentState().profile!!.value.copy(avatarUrl = "https://example.test/avatar")
+        AppContainer.initialize(InstrumentationRegistry.getInstrumentation().targetContext)
+        composeRule.setContent { GYmAppTheme {
+            ProfileScreen(
+                state = contentState().copy(profile = VersionedDocument(profile, EntityTag.fromVersion(0)!!)),
+                onEditProfile = {}, onShare = {}, onSettings = {}, onSelectMetric = {}, onSelectRange = {},
+                onOpenStatistics = {}, onOpenMeasurements = {}, onOpenExercises = {}, onOpenCalendar = {},
+                onRetry = {}, onDeleteAvatar = { deleted = true },
+            )
+        } }
+        composeRule.onNodeWithTag("profile_avatar_image", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Eliminar avatar").performClick()
+        composeRule.onNodeWithText("¿Eliminar tu imagen de perfil?").assertIsDisplayed()
+        composeRule.onNodeWithText("Eliminar", useUnmergedTree = true).performClick()
+        composeRule.runOnIdle { assertEquals(true, deleted) }
     }
 
     @Test fun ownCompletedWorkoutOpensItsDetail() {

@@ -1,5 +1,7 @@
 package com.mar.gym.feature.social.data
 
+import com.mar.gym.core.network.MediaImageDto
+
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -25,6 +27,8 @@ data class FeedWorkoutSummaryDto(
     val likesCount: Long = 0,
     val isLikedByMe: Boolean = false,
     val commentsCount: Long = 0,
+    val imageCount: Long = 0,
+    val previewImageUrl: String? = null,
     val socialVisibility: String = "PRIVATE",
 )
 
@@ -82,6 +86,7 @@ data class SocialWorkoutDetailDto(
     val commentsCount: Long = 0,
     val shareUrl: String? = null,
     val socialVisibility: String = "PRIVATE",
+    val images: List<MediaImageDto> = emptyList(),
 )
 
 @Serializable

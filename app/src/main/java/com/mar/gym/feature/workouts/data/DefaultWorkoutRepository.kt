@@ -1,6 +1,7 @@
 package com.mar.gym.feature.workouts.data
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.toMediaImage
 import com.mar.gym.core.network.NetworkJson
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.core.model.hasValidCanonicalSupersetGroups
@@ -130,6 +131,8 @@ class DefaultWorkoutRepository(
         if (mapped.map { it.id }.distinct().size != mapped.size || mapped.sumOf { it.sets.size } > 200 ||
             !hasValidCanonicalSupersetGroups(mapped.map { it.supersetGroup })
         ) return null
+        if (images.size > 5 || (workoutStatus == WorkoutStatus.Active && images.isNotEmpty())) return null
+        val mappedImages = images.sortedBy { it.position }.map { it.toMediaImage() ?: return null }
         return WorkoutDetail(
             id = id,
             sourceRoutineId = sourceRoutineId,
@@ -145,6 +148,7 @@ class DefaultWorkoutRepository(
             version = version,
             exercises = mapped,
             socialVisibility = WorkoutVisibility.fromApiValue(socialVisibility) ?: return null,
+            images = mappedImages,
         )
     }
 

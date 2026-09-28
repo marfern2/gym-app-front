@@ -13,7 +13,7 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 object NetworkClient {
     private val baseUrl = BuildConfig.API_BASE_URL
 
-    private fun okHttpClient(
+    fun okHttpClient(
         interceptors: List<Interceptor>,
         authenticator: Authenticator,
     ): OkHttpClient {
@@ -24,10 +24,10 @@ object NetworkClient {
             .callTimeout(20, TimeUnit.SECONDS)
             .authenticator(authenticator)
             .addInterceptor { chain ->
-                val request = chain.request()
-                    .newBuilder()
-                    .header("Accept", "application/json")
-                    .build()
+                val original = chain.request()
+                val request = if (original.method == "GET" &&
+                    original.url.encodedPath.startsWith("/api/v1/media/")) original else
+                    original.newBuilder().header("Accept", "application/json").build()
                 chain.proceed(request)
             }
         interceptors.forEach(builder::addInterceptor)
@@ -52,4 +52,11 @@ object NetworkClient {
         interceptors: List<Interceptor> = emptyList(),
         authenticator: Authenticator = Authenticator.NONE,
     ): T = retrofit(interceptors, authenticator).create(service)
+
+    @OptIn(ExperimentalSerializationApi::class)
+    fun <T> create(service: Class<T>, client: OkHttpClient): T = Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .client(client)
+        .addConverterFactory(NetworkJson.instance.asConverterFactory("application/json".toMediaType()))
+        .build().create(service)
 }

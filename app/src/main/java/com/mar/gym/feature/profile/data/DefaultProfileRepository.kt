@@ -3,6 +3,7 @@ package com.mar.gym.feature.profile.data
 import com.mar.gym.core.network.EntityNetworkResponse
 import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.mediaUrl
 import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.core.network.executeNetworkEntityRequest
 import com.mar.gym.core.units.DistanceUnit
@@ -59,6 +60,7 @@ class DefaultProfileRepository(private val api: ProfileApi) : ProfileRepository 
             userId, displayName, username, created, updated, version, mappedPrivacy, mappedWorkoutVisibility,
             WeightUnit.fromApiValue(preferredWeightUnit),
             DistanceUnit.fromApiValue(preferredDistanceUnit),
+            mediaUrl(avatarUrl),
         )
     }
 

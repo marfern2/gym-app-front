@@ -19,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.profile.model.PrivateProfile
+import com.mar.gym.feature.social.ui.SocialAvatar
 
 @Composable
 fun ProfileHeader(
@@ -37,6 +40,9 @@ fun ProfileHeader(
     modifier: Modifier = Modifier,
     canSharePublicly: Boolean = true,
     shareUnavailableMessage: String? = null,
+    onChangeAvatar: () -> Unit = {},
+    onDeleteAvatar: () -> Unit = {},
+    avatarSaving: Boolean = false,
 ) {
     val identity = profile.username?.let { "@$it" } ?: profile.displayName.ifBlank { "Perfil" }
     Column(modifier.testTag("profile_header"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -64,16 +70,20 @@ fun ProfileHeader(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(76.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    profile.displayName.trim().firstOrNull()?.uppercase() ?: "G",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
+            if (profile.avatarUrl == null) {
+                Box(
+                    Modifier.size(76.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        .testTag("profile_avatar_fallback"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        profile.displayName.trim().firstOrNull()?.uppercase() ?: "G",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            } else SocialAvatar(profile.avatarUrl, profile.displayName, profile.username.orEmpty(),
+                modifier = Modifier.testTag("profile_avatar_image"), size = 76.dp)
             Spacer(Modifier.width(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(identity, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -81,6 +91,13 @@ fun ProfileHeader(
                     Text(profile.displayName, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onChangeAvatar, enabled = !avatarSaving) { Text("Cambiar avatar") }
+            if (profile.avatarUrl != null) TextButton(onClick = onDeleteAvatar, enabled = !avatarSaving) {
+                Text("Eliminar avatar")
+            }
+            if (avatarSaving) CircularProgressIndicator(Modifier.size(20.dp))
         }
         shareUnavailableMessage?.let {
             Text(
