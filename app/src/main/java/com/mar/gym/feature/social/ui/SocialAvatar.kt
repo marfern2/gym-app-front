@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import com.mar.gym.AppContainer
 
 @Composable
 fun SocialAvatar(
@@ -31,6 +32,7 @@ fun SocialAvatar(
     } else {
         SubcomposeAsyncImage(
             model = avatarUrl,
+            imageLoader = AppContainer.socialMediaImageLoader,
             contentDescription = "Avatar de $displayName",
             contentScale = ContentScale.Crop,
             modifier = modifier.size(size).clip(CircleShape),

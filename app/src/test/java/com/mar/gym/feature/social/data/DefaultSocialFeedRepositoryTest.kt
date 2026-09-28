@@ -1,6 +1,7 @@
 package com.mar.gym.feature.social.data
 
 import com.mar.gym.core.network.NetworkJson
+import com.mar.gym.BuildConfig
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import kotlinx.coroutines.test.runTest
@@ -31,6 +32,20 @@ class DefaultSocialFeedRepositoryTest {
     }
 
     @After fun tearDown() = server.shutdown()
+
+    @Test fun `feed preview and detail gallery resolve authenticated media paths`() = runTest {
+        val mediaId = "00000000-0000-4000-8000-000000000060"
+        enqueue(feedPage(null, false).replace("\"remainingExercisesCount\":1",
+            "\"remainingExercisesCount\":1,\"imageCount\":1,\"previewImageUrl\":\"/api/v1/media/$mediaId\""))
+        val summary = (repository.feed(null, 20) as SocialResult.Success).value.content.single()
+        assertEquals(1, summary.imageCount)
+        assertEquals(BuildConfig.API_BASE_URL.trimEnd('/') + "/api/v1/media/$mediaId", summary.previewImageUrl)
+        server.takeRequest()
+        enqueue(detail().replace("\"exercises\":[", "\"images\":[{\"id\":\"$mediaId\",\"width\":400,\"height\":300,\"position\":1}],\"exercises\":["))
+        val image = (repository.workoutDetail(WORKOUT_ID) as SocialResult.Success).value.images.single()
+        assertEquals(mediaId, image.id)
+        assertEquals(BuildConfig.API_BASE_URL.trimEnd('/') + "/api/v1/media/$mediaId", image.url)
+    }
 
     @Test fun `feed maps current summary contract without detail requests`() = runTest {
         enqueue(feedPage(nextCursor = "opaque", hasMore = true))

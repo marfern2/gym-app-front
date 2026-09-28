@@ -1,6 +1,9 @@
 package com.mar.gym.feature.social.ui
 
 import androidx.lifecycle.ViewModel
+import android.net.Uri
+import com.mar.gym.core.network.MediaOperations
+import com.mar.gym.core.network.MediaResult
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -11,6 +14,7 @@ import com.mar.gym.feature.workouts.data.WorkoutRepository
 import com.mar.gym.feature.workouts.data.WorkoutRepositoryResult
 import com.mar.gym.feature.workouts.model.WorkoutDocument
 import com.mar.gym.feature.workouts.model.WorkoutStatus
+import com.mar.gym.feature.workouts.model.canAddImage
 import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.ui.WorkoutUiError
 import com.mar.gym.feature.workouts.ui.WorkoutUiErrorKind
@@ -30,6 +34,9 @@ sealed interface SocialWorkoutDetailUiState {
         val visibilityChanging: Boolean = false,
         val visibilityError: WorkoutUiError? = null,
         val visibilityChangeVersion: Long = 0,
+        val mediaSaving: Boolean = false,
+        val mediaError: String? = null,
+        val mediaChangeVersion: Long = 0,
     ) : SocialWorkoutDetailUiState
     data class Error(val error: SocialUiError) : SocialWorkoutDetailUiState
 }
@@ -39,14 +46,43 @@ class SocialWorkoutDetailViewModel(
     private val repository: SocialFeedRepository,
     private val currentUserId: String? = null,
     private val workoutRepository: WorkoutRepository? = null,
+    private val mediaRepository: MediaOperations? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<SocialWorkoutDetailUiState>(SocialWorkoutDetailUiState.Loading)
     val uiState: StateFlow<SocialWorkoutDetailUiState> = _uiState.asStateFlow()
     private var loadJob: Job? = null
+    private var mediaChangeVersion = 0L
 
     init { load() }
 
     fun retry() = load()
+
+    fun addImage(uri: Uri) = changeMedia(adding = true) { mediaRepository?.uploadWorkoutImage(workoutId, uri) }
+
+    fun deleteImage(imageId: String) = changeMedia {
+        mediaRepository?.deleteWorkoutImage(workoutId, imageId)
+    }
+
+    private fun changeMedia(adding: Boolean = false, action: suspend () -> MediaResult?) {
+        val current = _uiState.value as? SocialWorkoutDetailUiState.Content ?: return
+        if (current.ownerDocument?.detail?.status != WorkoutStatus.Completed || current.mediaSaving ||
+            (adding && current.ownerDocument?.detail?.canAddImage() != true) ||
+            mediaRepository == null) return
+        _uiState.value = current.copy(mediaSaving = true, mediaError = null)
+        viewModelScope.launch {
+            when (val result = action()) {
+                MediaResult.Success, is MediaResult.Uploaded -> {
+                    mediaChangeVersion += 1
+                    load()
+                }
+                is MediaResult.Error -> {
+                    val latest = _uiState.value as? SocialWorkoutDetailUiState.Content ?: return@launch
+                    _uiState.value = latest.copy(mediaSaving = false, mediaError = result.message)
+                }
+                null -> Unit
+            }
+        }
+    }
 
     fun updateVisibility(visibility: WorkoutVisibility) {
         val current = _uiState.value as? SocialWorkoutDetailUiState.Content ?: return
@@ -109,7 +145,8 @@ class SocialWorkoutDetailViewModel(
                 is SocialResult.Failure -> SocialWorkoutDetailUiState.Error(result.error.toSocialUiError())
                 is SocialResult.Success -> {
                     val isOwnWorkout = result.value.author.userId == currentUserId
-                    val content = SocialWorkoutDetailUiState.Content(result.value, isOwnWorkout = isOwnWorkout)
+                    val content = SocialWorkoutDetailUiState.Content(result.value,
+                        isOwnWorkout = isOwnWorkout, mediaChangeVersion = mediaChangeVersion)
                     if (!isOwnWorkout || workoutRepository == null) {
                         content
                     } else when (val owner = workoutRepository.getWorkout(workoutId)) {
@@ -148,10 +185,12 @@ class SocialWorkoutDetailViewModelFactory(
     private val repository: SocialFeedRepository,
     private val currentUserId: String? = null,
     private val workoutRepository: WorkoutRepository? = null,
+    private val mediaRepository: MediaOperations? = null,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(SocialWorkoutDetailViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return SocialWorkoutDetailViewModel(workoutId, repository, currentUserId, workoutRepository) as T
+        return SocialWorkoutDetailViewModel(workoutId, repository, currentUserId, workoutRepository,
+            mediaRepository) as T
     }
 }

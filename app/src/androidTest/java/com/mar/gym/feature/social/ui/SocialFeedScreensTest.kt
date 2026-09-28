@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.mar.gym.feature.exercises.model.Equipment
+import com.mar.gym.AppContainer
+import com.mar.gym.core.network.MediaImage
+import androidx.test.platform.app.InstrumentationRegistry
 import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.home.ui.HomeScreen
 import com.mar.gym.feature.home.ui.FeedUiState
@@ -82,6 +85,33 @@ class SocialFeedScreensTest {
             assertEquals(WORKOUT_ID, commentsWorkout)
             assertEquals(WORKOUT_ID, sharedWorkout)
         }
+    }
+
+    @Test fun cardShowsSinglePreviewWhenImagesExist() {
+        AppContainer.initialize(InstrumentationRegistry.getInstrumentation().targetContext)
+        val mediaId = "00000000-0000-4000-8000-000000000060"
+        val url = "https://example.test/media/$mediaId"
+        composeRule.setContent { GYmAppTheme {
+            SocialWorkoutCard(workout().copy(imageCount = 1, previewImageUrl = url), {}, {})
+        } }
+        composeRule.onNodeWithTag("social_workout_preview", useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun detailGalleryOpensFullscreen() {
+        AppContainer.initialize(InstrumentationRegistry.getInstrumentation().targetContext)
+        val mediaId = "00000000-0000-4000-8000-000000000060"
+        val url = "https://example.test/media/$mediaId"
+        composeRule.setContent { GYmAppTheme {
+            SocialWorkoutDetailScreen(
+                state = SocialWorkoutDetailUiState.Content(
+                    detail().copy(images = listOf(MediaImage(mediaId, url, 400, 300, 1))),
+                ), onBack = {}, onOpenProfile = {}, onRetry = {},
+            )
+        } }
+        composeRule.onNodeWithTag("workout_image_$mediaId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workout_image_fullscreen").assertIsDisplayed()
+        composeRule.onNodeWithText("Volver").performClick()
+        composeRule.onNodeWithTag("workout_image_fullscreen").assertDoesNotExist()
     }
 
     @Test fun publicProfileShareUsesLoadedCanonicalIdentity() {

@@ -1,6 +1,9 @@
 package com.mar.gym.feature.profile.ui
 
 import androidx.lifecycle.ViewModel
+import android.net.Uri
+import com.mar.gym.core.network.MediaOperations
+import com.mar.gym.core.network.MediaResult
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -65,6 +68,8 @@ data class ProfileUiState(
     val selectedStatsPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
     val summary: ProfileSection<ProgressSummary> = ProfileSection.Loading,
     val distribution: ProfileSection<MuscleDistribution> = ProfileSection.Loading,
+    val avatarSaving: Boolean = false,
+    val avatarError: String? = null,
 )
 
 class ProfileViewModel(
@@ -74,6 +79,7 @@ class ProfileViewModel(
     private val socialRepository: SocialRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
+    private val mediaRepository: MediaOperations? = null,
 ) : ViewModel() {
     private val zone = ZoneId.of(timeZoneProvider.zoneId())
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -86,6 +92,33 @@ class ProfileViewModel(
     private val workoutDetails = mutableMapOf<String, WorkoutDetail>()
 
     init { refresh() }
+
+    fun replaceAvatar(uri: Uri) = changeAvatar(deleting = false) { mediaRepository?.uploadAvatar(uri) }
+
+    fun deleteAvatar() = changeAvatar(deleting = true) { mediaRepository?.deleteAvatar() }
+
+    private fun changeAvatar(deleting: Boolean, action: suspend () -> MediaResult?) {
+        if (_uiState.value.avatarSaving || mediaRepository == null) return
+        _uiState.update { it.copy(avatarSaving = true, avatarError = null) }
+        viewModelScope.launch {
+            when (val result = action()) {
+                MediaResult.Success, is MediaResult.Uploaded -> {
+                    _uiState.update { state -> state.copy(
+                        profile = state.profile?.let { document -> document.copy(
+                            value = document.value.copy(avatarUrl = if (deleting) null else
+                                ((result as? MediaResult.Uploaded)?.url ?: document.value.avatarUrl)),
+                        ) },
+                        avatarSaving = false, avatarError = null,
+                    ) }
+                    loadProfile()
+                }
+                is MediaResult.Error -> _uiState.update {
+                    it.copy(avatarSaving = false, avatarError = result.message)
+                }
+                null -> _uiState.update { it.copy(avatarSaving = false) }
+            }
+        }
+    }
 
     fun refresh() {
         loadProfile()
@@ -349,12 +382,14 @@ class ProfileViewModelFactory(
     private val socialRepository: SocialRepository,
     private val timeZoneProvider: TimeZoneProvider,
     private val clock: Clock,
+    private val mediaRepository: MediaOperations? = null,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ProfileViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
         return ProfileViewModel(
             profileRepository, analyticsRepository, workoutRepository, socialRepository, timeZoneProvider, clock,
+            mediaRepository,
         ) as T
     }
 }

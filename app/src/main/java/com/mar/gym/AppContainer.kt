@@ -5,8 +5,14 @@ import android.os.Build
 import coil3.ImageLoader
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import com.mar.gym.core.network.AuthorizationInterceptor
 import com.mar.gym.core.network.NetworkClient
+import com.mar.gym.core.network.MediaApi
+import com.mar.gym.core.network.MediaPartFactory
+import com.mar.gym.core.network.MediaRepository
+import com.mar.gym.core.network.MediaAuthenticationInterceptor
 import com.mar.gym.core.network.SessionAuthenticator
 import com.mar.gym.feature.auth.data.AndroidKeystoreSessionCipher
 import com.mar.gym.feature.auth.data.AuthApi
@@ -83,12 +89,18 @@ object AppContainer {
         )
     }
 
-    private val protectedAuthApi: AuthApi by lazy {
-        NetworkClient.create(
-            service = AuthApi::class.java,
-            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
-            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
+    private val protectedClient by lazy {
+        NetworkClient.okHttpClient(
+            listOf(
+                MediaAuthenticationInterceptor(com.mar.gym.BuildConfig.API_BASE_URL.toHttpUrl()),
+                AuthorizationInterceptor(sessionStore),
+            ),
+            SessionAuthenticator(sessionStore, refreshCoordinator),
         )
+    }
+
+    private val protectedAuthApi: AuthApi by lazy {
+        protectedApi(AuthApi::class.java)
     }
 
     val authRepository: AuthRepository by lazy {
@@ -104,11 +116,7 @@ object AppContainer {
     }
 
     private val exerciseTemplateApi: ExerciseTemplateApi by lazy {
-        NetworkClient.create(
-            service = ExerciseTemplateApi::class.java,
-            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
-            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
-        )
+        protectedApi(ExerciseTemplateApi::class.java)
     }
 
     val exerciseTemplateRepository: ExerciseTemplateRepository by lazy {
@@ -116,21 +124,13 @@ object AppContainer {
     }
 
     private val routineApi: RoutineApi by lazy {
-        NetworkClient.create(
-            service = RoutineApi::class.java,
-            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
-            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
-        )
+        protectedApi(RoutineApi::class.java)
     }
 
     val routineRepository: RoutineRepository by lazy { DefaultRoutineRepository(routineApi) }
 
     private val workoutApi: WorkoutApi by lazy {
-        NetworkClient.create(
-            service = WorkoutApi::class.java,
-            interceptors = listOf(AuthorizationInterceptor(sessionStore)),
-            authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
-        )
+        protectedApi(WorkoutApi::class.java)
     }
 
     val workoutRepository: WorkoutRepository by lazy {
@@ -151,6 +151,7 @@ object AppContainer {
     val restTimerController: RestTimerController by restTimerControllerDelegate
 
     fun clearUserScopedState() {
+        if (socialMediaImageLoaderDelegate.isInitialized()) socialMediaImageLoader.memoryCache?.clear()
         if (restTimerControllerDelegate.isInitialized()) {
             restTimerController.cancel()
         }
@@ -168,6 +169,9 @@ object AppContainer {
 
     private val profileApi: ProfileApi by lazy { protectedApi(ProfileApi::class.java) }
     val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
+    val mediaRepository: MediaRepository by lazy {
+        MediaRepository(protectedApi(MediaApi::class.java), MediaPartFactory(applicationContext.contentResolver))
+    }
 
     private val socialApi: SocialApi by lazy { protectedApi(SocialApi::class.java) }
     private val defaultSocialRepository by lazy { DefaultSocialRepository(socialApi) }
@@ -187,11 +191,7 @@ object AppContainer {
     private val measurementApi: MeasurementApi by lazy { protectedApi(MeasurementApi::class.java) }
     val measurementRepository: MeasurementRepository by lazy { DefaultMeasurementRepository(measurementApi) }
 
-    private fun <T> protectedApi(service: Class<T>): T = NetworkClient.create(
-        service = service,
-        interceptors = listOf(AuthorizationInterceptor(sessionStore)),
-        authenticator = SessionAuthenticator(sessionStore, refreshCoordinator),
-    )
+    private fun <T> protectedApi(service: Class<T>): T = NetworkClient.create(service, protectedClient)
 
     val applicationClock: Clock get() = clock
 
@@ -207,4 +207,11 @@ object AppContainer {
             }
             .build()
     }
+
+    private val socialMediaImageLoaderDelegate = lazy {
+        ImageLoader.Builder(applicationContext).components {
+            add(OkHttpNetworkFetcherFactory(protectedClient))
+        }.build()
+    }
+    val socialMediaImageLoader: ImageLoader by socialMediaImageLoaderDelegate
 }

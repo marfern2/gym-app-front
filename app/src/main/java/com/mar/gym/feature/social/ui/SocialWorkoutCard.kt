@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -121,6 +122,14 @@ fun SocialWorkoutCard(
                 }
             }
             WorkoutSummaryRow(workout, preferences)
+            if (workout.imageCount > 0 && workout.previewImageUrl != null) {
+                SocialMediaImage(
+                    workout.previewImageUrl,
+                    "Imagen del entrenamiento ${workout.title}",
+                    Modifier.fillMaxWidth().aspectRatio(1.6f).clip(RoundedCornerShape(12.dp))
+                        .testTag("social_workout_preview"),
+                )
+            }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 workout.exercises.take(MAX_EXERCISE_PREVIEWS).forEach { ExercisePreview(it) }
                 if (workout.remainingExercisesCount > 0) {

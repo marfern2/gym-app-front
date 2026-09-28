@@ -1,6 +1,7 @@
 package com.mar.gym.feature.social.data
 
 import com.mar.gym.core.network.NetworkFailure
+import com.mar.gym.core.network.mediaUrl
 import com.mar.gym.core.network.NetworkResponse
 import com.mar.gym.core.network.executeNetworkRequest
 import com.mar.gym.core.network.executeNetworkUnitRequest
@@ -115,7 +116,7 @@ class DefaultSocialRepository(private val api: SocialApi) : SocialRepository, So
     private fun BlockedUserDto.toDomain(): BlockedUser? {
         if (!userId.isUuid() || !USERNAME.matches(username) || displayName.length > 100) return null
         val time = runCatching { Instant.parse(blockedAt) }.getOrNull() ?: return null
-        return BlockedUser(userId, username, displayName, avatarUrl?.trim()?.takeIf(String::isNotEmpty), time)
+        return BlockedUser(userId, username, displayName, mediaUrl(avatarUrl), time)
     }
 
     private fun ReportResponseDto.toDomain(): ReportResponse? {
@@ -139,7 +140,7 @@ class DefaultSocialRepository(private val api: SocialApi) : SocialRepository, So
             userId = userId,
             username = username,
             displayName = displayName,
-            avatarUrl = avatarUrl?.trim()?.takeIf(String::isNotEmpty),
+            avatarUrl = mediaUrl(avatarUrl),
             completedWorkoutsCount = completedWorkoutsCount,
             followersCount = followersCount,
             followingCount = followingCount,

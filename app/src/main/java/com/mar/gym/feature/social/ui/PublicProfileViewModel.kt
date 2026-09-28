@@ -67,6 +67,8 @@ class PublicProfileViewModel(
         }
     }
 
+    fun refreshWorkouts() = loadWorkouts(clearCurrent = false)
+
     fun loadMoreWorkouts() {
         val current = _uiState.value as? PublicProfileUiState.Content ?: return
         if (current.workoutsLoading || current.workoutsLoadingMore || !current.workoutsHasMore) return

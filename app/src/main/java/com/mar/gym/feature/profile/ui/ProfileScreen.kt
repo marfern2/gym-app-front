@@ -16,6 +16,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -45,6 +51,9 @@ fun ProfileRoute(
     onOpenWorkout: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(viewModel::replaceAvatar)
+    }
     ProfileScreen(
         state = state,
         onEditProfile = { viewModel.startEditing(); onOpenEdit() },
@@ -63,6 +72,8 @@ fun ProfileRoute(
         onOpenFollowing = onOpenFollowing,
         onOpenWorkout = onOpenWorkout,
         onRetry = viewModel::refresh,
+        onChangeAvatar = { imagePicker.launch("image/*") },
+        onDeleteAvatar = viewModel::deleteAvatar,
     )
 }
 
@@ -84,7 +95,10 @@ fun ProfileScreen(
     onOpenFollowers: (String) -> Unit = {},
     onOpenFollowing: (String) -> Unit = {},
     onOpenWorkout: (String) -> Unit = {},
+    onChangeAvatar: () -> Unit = {},
+    onDeleteAvatar: () -> Unit = {},
 ) {
+    var confirmDeleteAvatar by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("profile_screen"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
@@ -100,6 +114,9 @@ fun ProfileScreen(
                     onShare = onShare,
                     onSettings = onSettings,
                     onSearch = onSearchPeople,
+                    onChangeAvatar = onChangeAvatar,
+                    onDeleteAvatar = { confirmDeleteAvatar = true },
+                    avatarSaving = state.avatarSaving,
                     canSharePublicly = state.profile.value.privacy == ProfilePrivacy.Public &&
                         state.profile.value.username != null,
                     shareUnavailableMessage = when {
@@ -112,6 +129,7 @@ fun ProfileScreen(
                 )
             }
         }
+        state.avatarError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
         val social = state.socialProfile
         if (social is ProfileSection.Content) {
             item {
@@ -174,6 +192,13 @@ fun ProfileScreen(
             }
         }
     }
+    if (confirmDeleteAvatar) AlertDialog(
+        onDismissRequest = { confirmDeleteAvatar = false },
+        title = { Text("Eliminar avatar") },
+        text = { Text("¿Eliminar tu imagen de perfil?") },
+        confirmButton = { TextButton(onClick = { confirmDeleteAvatar = false; onDeleteAvatar() }) { Text("Eliminar") } },
+        dismissButton = { TextButton(onClick = { confirmDeleteAvatar = false }) { Text("Cancelar") } },
+    )
 }
 
 @Composable

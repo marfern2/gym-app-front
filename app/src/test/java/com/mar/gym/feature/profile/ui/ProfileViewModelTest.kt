@@ -1,6 +1,9 @@
 package com.mar.gym.feature.profile.ui
 
 import com.mar.gym.core.network.EntityTag
+import com.mar.gym.core.network.MediaOperations
+import com.mar.gym.core.network.MediaResult
+import android.net.Uri
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.core.units.DistanceUnit
@@ -74,6 +77,31 @@ class ProfileViewModelTest {
 
         assertEquals("mar.gym", viewModel.uiState.value.profile?.value?.username)
         assertFalse(viewModel.uiState.value.profileLoading)
+    }
+
+    @Test fun `avatar delete refreshes profile and failure preserves avatar`() = runTest {
+        val profiles = FakeProfileRepository().apply {
+            getResult = ProfileResult.Success(document().let { it.copy(
+                value = it.value.copy(avatarUrl = "https://example.test/avatar")) })
+        }
+        val media = FakeAvatarMedia()
+        val viewModel = viewModel(profiles = profiles, media = media)
+        advanceUntilIdle()
+        assertEquals("https://example.test/avatar", viewModel.uiState.value.profile?.value?.avatarUrl)
+
+        media.result = MediaResult.Error("Error de red. Inténtalo de nuevo")
+        viewModel.deleteAvatar()
+        advanceUntilIdle()
+        assertEquals("https://example.test/avatar", viewModel.uiState.value.profile?.value?.avatarUrl)
+        assertEquals("Error de red. Inténtalo de nuevo", viewModel.uiState.value.avatarError)
+
+        media.result = MediaResult.Success
+        profiles.getResult = ProfileResult.Success(document())
+        viewModel.deleteAvatar()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.profile?.value?.avatarUrl)
+        assertNull(viewModel.uiState.value.avatarError)
+        assertEquals(2, media.deletes)
     }
 
     @Test fun `duration volume and repetitions can be selected`() = runTest {
@@ -281,6 +309,7 @@ class ProfileViewModelTest {
         profiles: FakeProfileRepository = FakeProfileRepository(),
         workouts: FakeWorkoutRepository = FakeWorkoutRepository(),
         socials: FakeSocialRepository = FakeSocialRepository(),
+        media: MediaOperations? = null,
     ) = ProfileViewModel(
         profiles,
         FakeAnalyticsRepository(),
@@ -288,6 +317,7 @@ class ProfileViewModelTest {
         socials,
         TimeZoneProvider { "Europe/Madrid" },
         Clock.fixed(NOW, ZoneOffset.UTC),
+        media,
     )
 
     private fun viewModel(
@@ -318,6 +348,15 @@ class ProfileViewModelTest {
             lastCurrent = current
             return updateResult
         }
+    }
+
+    private class FakeAvatarMedia : MediaOperations {
+        var result: MediaResult = MediaResult.Success
+        var deletes = 0
+        override suspend fun uploadAvatar(uri: Uri): MediaResult = result
+        override suspend fun deleteAvatar(): MediaResult { deletes++; return result }
+        override suspend fun uploadWorkoutImage(workoutId: String, uri: Uri): MediaResult = error("unused")
+        override suspend fun deleteWorkoutImage(workoutId: String, imageId: String): MediaResult = error("unused")
     }
 
     private class RacingProfileRepository : ProfileRepository {

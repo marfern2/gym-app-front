@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class PrivateProfileDto(
     val userId: String,
     val displayName: String,
+    val avatarUrl: String? = null,
     val username: String? = null,
     val createdAt: String,
     val updatedAt: String,
