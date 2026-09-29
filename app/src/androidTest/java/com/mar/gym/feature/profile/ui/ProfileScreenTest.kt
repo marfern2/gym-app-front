@@ -32,6 +32,20 @@ import org.junit.Test
 class ProfileScreenTest {
     @get:Rule val composeRule = createComposeRule()
 
+    @Test fun progressPhotosEntryOpensPrivateGallery() {
+        var opened = false
+        composeRule.setContent { GYmAppTheme {
+            ProfileScreen(
+                state = contentState(), onEditProfile = {}, onShare = {}, onSettings = {},
+                onSelectMetric = {}, onSelectRange = {}, onOpenStatistics = {},
+                onOpenMeasurements = {}, onOpenExercises = {}, onOpenCalendar = {},
+                onRetry = {}, onOpenProgressPhotos = { opened = true },
+            )
+        } }
+        composeRule.onNodeWithTag("information_Fotos de progreso").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(true, opened) }
+    }
+
     @Test fun profileShowsRealUsernameWorkoutAndNoFakeSocialData() {
         setProfile(contentState())
 

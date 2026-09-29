@@ -297,13 +297,7 @@ fun SocialWorkoutDetailScreen(
         confirmButton = { TextButton(onClick = { imageToDelete = null; onDeleteImage(id) }) { Text("Eliminar") } },
         dismissButton = { TextButton(onClick = { imageToDelete = null }) { Text("Cancelar") } },
     ) }
-    fullscreenUrl?.let { url -> Dialog(onDismissRequest = { fullscreenUrl = null },
-        properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black).testTag("workout_image_fullscreen")) {
-            SocialMediaImage(url, "Imagen ampliada", Modifier.fillMaxSize(), ContentScale.Fit)
-            TextButton(onClick = { fullscreenUrl = null }, Modifier.align(Alignment.TopStart)) { Text("Volver") }
-        }
-    } }
+    fullscreenUrl?.let { url -> MediaFullscreenDialog(url, { fullscreenUrl = null }, "workout_image_fullscreen") }
 }
 
 private fun SocialWorkoutDetail.engagement() = SocialEngagement(likesCount, isLikedByMe, commentsCount)

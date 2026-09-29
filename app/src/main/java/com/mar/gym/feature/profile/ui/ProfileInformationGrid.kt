@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ fun ProfileInformationGrid(
     onExercises: () -> Unit,
     onMeasurements: () -> Unit,
     onCalendar: () -> Unit,
+    onProgressPhotos: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -39,6 +41,9 @@ fun ProfileInformationGrid(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             InformationCard("Medidas", Icons.Default.MonitorWeight, onMeasurements, Modifier.weight(1f))
             InformationCard("Calendario", Icons.Default.CalendarMonth, onCalendar, Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth()) {
+            InformationCard("Fotos de progreso", Icons.Default.PhotoLibrary, onProgressPhotos, Modifier.fillMaxWidth())
         }
     }
 }
