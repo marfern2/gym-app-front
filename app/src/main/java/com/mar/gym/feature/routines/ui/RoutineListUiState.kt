@@ -35,7 +35,7 @@ data class RoutineUiError(
 )
 
 enum class RoutineUiErrorKind {
-    Network, Timeout, Unauthorized, NotFound, Conflict, Archived,
+    Network, Timeout, Unauthorized, NotFound, Conflict, InProgram, Archived,
     Validation, InvalidResponse, Server, Unknown,
 }
 

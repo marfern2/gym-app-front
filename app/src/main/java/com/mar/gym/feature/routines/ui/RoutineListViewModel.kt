@@ -241,6 +241,7 @@ internal fun NetworkFailure.toRoutineUiError(): RoutineUiError {
             statusCode == 401 -> RoutineUiErrorKind.Unauthorized
             statusCode == 404 -> RoutineUiErrorKind.NotFound
             problem.errorCode == "ROUTINE_VERSION_CONFLICT" -> RoutineUiErrorKind.Conflict
+            problem.errorCode == "ROUTINE_IN_PROGRAM" -> RoutineUiErrorKind.InProgram
             problem.errorCode == "ROUTINE_ARCHIVED" -> RoutineUiErrorKind.Archived
             statusCode == 400 -> RoutineUiErrorKind.Validation
             statusCode >= 500 -> RoutineUiErrorKind.Server

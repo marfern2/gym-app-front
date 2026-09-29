@@ -447,6 +447,7 @@ internal fun RoutineUiErrorKind.messageResource() = when (this) {
     RoutineUiErrorKind.Unauthorized -> R.string.routine_error_unauthorized
     RoutineUiErrorKind.NotFound -> R.string.routine_error_not_found
     RoutineUiErrorKind.Conflict -> R.string.routine_conflict_message
+    RoutineUiErrorKind.InProgram -> R.string.routine_in_program_message
     RoutineUiErrorKind.Archived -> R.string.routine_error_archived
     RoutineUiErrorKind.Validation -> R.string.routine_validation_title
     RoutineUiErrorKind.InvalidResponse -> R.string.routine_error_invalid_response

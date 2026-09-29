@@ -114,6 +114,7 @@
     <string name="routine_validation_title">Revisa los campos indicados.</string>
     <string name="routine_conflict_title">La rutina ha cambiado</string>
     <string name="routine_conflict_message">Hay una versión más reciente en el servidor. Tus cambios no se han sobrescrito.</string>
+    <string name="routine_in_program_message">Esta rutina forma parte de uno o más programas.</string>
     <string name="routine_conflict_dirty_warning">Si recargas, perderás los cambios locales sin guardar.</string>
     <string name="routine_reload_server">Recargar versión del servidor</string>
     <string name="routine_exit_confirm_title">Descartar cambios</string>
