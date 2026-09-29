@@ -35,6 +35,9 @@ import com.mar.gym.feature.profile.data.ProfileRepository
 import com.mar.gym.feature.progress.data.AnalyticsApi
 import com.mar.gym.feature.progress.data.AnalyticsRepository
 import com.mar.gym.feature.progress.data.DefaultAnalyticsRepository
+import com.mar.gym.feature.progressphotos.data.DefaultProgressPhotoRepository
+import com.mar.gym.feature.progressphotos.data.ProgressPhotoApi
+import com.mar.gym.feature.progressphotos.data.ProgressPhotoRepository
 import com.mar.gym.feature.routines.data.DefaultRoutineRepository
 import com.mar.gym.feature.routines.data.RoutineApi
 import com.mar.gym.feature.routines.data.RoutineRepository
@@ -190,6 +193,13 @@ object AppContainer {
 
     private val measurementApi: MeasurementApi by lazy { protectedApi(MeasurementApi::class.java) }
     val measurementRepository: MeasurementRepository by lazy { DefaultMeasurementRepository(measurementApi) }
+
+    val progressPhotoRepository: ProgressPhotoRepository by lazy {
+        DefaultProgressPhotoRepository(
+            protectedApi(ProgressPhotoApi::class.java),
+            MediaPartFactory(applicationContext.contentResolver),
+        )
+    }
 
     private fun <T> protectedApi(service: Class<T>): T = NetworkClient.create(service, protectedClient)
 

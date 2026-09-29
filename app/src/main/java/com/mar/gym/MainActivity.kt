@@ -121,6 +121,10 @@ import com.mar.gym.core.sharing.ShareLinks
 import com.mar.gym.core.sharing.ShareMessages
 import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.profile.model.unitPreferences
+import com.mar.gym.feature.progressphotos.ui.ProgressPhotosRoute
+import com.mar.gym.feature.progressphotos.ui.ProgressPhotoDetailRoute
+import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModel
+import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModelFactory
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -209,6 +213,7 @@ class MainActivity : ComponentActivity() {
         var socialListParentUsername by rememberSaveable { mutableStateOf<String?>(null) }
         var socialListType by rememberSaveable { mutableStateOf(SocialListType.Followers.name) }
         var sharedRoutineId by rememberSaveable { mutableStateOf<String?>(null) }
+        var progressPhotoId by rememberSaveable { mutableStateOf<String?>(null) }
 
         val pendingDeepLink by incomingDeepLink.collectAsStateWithLifecycle()
         LaunchedEffect(pendingDeepLink) {
@@ -315,6 +320,14 @@ class MainActivity : ComponentActivity() {
                     DEEP_WORKOUT_SAVE -> DEEP_WORKOUT
                     DEEP_MEASUREMENTS -> {
                         profileViewModel().refresh()
+                        tab = TAB_PROFILE
+                        null
+                    }
+                    DEEP_PROGRESS_PHOTO_DETAIL -> {
+                        progressPhotosViewModel().closeDetail()
+                        DEEP_PROGRESS_PHOTOS
+                    }
+                    DEEP_PROGRESS_PHOTOS -> {
                         tab = TAB_PROFILE
                         null
                     }
@@ -482,6 +495,7 @@ class MainActivity : ComponentActivity() {
                             onOpenSettings = { deep = DEEP_PROFILE_SETTINGS },
                             onOpenStatistics = { deep = DEEP_PROFILE_STATS },
                             onOpenMeasurements = { deep = DEEP_MEASUREMENTS },
+                            onOpenProgressPhotos = { deep = DEEP_PROGRESS_PHOTOS },
                             onOpenExercises = {
                                 catalogOrigin = TAB_PROFILE
                                 deep = DEEP_CATALOG
@@ -788,6 +802,18 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                     },
                 )
+                DEEP_PROGRESS_PHOTOS -> ProgressPhotosRoute(
+                    viewModel = progressPhotosViewModel(),
+                    preferences = unitPreferences,
+                    onBack = { deep = null; tab = TAB_PROFILE },
+                    onOpenDetail = { id -> progressPhotoId = id; deep = DEEP_PROGRESS_PHOTO_DETAIL },
+                )
+                DEEP_PROGRESS_PHOTO_DETAIL -> progressPhotoId?.let { id -> ProgressPhotoDetailRoute(
+                    viewModel = progressPhotosViewModel(),
+                    photoId = id,
+                    preferences = unitPreferences,
+                    onBack = { progressPhotosViewModel().closeDetail(); deep = DEEP_PROGRESS_PHOTOS },
+                ) }
                 DEEP_PROFILE_EDIT -> ProfileEditRoute(
                     viewModel = profileViewModel(),
                     onBack = {
@@ -1200,6 +1226,11 @@ class MainActivity : ComponentActivity() {
         ),
     )[ProfileCalendarViewModel::class.java]
 
+    private fun progressPhotosViewModel(): ProgressPhotosViewModel = ViewModelProvider(
+        userSessionViewModels,
+        ProgressPhotosViewModelFactory(AppContainer.progressPhotoRepository, AppContainer.applicationClock),
+    )[ProgressPhotosViewModel::class.java]
+
     private fun shareProfile(displayName: String, username: String) {
         val url = shareLinks.profile(username) ?: return
         openShareSheet(ShareMessages.profile(displayName, url), "Compartir perfil")
@@ -1259,6 +1290,8 @@ class MainActivity : ComponentActivity() {
         const val DEEP_WORKOUT_CONGRATS = "workout_congrats"
         const val DEEP_EXERCISE_PROGRESS = "exercise_progress"
         const val DEEP_MEASUREMENTS = "measurements"
+        const val DEEP_PROGRESS_PHOTOS = "progress_photos"
+        const val DEEP_PROGRESS_PHOTO_DETAIL = "progress_photo_detail"
         const val DEEP_PROFILE_EDIT = "profile_edit"
         const val DEEP_PROFILE_SETTINGS = "profile_settings"
         const val DEEP_PROFILE_STATS = "profile_stats"

@@ -45,6 +45,7 @@ fun ProfileRoute(
     onOpenMeasurements: () -> Unit,
     onOpenExercises: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onOpenProgressPhotos: () -> Unit = {},
     onSearchPeople: () -> Unit,
     onOpenFollowers: (String) -> Unit,
     onOpenFollowing: (String) -> Unit,
@@ -67,6 +68,7 @@ fun ProfileRoute(
         onOpenMeasurements = onOpenMeasurements,
         onOpenExercises = onOpenExercises,
         onOpenCalendar = onOpenCalendar,
+        onOpenProgressPhotos = onOpenProgressPhotos,
         onSearchPeople = onSearchPeople,
         onOpenFollowers = onOpenFollowers,
         onOpenFollowing = onOpenFollowing,
@@ -90,6 +92,7 @@ fun ProfileScreen(
     onOpenExercises: () -> Unit,
     onOpenCalendar: () -> Unit,
     onRetry: () -> Unit,
+    onOpenProgressPhotos: () -> Unit = {},
     modifier: Modifier = Modifier,
     onSearchPeople: () -> Unit = {},
     onOpenFollowers: (String) -> Unit = {},
@@ -166,6 +169,7 @@ fun ProfileScreen(
                 onExercises = onOpenExercises,
                 onMeasurements = onOpenMeasurements,
                 onCalendar = onOpenCalendar,
+                onProgressPhotos = onOpenProgressPhotos,
             )
         }
         item { SectionHeader("Entrenamientos") }

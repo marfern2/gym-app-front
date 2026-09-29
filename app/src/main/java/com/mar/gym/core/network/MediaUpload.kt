@@ -48,8 +48,12 @@ sealed interface SelectedImageResult {
 }
 
 /** Opens the content URI for each request; no image bytes are retained in app state. */
-class MediaPartFactory(private val resolver: ContentResolver) {
-    fun from(uri: Uri, maxBytes: Long): SelectedImageResult {
+interface ImagePartSource {
+    fun from(uri: Uri, maxBytes: Long): SelectedImageResult
+}
+
+class MediaPartFactory(private val resolver: ContentResolver) : ImagePartSource {
+    override fun from(uri: Uri, maxBytes: Long): SelectedImageResult {
         val mime = try { resolver.getType(uri)?.lowercase() }
             catch (_: RuntimeException) { return SelectedImageResult.Invalid }
         if (mime !in setOf("image/jpeg", "image/png", "image/webp")) return SelectedImageResult.Unsupported
