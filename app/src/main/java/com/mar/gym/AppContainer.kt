@@ -29,6 +29,9 @@ import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
 import com.mar.gym.feature.measurements.data.DefaultMeasurementRepository
 import com.mar.gym.feature.measurements.data.MeasurementApi
 import com.mar.gym.feature.measurements.data.MeasurementRepository
+import com.mar.gym.feature.library.data.LibraryApi
+import com.mar.gym.feature.library.data.LibraryRepository
+import com.mar.gym.feature.library.data.DefaultLibraryRepository
 import com.mar.gym.feature.profile.data.DefaultProfileRepository
 import com.mar.gym.feature.profile.data.ProfileApi
 import com.mar.gym.feature.profile.data.ProfileRepository
@@ -131,6 +134,9 @@ object AppContainer {
     }
 
     val routineRepository: RoutineRepository by lazy { DefaultRoutineRepository(routineApi) }
+    val libraryRepository: LibraryRepository by lazy {
+        DefaultLibraryRepository(protectedApi(LibraryApi::class.java))
+    }
 
     private val workoutApi: WorkoutApi by lazy {
         protectedApi(WorkoutApi::class.java)

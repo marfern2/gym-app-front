@@ -57,6 +57,9 @@ import com.mar.gym.feature.home.ui.HomeViewModelFactory
 import com.mar.gym.feature.measurements.ui.MeasurementRoute
 import com.mar.gym.feature.measurements.ui.MeasurementViewModel
 import com.mar.gym.feature.measurements.ui.MeasurementViewModelFactory
+import com.mar.gym.feature.library.ui.LibraryRoute
+import com.mar.gym.feature.library.ui.LibraryViewModel
+import com.mar.gym.feature.library.ui.LibraryViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileRoute
 import com.mar.gym.feature.profile.ui.ProfileCalendarRoute
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModel
@@ -194,6 +197,7 @@ class MainActivity : ComponentActivity() {
         var exerciseEditorId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineEditorOrigin by rememberSaveable { mutableStateOf<String?>(null) }
+        var routineViewerOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutExerciseToReplaceId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -291,8 +295,9 @@ class MainActivity : ComponentActivity() {
                     DEEP_CUSTOM_EDITOR -> if (exerciseEditorId == null) DEEP_CATALOG else DEEP_DETAIL
                     DEEP_ROUTINE_VIEWER -> {
                         routineListViewModel().refresh()
+                        if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
                         tab = TAB_TRAINING
-                        null
+                        if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
                     }
                     DEEP_SHARED_ROUTINE -> {
                         tab = TAB_HOME
@@ -300,6 +305,7 @@ class MainActivity : ComponentActivity() {
                     }
                     DEEP_ROUTINE_EDITOR -> {
                         routineListViewModel().refresh()
+                        if (routineEditorOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
                         when (routineEditorOrigin) {
                             ROUTINE_ORIGIN_VIEWER -> {
                                 routineId?.let(::refreshRoutineViewer)
@@ -307,7 +313,7 @@ class MainActivity : ComponentActivity() {
                             }
                             else -> {
                                 tab = TAB_TRAINING
-                                null
+                                if (routineEditorOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
                             }
                         }
                     }
@@ -463,6 +469,7 @@ class MainActivity : ComponentActivity() {
                             onRetryWorkout = { activeWorkoutViewModel().retry() },
                             onOpenRoutine = { id ->
                                 routineId = id
+                                routineViewerOrigin = TAB_TRAINING
                                 deep = DEEP_ROUTINE_VIEWER
                             },
                             onStartRoutine = { id ->
@@ -487,6 +494,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onRetryRoutines = { routineListViewModel().retry() },
                             onLoadMoreRoutines = { routineListViewModel().loadMore() },
+                            onOpenLibrary = { deep = DEEP_LIBRARY },
                         )
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = sessionProfileViewModel,
@@ -530,6 +538,24 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             when (deep) {
+                DEEP_LIBRARY -> LibraryRoute(
+                    viewModel = remember { libraryViewModel() },
+                    onBack = { deep = null; tab = TAB_TRAINING; routineListViewModel().refresh() },
+                    onOpenRoutine = { id ->
+                        routineId = id
+                        routineViewerOrigin = DEEP_LIBRARY
+                        deep = DEEP_ROUTINE_VIEWER
+                    },
+                    onEditRoutine = { id ->
+                        routineId = id
+                        routineEditorOrigin = DEEP_LIBRARY
+                        deep = DEEP_ROUTINE_EDITOR
+                    },
+                    onStartRoutine = { id ->
+                        pendingRoutineWorkoutId = id
+                        deep = DEEP_WORKOUT
+                    },
+                )
                 DEEP_CATALOG -> ExerciseCatalogRoute(
                     viewModel = remember { exerciseCatalogViewModel() },
                     onBack = {
@@ -614,7 +640,8 @@ class MainActivity : ComponentActivity() {
                             preferences = unitPreferences,
                             onBack = {
                                 routineListViewModel().refresh()
-                                deep = null
+                                if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                                deep = if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
                                 tab = TAB_TRAINING
                             },
                             onEdit = {
@@ -632,7 +659,8 @@ class MainActivity : ComponentActivity() {
                             onDeleted = {
                                 routineId = null
                                 routineListViewModel().refresh()
-                                deep = null
+                                if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                                deep = if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
                                 tab = TAB_TRAINING
                             },
                             onShare = ::shareRoutine,
@@ -655,13 +683,14 @@ class MainActivity : ComponentActivity() {
                         preferences = unitPreferences,
                         onBack = {
                             routineListViewModel().refresh()
+                            if (routineEditorOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
                             when (routineEditorOrigin) {
                                 ROUTINE_ORIGIN_VIEWER -> {
                                     routineId?.let(::refreshRoutineViewer)
                                     deep = DEEP_ROUTINE_VIEWER
                                 }
                                 else -> {
-                                    deep = null
+                                    deep = if (routineEditorOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
                                     tab = TAB_TRAINING
                                 }
                             }
@@ -1065,6 +1094,11 @@ class MainActivity : ComponentActivity() {
         ),
     )["custom-exercise-editor-${exerciseTemplateId ?: "new"}", CustomExerciseEditorViewModel::class.java]
 
+    private fun libraryViewModel(): LibraryViewModel = ViewModelProvider(
+        userSessionViewModels,
+        LibraryViewModelFactory(AppContainer.libraryRepository, AppContainer.routineRepository),
+    )[LibraryViewModel::class.java]
+
     private fun routineListViewModel(): RoutineListViewModel = ViewModelProvider(
         userSessionViewModels,
         RoutineListViewModelFactory(AppContainer.routineRepository),
@@ -1281,6 +1315,7 @@ class MainActivity : ComponentActivity() {
         const val DEEP_PICKER = "exercise_picker"
         const val DEEP_CUSTOM_EDITOR = "custom_exercise_editor"
         const val DEEP_ROUTINE_VIEWER = "routine_viewer"
+        const val DEEP_LIBRARY = "library"
         const val DEEP_ROUTINE_EDITOR = "routine_editor"
         const val DEEP_ROUTINE_PICKER = "routine_exercise_picker"
         const val DEEP_WORKOUT = "workout"

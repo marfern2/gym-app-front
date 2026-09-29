@@ -42,6 +42,7 @@ import com.mar.gym.R
 import com.mar.gym.feature.routines.model.RoutineSummary
 import com.mar.gym.feature.routines.ui.RoutineCard
 import com.mar.gym.feature.routines.ui.RoutineListUiState
+import com.mar.gym.feature.routines.ui.messageResource
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutCard
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState
 import com.mar.gym.ui.components.EmptyState
@@ -70,6 +71,7 @@ fun TrainingScreen(
     onRetryRoutines: () -> Unit,
     onLoadMoreRoutines: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenLibrary: () -> Unit = {},
 ) {
     var deleteCandidate by remember { mutableStateOf<String?>(null) }
     var routinesExpanded by rememberSaveable { mutableStateOf(true) }
@@ -118,6 +120,13 @@ fun TrainingScreen(
             }
         }
         item {
+            SectionHeader(title = "Biblioteca")
+            Text("Programas y Mis rutinas", style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onOpenLibrary, modifier = Modifier.testTag("training-open-library")) {
+                Text("Abrir biblioteca")
+            }
+        }
+        item {
             val count = when (routines) {
                 is RoutineListUiState.Content,
                 is RoutineListUiState.LoadingMore,
@@ -131,6 +140,9 @@ fun TrainingScreen(
                 expanded = routinesExpanded,
                 onToggle = { routinesExpanded = !routinesExpanded },
             )
+        }
+        routines.data.operationError?.let { error ->
+            item { Text(stringResource(error.kind.messageResource()), color = MaterialTheme.colorScheme.error) }
         }
         if (routinesExpanded) {
             when (routines) {
