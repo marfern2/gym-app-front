@@ -34,9 +34,13 @@ fun SharedRoutineRoute(
     viewModel: SharedRoutineViewModel,
     preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
+    onImported: () -> Unit = {},
+    onOpenRoutine: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
-    SharedRoutineScreen(state = state, preferences = preferences, onBack = onBack, onRetry = viewModel::retry)
+    SharedRoutineScreen(state = state, preferences = preferences, onBack = onBack,
+        onRetry = viewModel::retry, onImport = { viewModel.importShared(onImported) },
+        onOpenRoutine = onOpenRoutine)
 }
 
 @Composable
@@ -45,6 +49,8 @@ fun SharedRoutineScreen(
     preferences: UnitPreferences = UnitPreferences(),
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    onImport: () -> Unit = {},
+    onOpenRoutine: (String) -> Unit = {},
 ) {
     Scaffold(topBar = { AppTopBar("Rutina compartida", onBack = onBack) }) { padding ->
         when (state) {
@@ -73,6 +79,11 @@ fun SharedRoutineScreen(
                 state.routine.exercises,
                 preferences,
                 Modifier.padding(padding),
+                state.importing,
+                state.importedRoutineId,
+                state.importError,
+                onImport,
+                onOpenRoutine,
             )
         }
     }
@@ -85,6 +96,11 @@ private fun SharedRoutineContent(
     exercises: List<SharedRoutineExercise>,
     preferences: UnitPreferences,
     modifier: Modifier,
+    importing: Boolean,
+    importedRoutineId: String?,
+    importError: String?,
+    onImport: () -> Unit,
+    onOpenRoutine: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("shared_routine_screen"),
@@ -109,16 +125,18 @@ private fun SharedRoutineContent(
         item("import") {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 PrimaryButton(
-                    text = "Guardar en mis rutinas",
-                    onClick = {},
-                    enabled = false,
+                    text = if (importing) "Guardando…" else "Guardar en mis rutinas",
+                    onClick = onImport,
+                    enabled = !importing && importedRoutineId == null,
                     modifier = Modifier.testTag("shared_routine_import"),
                 )
-                Text(
-                    "Guardar no está disponible porque el servidor aún no ofrece importación de rutinas compartidas.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (importedRoutineId != null) {
+                    Text("Rutina guardada", color = MaterialTheme.colorScheme.primary)
+                    com.mar.gym.ui.components.SecondaryButton("Ver rutina", {
+                        onOpenRoutine(importedRoutineId)
+                    }, Modifier.fillMaxWidth().testTag("shared_routine_open_imported"))
+                }
+                if (importError != null) Text(importError, color = MaterialTheme.colorScheme.error)
             }
         }
     }

@@ -12,6 +12,9 @@ class UserSessionViewModelScope : ViewModel(), ViewModelStoreOwner {
     override val viewModelStore: ViewModelStore
         get() = store
 
+    val currentUserId: String? get() = activeUserId
+    fun isActive(userId: String): Boolean = activeUserId == userId
+
     /** Returns true when an existing user's scope was destroyed. */
     fun activate(userId: String): Boolean {
         require(userId.isNotBlank())

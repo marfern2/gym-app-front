@@ -65,6 +65,36 @@ class DefaultRoutineRepositoryTest {
     }
 
     @Test
+    fun sharedImportUsesPostAndValidatesCreatedLocationEtagAndDetail() = runBlocking {
+        server.enqueue(json(detailJson(version = 0), "\"0\"", 201)
+            .setHeader("Location", "/api/v1/routines/$ROUTINE_ID"))
+        val result = repository().importShared(SHARE_ID) as RoutineRepositoryResult.Success
+        assertEquals(ROUTINE_ID, result.value.detail.id)
+        assertEquals("\"0\"", result.value.etag.headerValue)
+        assertEquals("Press", result.value.detail.exercises.single().exerciseName)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/v1/share/routines/$SHARE_ID/import", request.path)
+        assertEquals("no-retry", request.getHeader(AUTHENTICATION_REQUIRED_HEADER))
+
+        server.enqueue(json(detailJson(version = 0), "\"0\"", 201)
+            .setHeader("Location", "/api/v1/routines/other"))
+        val invalid = repository().importShared(SHARE_ID) as RoutineRepositoryResult.Failure
+        assertTrue(invalid.error is NetworkFailure.InvalidResponse)
+    }
+
+    @Test
+    fun sharedImportPropagatesConflictAndUnavailableShare() = runBlocking {
+        server.enqueue(problem(409, "CUSTOM_EXERCISE_NAME_CONFLICT"))
+        val conflict = repository().importShared(SHARE_ID) as RoutineRepositoryResult.Failure
+        assertEquals("CUSTOM_EXERCISE_NAME_CONFLICT",
+            (conflict.error as NetworkFailure.HttpProblem).problem.errorCode)
+        server.enqueue(problem(404, "ROUTINE_NOT_FOUND"))
+        val missing = repository().importShared(SHARE_ID) as RoutineRepositoryResult.Failure
+        assertEquals(404, (missing.error as NetworkFailure.HttpProblem).statusCode)
+    }
+
+    @Test
     fun missingInvalidOrMismatchedEtagRejectsSuccessfulDetail() = runBlocking {
         listOf(null, "W/\"7\"", "\"6\"").forEach { etag ->
             server.enqueue(json(detailJson(), etag))

@@ -85,4 +85,8 @@ interface RoutineApi {
 
     @GET("api/v1/share/routines/{shareId}")
     suspend fun sharedDetail(@Path("shareId") shareId: String): Response<SharedRoutineDto>
+
+    @Headers("$AUTHENTICATION_REQUIRED_HEADER: $AUTHENTICATION_NO_RETRY")
+    @POST("api/v1/share/routines/{shareId}/import")
+    suspend fun importShared(@Path("shareId") shareId: String): Response<RoutineDetailDto>
 }
