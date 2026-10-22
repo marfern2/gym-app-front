@@ -66,6 +66,8 @@ import com.mar.gym.feature.profile.ui.ProfileCalendarViewModel
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileEditRoute
 import com.mar.gym.feature.profile.ui.ProfileSettingsRoute
+import com.mar.gym.feature.profile.ui.UserDataTransferViewModel
+import com.mar.gym.feature.profile.ui.UserDataTransferViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileStatsRoute
 import com.mar.gym.feature.profile.ui.ProfileViewModel
 import com.mar.gym.feature.profile.ui.ProfileViewModelFactory
@@ -121,6 +123,7 @@ import com.mar.gym.ui.components.BarbellIcon
 import com.mar.gym.ui.theme.GYmAppTheme
 import com.mar.gym.core.sharing.ShareDeepLink
 import com.mar.gym.core.sharing.ShareLinks
+import com.mar.gym.core.sharing.ShareLinkInbox
 import com.mar.gym.core.sharing.ShareMessages
 import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.feature.profile.model.unitPreferences
@@ -129,18 +132,20 @@ import com.mar.gym.feature.progressphotos.ui.ProgressPhotoDetailRoute
 import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModel
 import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModelFactory
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
-import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionViewModels: UserSessionViewModelScope
-    private val incomingDeepLink = MutableStateFlow<String?>(null)
-    private val shareLinks by lazy { ShareLinks(BuildConfig.SHARE_BASE_URL) }
+    private val shareLinks by lazy {
+        ShareLinks(BuildConfig.SHARE_BASE_URL,
+            if (BuildConfig.DEBUG) listOf("http://localhost:8080") else emptyList())
+    }
+    private val incomingShareLinks by lazy { ShareLinkInbox(shareLinks) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AppContainer.initialize(applicationContext)
-        incomingDeepLink.value = intent?.dataString
+        acceptShareIntent(intent, null)
 
         val authViewModel = ViewModelProvider(
             this,
@@ -160,6 +165,7 @@ class MainActivity : ComponentActivity() {
                 val authState by authViewModel.uiState.collectAsStateWithLifecycle()
                 val authenticated = authState as? AuthUiState.Authenticated
                 if (authenticated != null) {
+                    incomingShareLinks.bindTo(authenticated.user.id)
                     if (userSessionViewModels.activate(authenticated.user.id)) {
                         AppContainer.clearUserScopedState()
                     }
@@ -170,6 +176,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else {
+                    incomingShareLinks.clearBound()
                     userSessionViewModels.clearSession()
                     AppContainer.clearUserScopedState()
                     AuthRoute(
@@ -183,7 +190,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        incomingDeepLink.value = intent.dataString
+        acceptShareIntent(intent, userSessionViewModels.currentUserId)
+    }
+
+    private fun acceptShareIntent(incoming: Intent?, ownerUserId: String?) {
+        if (incoming?.action == Intent.ACTION_VIEW) {
+            incomingShareLinks.accept(incoming.dataString, ownerUserId)
+        }
     }
 
     @Composable
@@ -219,9 +232,10 @@ class MainActivity : ComponentActivity() {
         var sharedRoutineId by rememberSaveable { mutableStateOf<String?>(null) }
         var progressPhotoId by rememberSaveable { mutableStateOf<String?>(null) }
 
-        val pendingDeepLink by incomingDeepLink.collectAsStateWithLifecycle()
-        LaunchedEffect(pendingDeepLink) {
-            when (val target = shareLinks.parse(pendingDeepLink)) {
+        val pendingDeepLink by incomingShareLinks.pending.collectAsStateWithLifecycle()
+        LaunchedEffect(pendingDeepLink, user.id) {
+            val target = incomingShareLinks.consumeFor(user.id)
+            when (target) {
                 is ShareDeepLink.Profile -> {
                     publicUsername = target.username
                     publicProfileOrigin = TAB_HOME
@@ -238,7 +252,7 @@ class MainActivity : ComponentActivity() {
                 }
                 null -> Unit
             }
-            if (pendingDeepLink != null) incomingDeepLink.value = null
+            if (target != null) setIntent(Intent(intent).apply { data = null })
         }
 
         val sessionProfileViewModel = profileViewModel()
@@ -296,8 +310,12 @@ class MainActivity : ComponentActivity() {
                     DEEP_ROUTINE_VIEWER -> {
                         routineListViewModel().refresh()
                         if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
-                        tab = TAB_TRAINING
-                        if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
+                        tab = if (routineViewerOrigin == DEEP_SHARED_ROUTINE) TAB_HOME else TAB_TRAINING
+                        when (routineViewerOrigin) {
+                            DEEP_LIBRARY -> DEEP_LIBRARY
+                            DEEP_SHARED_ROUTINE -> DEEP_SHARED_ROUTINE
+                            else -> null
+                        }
                     }
                     DEEP_SHARED_ROUTINE -> {
                         tab = TAB_HOME
@@ -641,8 +659,12 @@ class MainActivity : ComponentActivity() {
                             onBack = {
                                 routineListViewModel().refresh()
                                 if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
-                                deep = if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
-                                tab = TAB_TRAINING
+                                deep = when (routineViewerOrigin) {
+                                    DEEP_LIBRARY -> DEEP_LIBRARY
+                                    DEEP_SHARED_ROUTINE -> DEEP_SHARED_ROUTINE
+                                    else -> null
+                                }
+                                tab = if (routineViewerOrigin == DEEP_SHARED_ROUTINE) TAB_HOME else TAB_TRAINING
                             },
                             onEdit = {
                                 routineEditorOrigin = ROUTINE_ORIGIN_VIEWER
@@ -660,8 +682,16 @@ class MainActivity : ComponentActivity() {
                                 routineId = null
                                 routineListViewModel().refresh()
                                 if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
-                                deep = if (routineViewerOrigin == DEEP_LIBRARY) DEEP_LIBRARY else null
-                                tab = TAB_TRAINING
+                                if (routineViewerOrigin == DEEP_SHARED_ROUTINE) {
+                                    sharedRoutineId?.let { sharedRoutineViewModel(it).retry() }
+                                    libraryViewModel().refresh()
+                                }
+                                deep = when (routineViewerOrigin) {
+                                    DEEP_LIBRARY -> DEEP_LIBRARY
+                                    DEEP_SHARED_ROUTINE -> DEEP_SHARED_ROUTINE
+                                    else -> null
+                                }
+                                tab = if (routineViewerOrigin == DEEP_SHARED_ROUTINE) TAB_HOME else TAB_TRAINING
                             },
                             onShare = ::shareRoutine,
                             onOpenExercise = { id ->
@@ -852,12 +882,21 @@ class MainActivity : ComponentActivity() {
                 )
                 DEEP_PROFILE_SETTINGS -> ProfileSettingsRoute(
                     viewModel = sessionProfileViewModel,
+                    transferViewModel = remember { userDataTransferViewModel() },
                     onBack = {
                         deep = null
                         tab = TAB_PROFILE
                     },
                     onLogout = { authViewModel.logout() },
                     onOpenBlockedUsers = { deep = DEEP_BLOCKED_USERS },
+                    onImported = {
+                        if (userSessionViewModels.isActive(user.id)) {
+                            libraryViewModel().refresh()
+                            routineListViewModel().refresh()
+                            exerciseCatalogViewModel().refresh()
+                            measurementViewModel().refresh()
+                        }
+                    },
                 )
                 DEEP_BLOCKED_USERS -> BlockedUsersRoute(
                     viewModel = blockedUsersViewModel(),
@@ -1016,6 +1055,20 @@ class MainActivity : ComponentActivity() {
                     SharedRoutineRoute(
                         viewModel = remember(shareId) { sharedRoutineViewModel(shareId) },
                         preferences = unitPreferences,
+                        onImported = {
+                            if (userSessionViewModels.isActive(user.id)) {
+                                libraryViewModel().refresh()
+                                routineListViewModel().refresh()
+                                exerciseCatalogViewModel().refresh()
+                            }
+                        },
+                        onOpenRoutine = { id ->
+                            if (userSessionViewModels.isActive(user.id)) {
+                                routineId = id
+                                routineViewerOrigin = DEEP_SHARED_ROUTINE
+                                deep = DEEP_ROUTINE_VIEWER
+                            }
+                        },
                         onBack = {
                             sharedRoutineId = null
                             deep = null
@@ -1301,6 +1354,11 @@ class MainActivity : ComponentActivity() {
         userSessionViewModels,
         MeasurementViewModelFactory(AppContainer.measurementRepository, AppContainer.applicationClock),
     )[MeasurementViewModel::class.java]
+
+    private fun userDataTransferViewModel(): UserDataTransferViewModel = ViewModelProvider(
+        userSessionViewModels,
+        UserDataTransferViewModelFactory(AppContainer.userDataTransferRepository, AppContainer.userDataDocumentStore),
+    )[UserDataTransferViewModel::class.java]
 
     private companion object {
         const val TAB_HOME = "home"

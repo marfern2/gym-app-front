@@ -46,4 +46,37 @@ class ProfileSettingsScreenTest {
             assertEquals(UnitPreferences(WeightUnit.LB, DistanceUnit.MI), preferences)
         }
     }
+
+    @Test fun dataActionsAndAdditiveConfirmationAreVisible() {
+        var confirmed = 0
+        composeRule.setContent {
+            GYmAppTheme {
+                ProfileSettingsScreen(
+                    preferences = UnitPreferences(), saving = false, saveError = false,
+                    onPreferencesChange = {}, onBack = {}, onLogout = {},
+                    transferState = UserDataTransferState.ConfirmImport,
+                    onConfirmImport = { confirmed++ },
+                )
+            }
+        }
+        composeRule.onNodeWithText("La importación es aditiva. No borrará tus datos actuales.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Importar").performClick()
+        composeRule.runOnIdle { assertEquals(1, confirmed) }
+    }
+
+    @Test fun completedImportShowsOnlyNonzeroCounts() {
+        composeRule.setContent {
+            GYmAppTheme {
+                ProfileSettingsScreen(
+                    preferences = UnitPreferences(), saving = false, saveError = false,
+                    onPreferencesChange = {}, onBack = {}, onLogout = {},
+                    transferState = UserDataTransferState.ImportCompleted(
+                        com.mar.gym.feature.profile.data.UserDataImportSummary(3, 2, 8, 1, 0)),
+                )
+            }
+        }
+        composeRule.onNodeWithText("Importación completada").assertIsDisplayed()
+        composeRule.onNodeWithText("3 ejercicios\n2 carpetas\n8 rutinas\n1 programa").assertIsDisplayed()
+    }
 }

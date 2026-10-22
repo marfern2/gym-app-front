@@ -1,5 +1,9 @@
 package com.mar.gym.feature.profile.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -27,15 +32,30 @@ import com.mar.gym.core.units.UnitPreferences
 import com.mar.gym.core.units.WeightUnit
 import com.mar.gym.ui.components.AppTopBar
 import com.mar.gym.ui.components.SecondaryButton
+import java.time.LocalDate
 
 @Composable
 fun ProfileSettingsRoute(
     viewModel: ProfileViewModel,
+    transferViewModel: UserDataTransferViewModel,
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onOpenBlockedUsers: () -> Unit = {},
+    onImported: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    val transferState by transferViewModel.state.collectAsState()
+    val createDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { transferViewModel.destinationSelected(it?.toString()) }
+    val openDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        transferViewModel.importSelected(it?.toString())
+    }
+    LaunchedEffect(transferState) {
+        if (transferState == UserDataTransferState.AwaitingDestination) {
+            createDocument.launch("gym-export-${LocalDate.now()}.json")
+        }
+    }
     val profile = state.profile?.value
     ProfileSettingsScreen(
         preferences = UnitPreferences(
@@ -48,6 +68,14 @@ fun ProfileSettingsRoute(
         onBack = onBack,
         onLogout = onLogout,
         onOpenBlockedUsers = onOpenBlockedUsers,
+        transferState = transferState,
+        onExport = transferViewModel::export,
+        onImport = {
+            transferViewModel.beginImportSelection()
+            openDocument.launch(arrayOf("application/json"))
+        },
+        onConfirmImport = { transferViewModel.confirmImport(onImported) },
+        onDismissTransfer = transferViewModel::dismiss,
     )
 }
 
@@ -60,11 +88,16 @@ fun ProfileSettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onOpenBlockedUsers: () -> Unit = {},
+    transferState: UserDataTransferState = UserDataTransferState.Idle,
+    onExport: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onConfirmImport: () -> Unit = {},
+    onDismissTransfer: () -> Unit = {},
 ) {
     var confirmLogout by remember { mutableStateOf(false) }
     Scaffold(topBar = { AppTopBar("Ajustes", onBack = onBack) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Unidades", style = MaterialTheme.typography.titleLarge)
@@ -91,6 +124,33 @@ fun ProfileSettingsScreen(
             )
             if (saving) Text("Guardando unidades…", style = MaterialTheme.typography.bodySmall)
             if (saveError) Text("No se pudieron guardar las unidades.", color = MaterialTheme.colorScheme.error)
+            Text("Datos", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Puedes guardar una copia de tus datos fitness o importar una exportación compatible.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val transferBusy = transferState == UserDataTransferState.LoadingExport ||
+                transferState == UserDataTransferState.AwaitingDestination ||
+                transferState == UserDataTransferState.AwaitingSource ||
+                transferState == UserDataTransferState.SavingExport ||
+                transferState == UserDataTransferState.ReadingImport ||
+                transferState == UserDataTransferState.Importing ||
+                transferState == UserDataTransferState.ConfirmImport
+            SecondaryButton("Exportar datos", onExport,
+                Modifier.fillMaxWidth().testTag("export_data"), enabled = !transferBusy)
+            SecondaryButton("Importar datos", onImport,
+                Modifier.fillMaxWidth().testTag("import_data"), enabled = !transferBusy)
+            when (transferState) {
+                UserDataTransferState.LoadingExport -> Text("Preparando exportación…")
+                UserDataTransferState.AwaitingDestination -> Text("Selecciona dónde guardar el archivo…")
+                UserDataTransferState.SavingExport -> Text("Guardando exportación…")
+                UserDataTransferState.ReadingImport -> Text("Leyendo archivo…")
+                UserDataTransferState.Importing -> Text("Importando datos…")
+                UserDataTransferState.ExportSaved -> Text("Exportación guardada", color = MaterialTheme.colorScheme.primary)
+                is UserDataTransferState.Error -> Text(transferState.message, color = MaterialTheme.colorScheme.error)
+                else -> Unit
+            }
             SecondaryButton(
                 "Usuarios bloqueados",
                 onOpenBlockedUsers,
@@ -106,7 +166,32 @@ fun ProfileSettingsScreen(
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("Cerrar sesión") } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancelar") } },
     )
+    if (transferState == UserDataTransferState.ConfirmImport) AlertDialog(
+        onDismissRequest = onDismissTransfer,
+        title = { Text("Importar datos") },
+        text = { Text("La importación es aditiva. No borrará tus datos actuales.") },
+        confirmButton = { TextButton(onClick = onConfirmImport) { Text("Importar") } },
+        dismissButton = { TextButton(onClick = onDismissTransfer) { Text("Cancelar") } },
+    )
+    if (transferState is UserDataTransferState.ImportCompleted) AlertDialog(
+        onDismissRequest = onDismissTransfer,
+        title = { Text("Importación completada") },
+        text = {
+            val summary = transferState.summary
+            Text(buildList {
+                if (summary.customExercisesCreated > 0) add(countLabel(summary.customExercisesCreated, "ejercicio", "ejercicios"))
+                if (summary.foldersCreated > 0) add(countLabel(summary.foldersCreated, "carpeta", "carpetas"))
+                if (summary.routinesCreated > 0) add(countLabel(summary.routinesCreated, "rutina", "rutinas"))
+                if (summary.programsCreated > 0) add(countLabel(summary.programsCreated, "programa", "programas"))
+                if (summary.measurementsCreated > 0) add(countLabel(summary.measurementsCreated, "medida", "medidas"))
+            }.ifEmpty { listOf("No se crearon nuevos datos") }.joinToString("\n"))
+        },
+        confirmButton = { TextButton(onClick = onDismissTransfer) { Text("Aceptar") } },
+    )
 }
+
+private fun countLabel(count: Int, singular: String, plural: String): String =
+    "$count ${if (count == 1) singular else plural}"
 
 @Composable
 private fun <T> UnitChoice(

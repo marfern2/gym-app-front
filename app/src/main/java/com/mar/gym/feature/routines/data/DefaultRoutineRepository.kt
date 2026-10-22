@@ -120,6 +120,16 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
         return execute { api.sharedDetail(shareId) }.mapBody { it.toDomain(shareId) }
     }
 
+    override suspend fun importShared(shareId: String): RoutineRepositoryResult<RoutineDocument> {
+        if (!shareId.isUuid()) return invalid()
+        val response = execute { api.importShared(shareId) }
+        if (response is RawResponse.Success &&
+            (response.status != 201 || response.location != "/api/v1/routines/${response.body.id}")) {
+            return invalid(response.correlationId)
+        }
+        return response.mapDocument()
+    }
+
     private suspend fun mutate(
         routineId: String,
         request: suspend (String) -> Response<RoutineDetailDto>,
@@ -336,7 +346,8 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
         val response = request()
         val correlationId = response.headers()[CORRELATION_ID]
         if (response.isSuccessful) {
-            response.body()?.let { RawResponse.Success(it, response.headers()[ETAG], correlationId) }
+            response.body()?.let { RawResponse.Success(it, response.headers()[ETAG], correlationId,
+                response.code(), response.headers()["Location"]) }
                 ?: RawResponse.Failure(NetworkFailure.InvalidResponse(correlationId))
         } else {
             val problem = response.errorBody()?.string()?.takeIf(String::isNotBlank)?.let(::problem)
@@ -377,7 +388,8 @@ class DefaultRoutineRepository(private val api: RoutineApi) : RoutineRepository 
     }.orEmpty()
 
     private sealed interface RawResponse<out T> {
-        data class Success<T>(val body: T, val etag: String?, val correlationId: String?) : RawResponse<T>
+        data class Success<T>(val body: T, val etag: String?, val correlationId: String?,
+                              val status: Int, val location: String?) : RawResponse<T>
         data class Failure(val error: NetworkFailure) : RawResponse<Nothing>
     }
 

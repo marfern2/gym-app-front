@@ -33,6 +33,31 @@ class ShareLinksTest {
         ).forEach { assertNull(links.parse(it)) }
     }
 
+    @Test fun `debug localhost routine link parses only exact uuid path and port`() {
+        val debug = ShareLinks("http://10.0.2.2:8080", listOf("http://localhost:8080"))
+        assertEquals(ShareDeepLink.Routine(SHARE_ID),
+            debug.parse("http://localhost:8080/r/$SHARE_ID"))
+        assertEquals(ShareDeepLink.Routine(SHARE_ID),
+            debug.parse("http://10.0.2.2:8080/r/$SHARE_ID"))
+        listOf(
+            "http://localhost:8080/r/not-a-uuid",
+            "http://localhost:8080/r/1-1-1-1-1",
+            "http://localhost:8080/r/$SHARE_ID/extra",
+            "http://localhost:8080/r/$SHARE_ID/",
+            "http://localhost:8080/r//$SHARE_ID",
+            "http://localhost:8080/x/$SHARE_ID",
+            "http://localhost:8080/r/$SHARE_ID?x=1",
+            "http://localhost:8081/r/$SHARE_ID",
+            "https://localhost:8080/r/$SHARE_ID",
+            "http://evil.test:8080/r/$SHARE_ID",
+        ).forEach { assertNull(debug.parse(it)) }
+    }
+
+    @Test fun `incoming localhost origin is not implicit in release parser`() {
+        val release = ShareLinks("https://links.example.test")
+        assertNull(release.parse("http://localhost:8080/r/$SHARE_ID"))
+    }
+
     private companion object {
         const val WORKOUT_ID = "11111111-1111-4111-8111-111111111111"
         const val SHARE_ID = "22222222-2222-4222-8222-222222222222"

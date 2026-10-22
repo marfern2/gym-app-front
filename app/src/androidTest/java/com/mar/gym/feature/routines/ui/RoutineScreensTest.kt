@@ -361,7 +361,9 @@ class RoutineScreensTest {
     }
 
     @Test
-    fun sharedRoutineIsReadOnlyShowsTargetsSupersetAndDisabledImportGap() {
+    fun sharedRoutineShowsTargetsAndCanSaveAndOpenImportedRoutine() {
+        var imported = false
+        var openedId: String? = null
         val exercise = SharedRoutineExercise(
             TEMPLATE_ID, "Press de banca", ExerciseType.WeightReps, Equipment.Barbell, 1, 1,
             "Controlado", 90, listOf(RoutineSet(1, SetType.Normal, "8", "10", "80", "", "", "8")),
@@ -372,7 +374,8 @@ class RoutineScreensTest {
                     state = SharedRoutineUiState.Content(SharedRoutine(
                         SHARE_ID, SHARE_URL, "Fuerza compartida", "Notas", Instant.EPOCH, listOf(exercise),
                     )),
-                    onBack = {}, onRetry = {},
+                    onBack = {}, onRetry = {}, onImport = { imported = true },
+                    onOpenRoutine = { openedId = it },
                 )
             }
         }
@@ -381,7 +384,25 @@ class RoutineScreensTest {
         composeRule.onNodeWithText("Superserie 1").assertIsDisplayed()
         composeRule.onNodeWithText("Serie 1: 8–10 reps · 80 kg · RPE 8").assertIsDisplayed()
         composeRule.onNodeWithText("Editar").assertDoesNotExist()
-        composeRule.onNodeWithTag("shared_routine_import").assertIsNotEnabled()
+        composeRule.onNodeWithTag("shared_routine_import").performClick()
+        composeRule.runOnIdle { assertTrue(imported) }
+    }
+
+    @Test fun savedSharedRoutineShowsOpenAction() {
+        var openedId: String? = null
+        composeRule.setContent {
+            GYmAppTheme {
+                SharedRoutineScreen(
+                    state = SharedRoutineUiState.Content(SharedRoutine(
+                        SHARE_ID, SHARE_URL, "Fuerza compartida", null, Instant.EPOCH, emptyList()),
+                        importedRoutineId = ID),
+                    onBack = {}, onRetry = {}, onOpenRoutine = { openedId = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Rutina guardada").assertIsDisplayed()
+        composeRule.onNodeWithTag("shared_routine_open_imported").performClick()
+        composeRule.runOnIdle { assertEquals(ID, openedId) }
     }
 
     private fun setList(

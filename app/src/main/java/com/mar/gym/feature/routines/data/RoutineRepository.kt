@@ -40,4 +40,6 @@ interface RoutineRepository {
         RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
     suspend fun sharedDetail(shareId: String): RoutineRepositoryResult<SharedRoutine> =
         RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
+    suspend fun importShared(shareId: String): RoutineRepositoryResult<RoutineDocument> =
+        RoutineRepositoryResult.Failure(NetworkFailure.Unexpected())
 }

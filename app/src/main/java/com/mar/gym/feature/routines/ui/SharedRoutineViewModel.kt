@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.routines.data.RoutineRepositoryResult
+import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.routines.model.SharedRoutine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +15,12 @@ import kotlinx.coroutines.launch
 
 sealed interface SharedRoutineUiState {
     data object Loading : SharedRoutineUiState
-    data class Content(val routine: SharedRoutine) : SharedRoutineUiState
+    data class Content(
+        val routine: SharedRoutine,
+        val importing: Boolean = false,
+        val importedRoutineId: String? = null,
+        val importError: String? = null,
+    ) : SharedRoutineUiState
     data class Error(val error: RoutineUiError) : SharedRoutineUiState
 }
 
@@ -28,6 +34,32 @@ class SharedRoutineViewModel(
     init { load() }
 
     fun retry() = load()
+
+    fun importShared(onImported: () -> Unit = {}) {
+        val current = _uiState.value as? SharedRoutineUiState.Content ?: return
+        if (current.importing || current.importedRoutineId != null) return
+        _uiState.value = current.copy(importing = true, importError = null)
+        viewModelScope.launch {
+            when (val result = repository.importShared(shareId)) {
+                is RoutineRepositoryResult.Success -> {
+                    _uiState.value = current.copy(importedRoutineId = result.value.detail.id)
+                    onImported()
+                }
+                is RoutineRepositoryResult.Failure -> {
+                    val conflict = result.error as? NetworkFailure.HttpProblem
+                    val message = if (conflict?.statusCode == 409 &&
+                        conflict.problem.errorCode == "CUSTOM_EXERCISE_NAME_CONFLICT") {
+                        "No se pudo guardar la rutina porque uno de los ejercicios entra en conflicto con tu biblioteca."
+                    } else if (result.error.toRoutineUiError().kind == RoutineUiErrorKind.NotFound) {
+                        "La rutina compartida ya no está disponible."
+                    } else {
+                        "No se pudo guardar la rutina. Inténtalo de nuevo."
+                    }
+                    _uiState.value = current.copy(importError = message)
+                }
+            }
+        }
+    }
 
     private fun load() {
         _uiState.value = SharedRoutineUiState.Loading

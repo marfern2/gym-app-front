@@ -35,6 +35,9 @@ import com.mar.gym.feature.library.data.DefaultLibraryRepository
 import com.mar.gym.feature.profile.data.DefaultProfileRepository
 import com.mar.gym.feature.profile.data.ProfileApi
 import com.mar.gym.feature.profile.data.ProfileRepository
+import com.mar.gym.feature.profile.data.DefaultUserDataTransferRepository
+import com.mar.gym.feature.profile.data.SafUserDataDocumentStore
+import com.mar.gym.feature.profile.data.UserDataTransferApi
 import com.mar.gym.feature.progress.data.AnalyticsApi
 import com.mar.gym.feature.progress.data.AnalyticsRepository
 import com.mar.gym.feature.progress.data.DefaultAnalyticsRepository
@@ -178,6 +181,10 @@ object AppContainer {
 
     private val profileApi: ProfileApi by lazy { protectedApi(ProfileApi::class.java) }
     val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
+    val userDataTransferRepository by lazy {
+        DefaultUserDataTransferRepository(protectedApi(UserDataTransferApi::class.java))
+    }
+    val userDataDocumentStore by lazy { SafUserDataDocumentStore(applicationContext.contentResolver) }
     val mediaRepository: MediaRepository by lazy {
         MediaRepository(protectedApi(MediaApi::class.java), MediaPartFactory(applicationContext.contentResolver))
     }
