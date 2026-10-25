@@ -156,6 +156,7 @@ fun ProfileScreen(
                 section = state.activity,
                 metric = state.selectedActivityMetric,
                 range = state.selectedActivityRange,
+                currentWeek = state.currentWeekActivity,
                 onMetricSelected = onSelectMetric,
                 onRangeSelected = onSelectRange,
                 onRetry = onRetry,

@@ -122,12 +122,15 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertEquals(HistoryRange.ThreeMonths, viewModel.uiState.value.selectedActivityRange)
+        val currentWeek = viewModel.uiState.value.currentWeekActivity
         viewModel.selectActivityRange(HistoryRange.OneYear)
         advanceUntilIdle()
         assertEquals(HistoryRange.OneYear, viewModel.uiState.value.selectedActivityRange)
+        assertEquals(currentWeek, viewModel.uiState.value.currentWeekActivity)
         viewModel.selectActivityRange(HistoryRange.AllTime)
         advanceUntilIdle()
         assertEquals(HistoryRange.AllTime, viewModel.uiState.value.selectedActivityRange)
+        assertEquals(currentWeek, viewModel.uiState.value.currentWeekActivity)
         assertEquals(3, workouts.historyCalls)
     }
 
@@ -137,10 +140,13 @@ class ProfileViewModelTest {
 
         val workouts = viewModel.uiState.value.workouts as ProfileSection.Content
         assertEquals(listOf("Entreno real"), workouts.value.map(WorkoutHistoryItem::title))
-        val point = (viewModel.uiState.value.activity as ProfileSection.Content).value.single()
+        val points = (viewModel.uiState.value.activity as ProfileSection.Content).value
+        assertEquals(14, points.size)
+        val point = points.single { it.durationSeconds != 0L }
         assertEquals(3_600, point.durationSeconds)
         assertEquals(BigDecimal("300.0"), point.volumeKg)
         assertEquals(12, point.repetitions)
+        assertEquals(point, viewModel.uiState.value.currentWeekActivity)
     }
 
     @Test fun `profile update keeps canonical server response`() = runTest {

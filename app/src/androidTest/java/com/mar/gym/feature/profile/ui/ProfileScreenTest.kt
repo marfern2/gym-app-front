@@ -4,13 +4,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasTestTag
 import com.mar.gym.AppContainer
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import com.mar.gym.core.network.EntityTag
 import com.mar.gym.core.network.VersionedDocument
 import com.mar.gym.feature.profile.model.PrivateProfile
@@ -50,12 +54,14 @@ class ProfileScreenTest {
         setProfile(contentState())
 
         composeRule.onNodeWithTag("profile_username_title").assertIsDisplayed()
-        composeRule.onNodeWithText("Entreno real").assertIsDisplayed()
         composeRule.onNodeWithText("Seguidores").assertDoesNotExist()
         composeRule.onNodeWithText("Seguidos").assertDoesNotExist()
         composeRule.onNodeWithText("Me gusta").assertDoesNotExist()
         composeRule.onNodeWithTag("profile_avatar_fallback", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Eliminar avatar").assertDoesNotExist()
+        composeRule.onNodeWithTag("profile_screen")
+            .performScrollToNode(hasTestTag("completed_workout_$WORKOUT_ID"))
+        composeRule.onNodeWithText("Entreno real").assertIsDisplayed()
     }
 
     @Test fun avatarFallbackAndDeleteConfirmationFollowProfileState() {
@@ -91,7 +97,9 @@ class ProfileScreenTest {
             }
         }
 
-        composeRule.onNodeWithTag("completed_workout_$WORKOUT_ID").performScrollTo().performClick()
+        composeRule.onNodeWithTag("profile_screen")
+            .performScrollToNode(hasTestTag("completed_workout_$WORKOUT_ID"))
+        composeRule.onNodeWithTag("completed_workout_$WORKOUT_ID").performClick()
         composeRule.runOnIdle { assertEquals(WORKOUT_ID, opened) }
     }
 
@@ -161,8 +169,33 @@ class ProfileScreenTest {
 
         composeRule.onNodeWithTag("activity_metric_Volume").performClick()
         composeRule.runOnIdle { assertEquals(ProfileActivityMetric.Volume, state.selectedActivityMetric) }
+        composeRule.onNodeWithTag("activity_metric_Volume").assertIsSelected()
         composeRule.onNodeWithTag("activity_metric_Repetitions").performClick()
         composeRule.runOnIdle { assertEquals(ProfileActivityMetric.Repetitions, state.selectedActivityMetric) }
+        composeRule.onNodeWithTag("activity_metric_Repetitions").assertIsSelected()
+    }
+
+    @Test fun weeklySummaryUsesTheSelectedMetricAndAccessibleDescription() {
+        val week = ProfileActivityPoint(LocalDate.parse("2026-08-03"), 3_600, BigDecimal.TEN, 10)
+        var state by mutableStateOf(contentState().copy(currentWeekActivity = week))
+        composeRule.setContent {
+            GYmAppTheme {
+                ProfileScreen(
+                    state = state,
+                    onEditProfile = {}, onShare = {}, onSettings = {},
+                    onSelectMetric = { state = state.copy(selectedActivityMetric = it) },
+                    onSelectRange = {}, onOpenStatistics = {}, onOpenMeasurements = {}, onOpenExercises = {},
+                    onOpenCalendar = {}, onRetry = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("activity_week_summary").assertContentDescriptionEquals("1 h esta semana")
+        composeRule.onNodeWithTag("activity_metric_Volume").performClick()
+        composeRule.onNodeWithTag("activity_week_summary").assertContentDescriptionEquals("10 kg esta semana")
+        composeRule.onNodeWithTag("activity_metric_Repetitions").performClick()
+        composeRule.onNodeWithTag("activity_week_summary")
+            .assertContentDescriptionEquals("10 repeticiones esta semana")
     }
 
     @Test fun threeMonthsOneYearAndAllTimeSelectorChangesState() {
@@ -181,6 +214,7 @@ class ProfileScreenTest {
         composeRule.onNodeWithTag("activity_range_selector").performClick()
         composeRule.onNodeWithTag("activity_range_OneYear").performClick()
         composeRule.runOnIdle { assertEquals(HistoryRange.OneYear, state.selectedActivityRange) }
+        composeRule.onNodeWithTag("activity_range_selector").assertContentDescriptionEquals("Periodo: Último año")
         composeRule.onNodeWithTag("activity_range_selector").performClick()
         composeRule.onNodeWithTag("activity_range_AllTime").performClick()
         composeRule.runOnIdle { assertEquals(HistoryRange.AllTime, state.selectedActivityRange) }
