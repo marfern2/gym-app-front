@@ -40,6 +40,20 @@ class SocialNotificationsViewModelTest {
         assertEquals(2, repository.countCalls)
     }
 
+    @Test fun `push forces unread count and refreshes visible list`() = runTest {
+        val repository = FakeNotificationsRepository().apply {
+            count = 1
+            pages[0] = successPage(emptyList(), 0, last = true)
+        }
+        val viewModel = SocialNotificationsViewModel(repository)
+        advanceUntilIdle()
+        repository.count = 2
+        viewModel.onPushReceived(listVisible = true)
+        advanceUntilIdle()
+        assertEquals(2, viewModel.uiState.value.unreadCount)
+        assertEquals(listOf(0), repository.pageCalls)
+    }
+
     @Test fun `list paginates without duplicates and protects duplicate load more`() = runTest {
         val first = notification(ID_1, SocialNotificationType.Follow)
         val second = notification(ID_2, SocialNotificationType.WorkoutLike)

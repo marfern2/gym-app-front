@@ -22,6 +22,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.mar.gym.feature.auth.ui.AuthRoute
 import com.mar.gym.feature.auth.ui.AuthUiState
 import com.mar.gym.feature.auth.ui.AuthViewModel
@@ -132,6 +136,13 @@ import com.mar.gym.feature.progressphotos.ui.ProgressPhotoDetailRoute
 import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModel
 import com.mar.gym.feature.progressphotos.ui.ProgressPhotosViewModelFactory
 import com.mar.gym.feature.social.model.SocialWorkoutDetail
+import com.mar.gym.feature.push.PushDestination
+import com.mar.gym.feature.push.PushInbox
+import com.mar.gym.feature.push.PushIntent
+import com.mar.gym.feature.push.PushNotifications
+import com.mar.gym.feature.push.resolvePushDestination
+import com.mar.gym.feature.push.ui.PushPreferencesViewModel
+import com.mar.gym.feature.push.ui.PushPreferencesViewModelFactory
 
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionViewModels: UserSessionViewModelScope
@@ -140,12 +151,15 @@ class MainActivity : ComponentActivity() {
             if (BuildConfig.DEBUG) listOf("http://localhost:8080") else emptyList())
     }
     private val incomingShareLinks by lazy { ShareLinkInbox(shareLinks) }
+    private val incomingPush = PushInbox()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AppContainer.initialize(applicationContext)
+        PushNotifications.createChannel(this)
         acceptShareIntent(intent, null)
+        acceptPushIntent(intent, null)
 
         val authViewModel = ViewModelProvider(
             this,
@@ -153,6 +167,7 @@ class MainActivity : ComponentActivity() {
                 AppContainer.authRepository,
                 AppContainer.sessionStore,
                 AppContainer.refreshCoordinator,
+                beforeLogout = { AppContainer.pushTokenCoordinator.logout() },
             ),
         )[AuthViewModel::class.java]
         val systemViewModel = ViewModelProvider(
@@ -165,6 +180,9 @@ class MainActivity : ComponentActivity() {
                 val authState by authViewModel.uiState.collectAsStateWithLifecycle()
                 val authenticated = authState as? AuthUiState.Authenticated
                 if (authenticated != null) {
+                    LaunchedEffect(authenticated.user.id) {
+                        AppContainer.pushTokenCoordinator.authenticated(authenticated.user.id)
+                    }
                     incomingShareLinks.bindTo(authenticated.user.id)
                     if (userSessionViewModels.activate(authenticated.user.id)) {
                         AppContainer.clearUserScopedState()
@@ -176,6 +194,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else {
+                    if (authState is AuthUiState.SignedOut) {
+                        incomingPush.clear()
+                        LaunchedEffect(Unit) {
+                            AppContainer.pushTokenCoordinator.signedOut()
+                            PushNotifications.clearSocial(this@MainActivity)
+                        }
+                    }
                     incomingShareLinks.clearBound()
                     userSessionViewModels.clearSession()
                     AppContainer.clearUserScopedState()
@@ -191,6 +216,26 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         acceptShareIntent(intent, userSessionViewModels.currentUserId)
+        acceptPushIntent(intent, userSessionViewModels.currentUserId)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        PushNotifications.appForeground = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { AppContainer.pushTokenCoordinator.retry() }
+    }
+
+    override fun onStop() {
+        PushNotifications.appForeground = false
+        super.onStop()
+    }
+
+    private fun acceptPushIntent(incoming: Intent?, ownerUserId: String?) {
+        incomingPush.accept(PushIntent.parse(incoming), ownerUserId)
     }
 
     private fun acceptShareIntent(incoming: Intent?, ownerUserId: String?) {
@@ -253,6 +298,35 @@ class MainActivity : ComponentActivity() {
                 null -> Unit
             }
             if (target != null) setIntent(Intent(intent).apply { data = null })
+        }
+
+        val pendingPush by incomingPush.pending.collectAsStateWithLifecycle()
+        LaunchedEffect(pendingPush, user.id) {
+            val payload = incomingPush.peekFor(user.id) ?: return@LaunchedEffect
+            val destination = resolvePushDestination(payload, AppContainer.socialNotificationsRepository)
+            if (!incomingPush.consumeFor(user.id, payload)) return@LaunchedEffect
+            when (destination) {
+                is PushDestination.Profile -> {
+                    publicUsername = destination.username
+                    publicProfileOrigin = DEEP_NOTIFICATIONS
+                    deep = DEEP_PUBLIC_PROFILE
+                }
+                is PushDestination.Workout -> {
+                    socialWorkoutId = destination.id
+                    socialWorkoutOrigin = DEEP_NOTIFICATIONS
+                    deep = DEEP_SOCIAL_WORKOUT
+                }
+                PushDestination.Notifications -> deep = DEEP_NOTIFICATIONS
+            }
+            setIntent(Intent(intent).apply(PushIntent::clear))
+        }
+
+        SideEffect { PushNotifications.notificationsVisible = deep == DEEP_NOTIFICATIONS }
+        val currentDeep by rememberUpdatedState(deep)
+        LaunchedEffect(Unit) {
+            PushNotifications.received.collect {
+                socialNotificationsViewModel().onPushReceived(currentDeep == DEEP_NOTIFICATIONS)
+            }
         }
 
         val sessionProfileViewModel = profileViewModel()
@@ -883,6 +957,7 @@ class MainActivity : ComponentActivity() {
                 DEEP_PROFILE_SETTINGS -> ProfileSettingsRoute(
                     viewModel = sessionProfileViewModel,
                     transferViewModel = remember { userDataTransferViewModel() },
+                    pushViewModel = pushPreferencesViewModel(),
                     onBack = {
                         deep = null
                         tab = TAB_PROFILE
@@ -1296,6 +1371,13 @@ class MainActivity : ComponentActivity() {
         userSessionViewModels,
         SocialNotificationsViewModelFactory(AppContainer.socialNotificationsRepository),
     )[SocialNotificationsViewModel::class.java]
+
+    private fun pushPreferencesViewModel(): PushPreferencesViewModel = ViewModelProvider(
+        userSessionViewModels,
+        PushPreferencesViewModelFactory(AppContainer.pushRepository) {
+            AppContainer.pushTokenCoordinator.retry()
+        },
+    )[PushPreferencesViewModel::class.java]
 
     private fun socialListViewModel(username: String, type: SocialListType): SocialListViewModel =
         ViewModelProvider(

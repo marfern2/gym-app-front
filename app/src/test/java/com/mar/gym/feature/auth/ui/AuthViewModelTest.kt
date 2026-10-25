@@ -193,7 +193,7 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun networkLogoutFailureDoesNotClaimRemoteClosureAndOffersLocalDeletion() = runTest {
+    fun networkLogoutFailureClearsLocalSessionWithoutClaimingRemoteClosure() = runTest {
         val fixture = fixture(initialSession = session()).apply {
             repository.logoutResult = { AuthResult.Failure(NetworkFailure.Network()) }
         }
@@ -202,16 +202,9 @@ class AuthViewModelTest {
         fixture.viewModel.logout()
         runCurrent()
 
-        val error = fixture.viewModel.uiState.value as AuthUiState.RecoverableSessionError
-        assertEquals(AuthRecoveryAction.RetryRemoteLogout, error.recoveryAction)
-        assertFalse(error.message.contains("confirmó el cierre"))
-        assertEquals("old-refresh", fixture.store.currentSession()?.refreshToken)
-
-        fixture.viewModel.deleteLocalSession()
-        runCurrent()
         assertNull(fixture.store.currentSession())
         assertTrue((fixture.viewModel.uiState.value as AuthUiState.SignedOut).message.orEmpty()
-            .contains("solo de este dispositivo"))
+            .contains("sin conexión"))
     }
 
     private fun fixture(
