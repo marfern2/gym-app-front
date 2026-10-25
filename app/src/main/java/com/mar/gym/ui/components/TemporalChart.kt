@@ -1,96 +1,134 @@
 package com.mar.gym.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.Locale
-import kotlin.math.floor
-import kotlin.math.log10
-import kotlin.math.pow
 import kotlin.math.roundToInt
 
-data class TemporalChartPoint(val date: LocalDate, val value: Float)
+data class TemporalChartPoint(val date: LocalDate, val value: Double)
 
 enum class TemporalChartStyle { Bars, Line }
-
-private const val TICK_COUNT = 4
 
 @Composable
 fun TemporalChart(
     points: List<TemporalChartPoint>,
-    valueLabel: (Float) -> String,
+    valueLabel: (Double) -> String,
     style: TemporalChartStyle,
     modifier: Modifier = Modifier,
+    integerTicks: Boolean = false,
+    chartHeight: Dp = 204.dp,
 ) {
     require(points.isNotEmpty())
+    val fontScale = LocalDensity.current.fontScale
+    val extraTextSpace = (fontScale - 1f).coerceAtLeast(0f)
+    val axisWidth = (72f + 28f * extraTextSpace).dp
+    val chartTop = (10f + 8f * extraTextSpace).dp
+    val chartBottom = (10f + 8f * extraTextSpace).dp
+    val effectiveHeight = chartHeight + (24f * extraTextSpace).dp
+    val xLabelHeight = (22f + 12f * extraTextSpace).dp
     val sorted = points.sortedBy(TemporalChartPoint::date)
-    val maxData = sorted.maxOf(TemporalChartPoint::value).coerceAtLeast(1f)
-    val step = niceStep(maxData / TICK_COUNT)
-    val topValue = step * TICK_COUNT
+    val scale = niceScale(sorted.maxOf { it.value.coerceAtLeast(0.0) }, integerTicks)
+    val visibleTicks = if (style == TemporalChartStyle.Bars && sorted.all { it.value == 0.0 }) {
+        listOf(0.0)
+    } else scale.ticks
     val primary = MaterialTheme.colorScheme.primary
-    val grid = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val ticks = (TICK_COUNT downTo 0).map { step * it }
+    val grid = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+    val baselineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.44f)
+    val yLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f)
+    val xLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f)
+    val locale = LocalConfiguration.current.locales[0]
+    val monthly = sorted.size > 1 && sorted.zipWithNext().all { (a, b) -> a.date.plusMonths(1) == b.date }
+    val annual = sorted.size > 1 && sorted.zipWithNext().all { (a, b) -> a.date.plusYears(1) == b.date }
+    val datePattern = if (annual) "yyyy" else if (monthly) {
+        if (sorted.first().date.year == sorted.last().date.year) "MMM" else "MMM yy"
+    } else "d MMM"
+    val dateFormat = remember(locale, datePattern) { DateTimeFormatter.ofPattern(datePattern, locale) }
+
     Column(modifier.testTag("temporal_chart")) {
         Row(Modifier.fillMaxWidth()) {
-            Column(
-                Modifier.width(56.dp).height(180.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                ticks.forEach { tick ->
+            Box(Modifier.width(axisWidth).height(effectiveHeight)) {
+                val plotHeight = effectiveHeight - chartTop - chartBottom
+                visibleTicks.forEach { tick ->
+                    val labelY = chartTop + plotHeight * (1.0 - tick / scale.yMax).toFloat() -
+                        (8f * fontScale).dp
                     Text(
                         valueLabel(tick),
+                        Modifier.align(Alignment.TopEnd).offset(y = labelY).padding(end = 8.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = labelColor,
+                        color = yLabelColor,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
                     )
                 }
             }
-            Canvas(Modifier.weight(1f).height(180.dp)) {
-                val baseline = size.height - 4.dp.toPx()
-                val firstEpoch = sorted.first().date.toEpochDay()
-                val span = (sorted.last().date.toEpochDay() - firstEpoch).coerceAtLeast(1)
-                fun x(point: TemporalChartPoint): Float = if (sorted.size == 1) size.width / 2f else
-                    (point.date.toEpochDay() - firstEpoch).toFloat() / span * size.width
-                fun y(value: Float): Float = baseline - baseline * (value / topValue)
-                ticks.forEach { tick ->
-                    drawLine(grid, Offset(0f, y(tick)), Offset(size.width, y(tick)), strokeWidth = 1.dp.toPx())
+            Canvas(Modifier.weight(1f).height(effectiveHeight)) {
+                val top = chartTop.toPx()
+                val baseline = size.height - chartBottom.toPx()
+                val plotHeight = baseline - top
+                fun y(value: Double): Float =
+                    baseline - (plotHeight * (value / scale.yMax).coerceIn(0.0, 1.0)).toFloat()
+
+                visibleTicks.forEach { tick ->
+                    drawLine(
+                        if (tick == 0.0) baselineColor else grid,
+                        Offset(0f, y(tick)),
+                        Offset(size.width, y(tick)),
+                        strokeWidth = if (tick == 0.0) 1.5.dp.toPx() else 1.dp.toPx(),
+                    )
                 }
-                val slotWidth = size.width / sorted.size.coerceAtLeast(1)
                 when (style) {
-                    TemporalChartStyle.Bars -> sorted.forEach { point ->
-                        val barTop = y(point.value)
-                        val width = (slotWidth * .42f).coerceIn(2.dp.toPx(), 18.dp.toPx())
-                        val cornerRadius = (width / 2f).coerceAtMost(4.dp.toPx())
-                        val path = roundedTopPath(
-                            left = (x(point) - width / 2f).coerceIn(0f, size.width - width),
-                            top = barTop.coerceAtMost(baseline - cornerRadius.coerceAtLeast(if (point.value > 0f) 2.dp.toPx() else 0f)),
-                            right = (x(point) + width / 2f).coerceIn(width, size.width),
-                            bottom = baseline,
-                            radius = cornerRadius,
-                        )
-                        drawPath(path, primary)
+                    TemporalChartStyle.Bars -> {
+                        val slot = size.width / sorted.size
+                        sorted.forEachIndexed { index, point ->
+                            if (point.value > 0.0) {
+                                val width = minOf(slot * 0.56f, 13.dp.toPx())
+                                val left = (index + 0.5f) * slot - width / 2f
+                                val barTop = minOf(y(point.value), baseline - 2.dp.toPx())
+                                drawPath(
+                                    roundedTopPath(left, barTop, left + width, baseline, minOf(3.dp.toPx(), width / 2f)),
+                                    Brush.verticalGradient(
+                                        listOf(primary, primary.copy(alpha = 0.80f)),
+                                        startY = barTop,
+                                        endY = baseline,
+                                    ),
+                                )
+                            }
+                        }
                     }
                     TemporalChartStyle.Line -> {
+                        val side = 5.dp.toPx()
+                        val firstDay = sorted.first().date.toEpochDay()
+                        val span = (sorted.last().date.toEpochDay() - firstDay).coerceAtLeast(1)
+                        fun x(point: TemporalChartPoint): Float = if (sorted.size == 1) size.width / 2f else
+                            side + (point.date.toEpochDay() - firstDay).toFloat() / span * (size.width - 2 * side)
                         val path = Path()
                         sorted.forEachIndexed { index, point ->
                             if (index == 0) path.moveTo(x(point), y(point.value)) else path.lineTo(x(point), y(point.value))
@@ -104,37 +142,34 @@ fun TemporalChart(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 56.dp)) {
-            xLabelDates(sorted).forEachIndexed { index, date ->
-                Text(
-                    date.format(DATE),
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = labelColor,
-                    textAlign = if (index == 0) TextAlign.Start else TextAlign.End,
-                )
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = axisWidth)) {
+            val maxLabels = (maxWidth.value / 58f).toInt().coerceAtLeast(2)
+            val labelCount = minOf(sorted.size, maxLabels)
+            val labelIndices = (0 until labelCount).map { position ->
+                (position * sorted.lastIndex.toDouble() / (labelCount - 1).coerceAtLeast(1)).roundToInt()
+            }.toSet()
+            Row(Modifier.fillMaxWidth().height(xLabelHeight)) {
+                sorted.forEachIndexed { index, point ->
+                    Box(Modifier.weight(1f), contentAlignment = when (index) {
+                        0 -> Alignment.TopStart
+                        sorted.lastIndex -> Alignment.TopEnd
+                        else -> Alignment.TopCenter
+                    }) {
+                        if (index in labelIndices) {
+                            Text(
+                                point.date.format(dateFormat),
+                                Modifier.requiredWidth(58.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = xLabelColor,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-private fun niceStep(raw: Float): Float {
-    val magnitude = 10f.pow(floor(log10(raw.coerceAtLeast(Float.MIN_VALUE))).toInt())
-    val normalized = raw / magnitude
-    return when {
-        normalized <= 1f -> magnitude
-        normalized <= 2f -> 2f * magnitude
-        normalized <= 5f -> 5f * magnitude
-        else -> 10f * magnitude
-    }
-}
-
-private fun xLabelDates(sorted: List<TemporalChartPoint>): List<LocalDate> {
-    val count = minOf(sorted.size, 4)
-    return (0 until count)
-        .map { index -> (index.toFloat() / (count - 1).coerceAtLeast(1) * (sorted.size - 1)).roundToInt() }
-        .distinct()
-        .map { sorted[it].date }
 }
 
 private fun roundedTopPath(left: Float, top: Float, right: Float, bottom: Float, radius: Float): Path {
@@ -142,12 +177,10 @@ private fun roundedTopPath(left: Float, top: Float, right: Float, bottom: Float,
     return Path().apply {
         moveTo(left, bottom)
         lineTo(left, top + r)
-        quadraticBezierTo(left, top, left + r, top)
+        quadraticTo(left, top, left + r, top)
         lineTo(right - r, top)
-        quadraticBezierTo(right, top, right, top + r)
+        quadraticTo(right, top, right, top + r)
         lineTo(right, bottom)
         close()
     }
 }
-
-private val DATE = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es-ES"))

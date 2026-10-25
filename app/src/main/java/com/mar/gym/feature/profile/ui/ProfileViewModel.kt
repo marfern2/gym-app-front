@@ -64,6 +64,7 @@ data class ProfileUiState(
     val selectedActivityMetric: ProfileActivityMetric = ProfileActivityMetric.Duration,
     val selectedActivityRange: HistoryRange = HistoryRange.ThreeMonths,
     val activity: ProfileSection<List<ProfileActivityPoint>> = ProfileSection.Loading,
+    val currentWeekActivity: ProfileActivityPoint? = null,
     val workouts: ProfileSection<List<WorkoutHistoryItem>> = ProfileSection.Loading,
     val selectedStatsPeriod: AnalyticsPeriod = AnalyticsPeriod.Month,
     val summary: ProfileSection<ProgressSummary> = ProfileSection.Loading,
@@ -294,7 +295,11 @@ class ProfileViewModel(
     private fun loadWorkoutsAndActivity() {
         activityJob?.cancel()
         val range = _uiState.value.selectedActivityRange
-        _uiState.update { it.copy(activity = ProfileSection.Loading, workouts = ProfileSection.Loading) }
+        _uiState.update { it.copy(
+            activity = ProfileSection.Loading,
+            currentWeekActivity = null,
+            workouts = ProfileSection.Loading,
+        ) }
         activityJob = viewModelScope.launch {
             val today = clock.instant().atZone(zone).toLocalDate()
             val cutoff = range.startDate(today)
@@ -309,6 +314,7 @@ class ProfileViewModel(
                             it.copy(
                                 workouts = if (history.isEmpty()) error else section(history.take(RECENT_WORKOUT_COUNT)),
                                 activity = error,
+                                currentWeekActivity = null,
                             )
                         }
                         return@launch
@@ -334,7 +340,10 @@ class ProfileViewModel(
             for (item in relevant) {
                 val detail = workoutDetails[item.id] ?: when (val result = workoutRepository.getWorkout(item.id)) {
                     is WorkoutRepositoryResult.Failure -> {
-                        _uiState.update { it.copy(activity = ProfileSection.Error(result.error)) }
+                        _uiState.update { it.copy(
+                            activity = ProfileSection.Error(result.error),
+                            currentWeekActivity = null,
+                        ) }
                         return@launch
                     }
                     is WorkoutRepositoryResult.Success -> result.value.detail.also { workoutDetails[item.id] = it }
@@ -342,7 +351,12 @@ class ProfileViewModel(
                 details += detail
             }
             val points = workoutActivityPoints(details, zone, range, today)
-            _uiState.update { it.copy(activity = section(points)) }
+            val currentWeek = if (range == HistoryRange.ThreeMonths) points.lastOrNull() else
+                workoutActivityPoints(details, zone, HistoryRange.ThreeMonths, today).lastOrNull()
+            _uiState.update { it.copy(
+                activity = if (details.isEmpty()) ProfileSection.Empty(points) else ProfileSection.Content(points),
+                currentWeekActivity = currentWeek,
+            ) }
         }
     }
 

@@ -202,7 +202,7 @@ private fun MeasurementContent(
         }
         if (chartItems.isNotEmpty()) item {
             TemporalChart(
-                points = chartItems.map { TemporalChartPoint(it.measuredAt.atZone(zone).toLocalDate(), it.value.toFloat()) },
+                points = chartItems.map { TemporalChartPoint(it.measuredAt.atZone(zone).toLocalDate(), it.value.toDouble()) },
                 valueLabel = { value ->
                     if (latest.type == BodyMeasurementType.BodyWeight) {
                         UnitConverter.formatWeight(value.toBigDecimal(), preferences.weight)
@@ -351,7 +351,7 @@ private fun MeasurementForm(
     )
 }
 
-private fun Float.decimal(): String = toBigDecimal().stripTrailingZeros().toPlainString()
+private fun Double.decimal(): String = toBigDecimal().stripTrailingZeros().toPlainString()
 private fun BodyMeasurement.displayValue(preferences: UnitPreferences): String =
     if (type == BodyMeasurementType.BodyWeight) UnitConverter.formatWeight(value, preferences.weight)
     else "${value.stripTrailingZeros().toPlainString()} ${unit.symbol}"
