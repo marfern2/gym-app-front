@@ -26,6 +26,7 @@ class AuthViewModel(
     private val sessionStore: SessionStore,
     private val refreshCoordinator: SessionRefreshCoordinator,
     private val clock: Clock = Clock.systemUTC(),
+    private val beforeLogout: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.RestoringSession)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -130,6 +131,7 @@ class AuthViewModel(
 
         _uiState.value = AuthUiState.LoggingOut
         viewModelScope.launch {
+            beforeLogout()
             when (val result = repository.logout(session.refreshToken)) {
                 is AuthResult.Success -> {
                     clearAfterLogout(
@@ -262,6 +264,12 @@ class AuthViewModel(
     }
 
     private suspend fun handleLogoutFailure(error: NetworkFailure) {
+        if (error is NetworkFailure.Network || error is NetworkFailure.Timeout) {
+            clearAfterLogout(
+                "La sesión local se eliminó sin conexión; el servidor podría conservar el dispositivo push hasta su próxima transferencia."
+            )
+            return
+        }
         if (error.isUnauthorized()) {
             clearAfterLogout("La sesión ya no era válida; se eliminó la copia local.")
             return
@@ -341,13 +349,14 @@ class AuthViewModelFactory(
     private val sessionStore: SessionStore,
     private val refreshCoordinator: SessionRefreshCoordinator,
     private val clock: Clock = Clock.systemUTC(),
+    private val beforeLogout: suspend () -> Unit = {},
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(AuthViewModel::class.java)) {
             "Unsupported ViewModel class: ${modelClass.name}"
         }
         @Suppress("UNCHECKED_CAST")
-        return AuthViewModel(repository, sessionStore, refreshCoordinator, clock) as T
+        return AuthViewModel(repository, sessionStore, refreshCoordinator, clock, beforeLogout) as T
     }
 }
 

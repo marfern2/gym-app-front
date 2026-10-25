@@ -10,6 +10,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// The real Firebase project file is supplied outside Git. Keep local builds usable before setup.
+if (file("google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.isFile) {
@@ -49,8 +54,8 @@ fun validatedBaseUrl(
     if (release && host == "10.0.2.2") {
         throw GradleException("$propertyName must not use the Android emulator host in release builds.")
     }
-    if (!release && scheme == "http" && host != "10.0.2.2") {
-        throw GradleException("$propertyName may use HTTP only with the Android emulator host 10.0.2.2.")
+    if (!release && scheme == "http" && host !in setOf("10.0.2.2", "localhost", "127.0.0.1")) {
+        throw GradleException("$propertyName may use HTTP only with 10.0.2.2 or device loopback.")
     }
 
     return if (value.endsWith('/')) value else "$value/"
@@ -82,8 +87,8 @@ fun validatedShareBaseUrl(
     if (release && host == "10.0.2.2") {
         throw GradleException("$propertyName must not use the Android emulator host in release builds.")
     }
-    if (!release && scheme == "http" && host != "10.0.2.2") {
-        throw GradleException("$propertyName may use HTTP only with the Android emulator host 10.0.2.2.")
+    if (!release && scheme == "http" && host !in setOf("10.0.2.2", "localhost", "127.0.0.1")) {
+        throw GradleException("$propertyName may use HTTP only with 10.0.2.2 or device loopback.")
     }
     return uri
 }
@@ -239,6 +244,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)

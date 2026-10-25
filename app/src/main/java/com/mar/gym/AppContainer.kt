@@ -38,6 +38,11 @@ import com.mar.gym.feature.profile.data.ProfileRepository
 import com.mar.gym.feature.profile.data.DefaultUserDataTransferRepository
 import com.mar.gym.feature.profile.data.SafUserDataDocumentStore
 import com.mar.gym.feature.profile.data.UserDataTransferApi
+import com.mar.gym.feature.push.currentFirebaseToken
+import com.mar.gym.feature.push.data.DefaultPushRepository
+import com.mar.gym.feature.push.data.PushApi
+import com.mar.gym.feature.push.data.PushRepository
+import com.mar.gym.feature.push.data.PushTokenCoordinator
 import com.mar.gym.feature.progress.data.AnalyticsApi
 import com.mar.gym.feature.progress.data.AnalyticsRepository
 import com.mar.gym.feature.progress.data.DefaultAnalyticsRepository
@@ -202,6 +207,13 @@ object AppContainer {
     }
     val socialNotificationsRepository: SocialNotificationsRepository by lazy {
         DefaultSocialNotificationsRepository(socialNotificationsApi)
+    }
+
+    val pushRepository: PushRepository by lazy {
+        DefaultPushRepository(protectedApi(PushApi::class.java))
+    }
+    val pushTokenCoordinator: PushTokenCoordinator by lazy {
+        PushTokenCoordinator(pushRepository, sessionStore) { currentFirebaseToken(applicationContext) }
     }
 
     private val measurementApi: MeasurementApi by lazy { protectedApi(MeasurementApi::class.java) }

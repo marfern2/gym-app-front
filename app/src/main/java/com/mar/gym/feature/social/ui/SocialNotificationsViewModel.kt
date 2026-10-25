@@ -54,6 +54,11 @@ class SocialNotificationsViewModel(
 
     fun onHomeVisible() = refreshUnreadCount()
 
+    fun onPushReceived(listVisible: Boolean) {
+        refreshUnreadCount(force = true)
+        if (listVisible) refresh()
+    }
+
     fun openNotifications() {
         refresh()
         refreshUnreadCount()

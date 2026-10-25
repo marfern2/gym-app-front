@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -23,6 +24,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import android.Manifest
+import android.os.Build
+import com.mar.gym.feature.push.PushNotifications
+import com.mar.gym.feature.push.shouldRequestNotificationPermission
+import com.mar.gym.feature.push.ui.PushPreferencesUiState
+import com.mar.gym.feature.push.ui.PushPreferencesViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -38,11 +52,31 @@ import java.time.LocalDate
 fun ProfileSettingsRoute(
     viewModel: ProfileViewModel,
     transferViewModel: UserDataTransferViewModel,
+    pushViewModel: PushPreferencesViewModel,
     onBack: () -> Unit,
     onLogout: () -> Unit,
     onOpenBlockedUsers: () -> Unit = {},
     onImported: () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var notificationPermissionGranted by remember { mutableStateOf(PushNotifications.canShow(context)) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationPermissionGranted = PushNotifications.canShow(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationPermissionGranted = granted
+        permissionDenied = !granted
+        if (granted) pushViewModel.setEnabled(true)
+    }
+    val pushState by pushViewModel.uiState.collectAsState()
     val state by viewModel.uiState.collectAsState()
     val transferState by transferViewModel.state.collectAsState()
     val createDocument = rememberLauncherForActivityResult(
@@ -58,6 +92,16 @@ fun ProfileSettingsRoute(
     }
     val profile = state.profile?.value
     ProfileSettingsScreen(
+        pushState = pushState,
+        notificationPermissionGranted = notificationPermissionGranted,
+        permissionDenied = permissionDenied,
+        onRetryPush = pushViewModel::refresh,
+        onPushEnabledChange = { enabled ->
+            if (!enabled) pushViewModel.setEnabled(false)
+            else if (shouldRequestNotificationPermission(Build.VERSION.SDK_INT, PushNotifications.canShow(context))) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else pushViewModel.setEnabled(true)
+        },
         preferences = UnitPreferences(
             profile?.preferredWeightUnit ?: WeightUnit.KG,
             profile?.preferredDistanceUnit ?: DistanceUnit.KM,
@@ -87,6 +131,11 @@ fun ProfileSettingsScreen(
     onPreferencesChange: (UnitPreferences) -> Unit,
     onBack: () -> Unit,
     onLogout: () -> Unit,
+    pushState: PushPreferencesUiState = PushPreferencesUiState.Loading,
+    notificationPermissionGranted: Boolean = true,
+    permissionDenied: Boolean = false,
+    onPushEnabledChange: (Boolean) -> Unit = {},
+    onRetryPush: () -> Unit = {},
     onOpenBlockedUsers: () -> Unit = {},
     transferState: UserDataTransferState = UserDataTransferState.Idle,
     onExport: () -> Unit = {},
@@ -124,6 +173,37 @@ fun ProfileSettingsScreen(
             )
             if (saving) Text("Guardando unidades…", style = MaterialTheme.typography.bodySmall)
             if (saveError) Text("No se pudieron guardar las unidades.", color = MaterialTheme.colorScheme.error)
+            Text("Notificaciones", style = MaterialTheme.typography.titleLarge)
+            when (pushState) {
+                PushPreferencesUiState.Loading -> Text("Cargando preferencia de push…")
+                PushPreferencesUiState.Error -> TextButton(onClick = onRetryPush) {
+                    Text("No se pudo cargar la preferencia. Reintentar")
+                }
+                is PushPreferencesUiState.Content -> {
+                    androidx.compose.foundation.layout.Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !pushState.saving) {
+                            onPushEnabledChange(!pushState.enabled)
+                        }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Notificaciones push")
+                        Switch(
+                            checked = pushState.enabled,
+                            onCheckedChange = onPushEnabledChange,
+                            enabled = !pushState.saving,
+                            modifier = Modifier.testTag("push_notifications")
+                                .semantics { contentDescription = "Notificaciones push" },
+                        )
+                    }
+                    if (pushState.saving) Text("Guardando preferencia…")
+                    if (pushState.error) Text("No se pudo guardar la preferencia.", color = MaterialTheme.colorScheme.error)
+                    if (pushState.enabled && !notificationPermissionGranted || permissionDenied) Text(
+                        "Android tiene las notificaciones desactivadas. Puedes verlas dentro de la app; habilítalas en los ajustes del sistema.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
             Text("Datos", style = MaterialTheme.typography.titleLarge)
             Text(
                 "Puedes guardar una copia de tus datos fitness o importar una exportación compatible.",
