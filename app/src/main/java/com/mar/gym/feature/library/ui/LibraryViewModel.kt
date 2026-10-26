@@ -10,6 +10,10 @@ import com.mar.gym.feature.library.data.LibraryResult
 import com.mar.gym.feature.library.model.*
 import com.mar.gym.feature.routines.data.RoutineRepository
 import com.mar.gym.feature.routines.data.RoutineRepositoryResult
+import com.mar.gym.feature.routines.model.RoutineShareVisibility
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,18 +42,23 @@ class LibraryViewModel(private val repository: LibraryRepository, private val ro
     val message: StateFlow<String?> = _message.asStateFlow()
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+    private val _shareUrls = MutableSharedFlow<String>()
+    val shareUrls: SharedFlow<String> = _shareUrls.asSharedFlow()
     private val _serverProgram = MutableStateFlow<ProgramDetail?>(null)
     val serverProgram: StateFlow<ProgramDetail?> = _serverProgram.asStateFlow()
 
     init { refresh() }
 
     fun clearMessage() { _message.value = null }
-    fun refresh() { viewModelScope.launch { loadLibrary() } }
+    fun refresh() { _message.value = null; viewModelScope.launch { loadLibrary() } }
     private suspend fun loadLibrary() {
-        _library.value = LibraryUiState.Loading
+        if (_library.value !is LibraryUiState.Content) _library.value = LibraryUiState.Loading
         _library.value = when (val result = repository.library()) {
             is LibraryResult.Success -> LibraryUiState.Content(result.value)
-            is LibraryResult.Failure -> LibraryUiState.Error(result.error.safeMessage())
+            is LibraryResult.Failure -> {
+                _message.value = result.error.safeMessage()
+                (_library.value as? LibraryUiState.Content) ?: LibraryUiState.Error(result.error.safeMessage())
+            }
         }
     }
 
@@ -65,7 +74,11 @@ class LibraryViewModel(private val repository: LibraryRepository, private val ro
         }
     }
 
-    fun createFolder(name: String) = mutate { repository.createFolder(name) }
+    fun createFolder(name: String) {
+        val normalized = name.trim()
+        if (normalized.length !in 2..100) { _message.value = "El nombre debe tener entre 2 y 100 caracteres."; return }
+        mutate { repository.createFolder(normalized) }
+    }
     fun renameFolder(id: String, name: String) = mutate { repository.renameFolder(id, name) }
     fun deleteFolder(id: String) = mutate { repository.deleteFolder(id) }
     fun reorderFolder(id: String, position: Int) = mutate { repository.reorderFolder(id, position) }
@@ -80,6 +93,41 @@ class LibraryViewModel(private val repository: LibraryRepository, private val ro
         mutate { repository.reorderRoutine(item, position) }
     }
 
+    /** A move and its optional destination reorder form one serialized UI operation. */
+    fun placeRoutine(routineId: String, folderId: String?, position: Int? = null) {
+        val item = (_library.value as? LibraryUiState.Content)?.library?.routines?.find { it.id == routineId } ?: return
+        mutate {
+            if (item.folderId == folderId) {
+                if (position == null || position == item.position) LibraryResult.Success(item)
+                else repository.reorderRoutine(item, position)
+            } else {
+                when (val moved = repository.moveRoutine(item, folderId)) {
+                    is LibraryResult.Failure -> moved
+                    is LibraryResult.Success -> if (position == null) moved
+                        else repository.reorderRoutine(moved.value, position)
+                }
+            }
+        }
+    }
+
+    /** The existing editor saves at root; use the returned library ETag for the folder move. */
+    fun placeNewRoutine(routineId: String, folderId: String) {
+        if (_busy.value) return
+        _busy.value = true
+        _message.value = null
+        viewModelScope.launch {
+            val latest = repository.library()
+            val item = (latest as? LibraryResult.Success)?.value?.routines?.find { it.id == routineId }
+            if (item == null) _message.value = "La rutina se creó, pero no se pudo colocar en la carpeta. Muévela desde el menú."
+            else {
+                val result = repository.moveRoutine(item, folderId)
+                if (result is LibraryResult.Failure) _message.value = result.error.safeMessage()
+            }
+            loadLibrary()
+            _busy.value = false
+        }
+    }
+
     fun duplicateRoutine(id: String) {
         val item = (_library.value as? LibraryUiState.Content)?.library?.routines?.find { it.id == id } ?: return
         if (_busy.value) return
@@ -90,6 +138,32 @@ class LibraryViewModel(private val repository: LibraryRepository, private val ro
                 is RoutineRepositoryResult.Success -> Unit
             }
             loadLibrary()
+            _busy.value = false
+        }
+    }
+
+    fun shareRoutine(id: String) {
+        if (_busy.value) return
+        _busy.value = true
+        _message.value = null
+        viewModelScope.launch {
+            when (val detail = routines.detail(id)) {
+                is RoutineRepositoryResult.Failure -> _message.value = detail.error.safeMessage()
+                is RoutineRepositoryResult.Success -> {
+                    val routine = detail.value.detail
+                    val url = if (routine.shareVisibility == RoutineShareVisibility.LinkPublic &&
+                        routine.shareUrl != null) routine.shareUrl else {
+                        when (val result = routines.enableSharing(id, detail.value.etag)) {
+                            is RoutineRepositoryResult.Success -> result.value.shareUrl
+                            is RoutineRepositoryResult.Failure -> {
+                                _message.value = result.error.safeMessage()
+                                null
+                            }
+                        }
+                    }
+                    if (url != null) _shareUrls.emit(url)
+                }
+            }
             _busy.value = false
         }
     }
@@ -224,7 +298,7 @@ internal fun NetworkFailure.isConflict() = when (this) {
 }
 
 internal fun NetworkFailure.safeMessage(): String = when {
-    isConflict() -> "Hay cambios en el servidor. Se ha recargado la biblioteca; revisa antes de intentarlo de nuevo."
+    isConflict() -> "La biblioteca cambió en otro dispositivo. Se ha actualizado."
     this is NetworkFailure.Network || this is NetworkFailure.Timeout -> "No se pudo conectar. Inténtalo de nuevo."
     this is NetworkFailure.HttpProblem && statusCode == 401 -> "La sesión ha caducado."
     this is NetworkFailure.HttpProblem && statusCode == 404 -> "El elemento ya no existe."

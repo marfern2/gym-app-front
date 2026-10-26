@@ -84,8 +84,14 @@ fun RoutineEditorRoute(
     onOpenRoutine: (String) -> Unit,
     onStartRoutine: (String) -> Unit = {},
     onOpenExercise: (String) -> Unit = {},
+    onSaved: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(state) {
+        if (state is RoutineEditorUiState.Saved) {
+            state.data.draft.routineId?.let(onSaved)
+        }
+    }
     LaunchedEffect(preferences) { viewModel.updateUnitPreferences(preferences) }
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
