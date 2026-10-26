@@ -82,9 +82,6 @@ import com.mar.gym.feature.progress.ui.ExerciseProgressViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineEditorRoute
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModel
 import com.mar.gym.feature.routines.ui.RoutineEditorViewModelFactory
-import com.mar.gym.feature.routines.ui.RoutineListEffect
-import com.mar.gym.feature.routines.ui.RoutineListViewModel
-import com.mar.gym.feature.routines.ui.RoutineListViewModelFactory
 import com.mar.gym.feature.routines.ui.RoutineViewerRoute
 import com.mar.gym.feature.routines.ui.RoutineViewerViewModel
 import com.mar.gym.feature.routines.ui.RoutineViewerViewModelFactory
@@ -254,6 +251,7 @@ class MainActivity : ComponentActivity() {
         var detailId by rememberSaveable { mutableStateOf<String?>(null) }
         var exerciseEditorId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineId by rememberSaveable { mutableStateOf<String?>(null) }
+        var pendingRoutineFolderId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineEditorOrigin by rememberSaveable { mutableStateOf<String?>(null) }
         var routineViewerOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -333,7 +331,6 @@ class MainActivity : ComponentActivity() {
         val sessionProfileState by sessionProfileViewModel.uiState.collectAsStateWithLifecycle()
         val unitPreferences = sessionProfileState.profile?.value?.unitPreferences ?: UnitPreferences()
         val activeWorkoutState by activeWorkoutViewModel().uiState.collectAsStateWithLifecycle()
-        val routinesState by routineListViewModel().uiState.collectAsStateWithLifecycle()
 
         val finishCompletedWorkout: () -> Unit = {
             val completed = activeWorkoutState as? com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState.Completed
@@ -347,15 +344,6 @@ class MainActivity : ComponentActivity() {
             profileViewModel().refresh()
             deep = null
             tab = TAB_TRAINING
-        }
-
-        LaunchedEffect(Unit) {
-            routineListViewModel().effects.collect { effect ->
-                if (effect is RoutineListEffect.OpenRoutine) {
-                    routineId = effect.routineId
-                    deep = DEEP_ROUTINE_VIEWER
-                }
-            }
         }
 
         BackHandler(enabled = deep != null || tab != TAB_HOME) {
@@ -382,8 +370,7 @@ class MainActivity : ComponentActivity() {
                     DEEP_EXERCISE_PROGRESS -> DEEP_DETAIL
                     DEEP_CUSTOM_EDITOR -> if (exerciseEditorId == null) DEEP_CATALOG else DEEP_DETAIL
                     DEEP_ROUTINE_VIEWER -> {
-                        routineListViewModel().refresh()
-                        if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                        libraryViewModel().refresh()
                         tab = if (routineViewerOrigin == DEEP_SHARED_ROUTINE) TAB_HOME else TAB_TRAINING
                         when (routineViewerOrigin) {
                             DEEP_LIBRARY -> DEEP_LIBRARY
@@ -396,8 +383,7 @@ class MainActivity : ComponentActivity() {
                         null
                     }
                     DEEP_ROUTINE_EDITOR -> {
-                        routineListViewModel().refresh()
-                        if (routineEditorOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                        libraryViewModel().refresh()
                         when (routineEditorOrigin) {
                             ROUTINE_ORIGIN_VIEWER -> {
                                 routineId?.let(::refreshRoutineViewer)
@@ -549,9 +535,19 @@ class MainActivity : ComponentActivity() {
                             },
                             onShareWorkout = ::shareWorkout,
                         )
-                        TAB_TRAINING -> TrainingScreen(
+                        TAB_TRAINING -> {
+                            val trainingLibrary = remember { libraryViewModel() }
+                            val libraryState by trainingLibrary.library.collectAsStateWithLifecycle()
+                            val libraryMessage by trainingLibrary.message.collectAsStateWithLifecycle()
+                            val libraryBusy by trainingLibrary.busy.collectAsStateWithLifecycle()
+                            LaunchedEffect(trainingLibrary) {
+                                trainingLibrary.shareUrls.collect(::shareRoutine)
+                            }
+                            TrainingScreen(
                             activeWorkout = activeWorkoutState,
-                            routines = routinesState,
+                            library = libraryState,
+                            message = libraryMessage,
+                            busy = libraryBusy,
                             clock = AppContainer.applicationClock,
                             onContinueWorkout = { deep = DEEP_WORKOUT },
                             onStartEmpty = {
@@ -573,21 +569,25 @@ class MainActivity : ComponentActivity() {
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
-                            onDuplicateRoutine = { routineListViewModel().duplicate(it) },
-                            onDeleteRoutine = { routineListViewModel().delete(it) },
-                            onOpenCatalog = {
-                                catalogOrigin = TAB_TRAINING
-                                deep = DEEP_CATALOG
-                            },
-                            onCreateRoutine = {
+                            onDuplicateRoutine = trainingLibrary::duplicateRoutine,
+                            onShareRoutine = trainingLibrary::shareRoutine,
+                            onDeleteRoutine = trainingLibrary::deleteRoutine,
+                            onCreateRoutine = { folderId ->
+                                pendingRoutineFolderId = folderId
                                 routineId = null
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
-                            onRetryRoutines = { routineListViewModel().retry() },
-                            onLoadMoreRoutines = { routineListViewModel().loadMore() },
-                            onOpenLibrary = { deep = DEEP_LIBRARY },
+                            onCreateFolder = trainingLibrary::createFolder,
+                            onRenameFolder = trainingLibrary::renameFolder,
+                            onDeleteFolder = trainingLibrary::deleteFolder,
+                            onMoveRoutine = trainingLibrary::moveRoutine,
+                            onPlaceRoutine = trainingLibrary::placeRoutine,
+                            onReorderFolder = trainingLibrary::reorderFolder,
+                            onRetryLibrary = trainingLibrary::refresh,
+                            onClearMessage = trainingLibrary::clearMessage,
                         )
+                        }
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = sessionProfileViewModel,
                             onOpenEdit = { deep = DEEP_PROFILE_EDIT },
@@ -632,7 +632,7 @@ class MainActivity : ComponentActivity() {
             when (deep) {
                 DEEP_LIBRARY -> LibraryRoute(
                     viewModel = remember { libraryViewModel() },
-                    onBack = { deep = null; tab = TAB_TRAINING; routineListViewModel().refresh() },
+                    onBack = { deep = null; tab = TAB_TRAINING; libraryViewModel().refresh() },
                     onOpenRoutine = { id ->
                         routineId = id
                         routineViewerOrigin = DEEP_LIBRARY
@@ -731,8 +731,7 @@ class MainActivity : ComponentActivity() {
                             viewModel = remember(currentId) { routineViewerViewModel(currentId) },
                             preferences = unitPreferences,
                             onBack = {
-                                routineListViewModel().refresh()
-                                if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                                libraryViewModel().refresh()
                                 deep = when (routineViewerOrigin) {
                                     DEEP_LIBRARY -> DEEP_LIBRARY
                                     DEEP_SHARED_ROUTINE -> DEEP_SHARED_ROUTINE
@@ -754,11 +753,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onDeleted = {
                                 routineId = null
-                                routineListViewModel().refresh()
-                                if (routineViewerOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                                libraryViewModel().refresh()
                                 if (routineViewerOrigin == DEEP_SHARED_ROUTINE) {
                                     sharedRoutineId?.let { sharedRoutineViewModel(it).retry() }
-                                    libraryViewModel().refresh()
                                 }
                                 deep = when (routineViewerOrigin) {
                                     DEEP_LIBRARY -> DEEP_LIBRARY
@@ -775,7 +772,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else LaunchedEffect(Unit) {
-                        routineListViewModel().refresh()
+                        libraryViewModel().refresh()
                         deep = null
                         tab = TAB_TRAINING
                     }
@@ -786,8 +783,8 @@ class MainActivity : ComponentActivity() {
                         viewModel = remember(currentId) { routineEditorViewModel(currentId) },
                         preferences = unitPreferences,
                         onBack = {
-                            routineListViewModel().refresh()
-                            if (routineEditorOrigin == DEEP_LIBRARY) libraryViewModel().refresh()
+                            libraryViewModel().refresh()
+                            pendingRoutineFolderId = null
                             when (routineEditorOrigin) {
                                 ROUTINE_ORIGIN_VIEWER -> {
                                     routineId?.let(::refreshRoutineViewer)
@@ -806,6 +803,12 @@ class MainActivity : ComponentActivity() {
                         onOpenRoutine = { id ->
                             routineId = id
                             deep = DEEP_ROUTINE_EDITOR
+                        },
+                        onSaved = { id ->
+                            val destination = pendingRoutineFolderId
+                            pendingRoutineFolderId = null
+                            if (destination != null) libraryViewModel().placeNewRoutine(id, destination)
+                            else libraryViewModel().refresh()
                         },
                         onStartRoutine = { id ->
                             pendingRoutineWorkoutId = id
@@ -967,7 +970,6 @@ class MainActivity : ComponentActivity() {
                     onImported = {
                         if (userSessionViewModels.isActive(user.id)) {
                             libraryViewModel().refresh()
-                            routineListViewModel().refresh()
                             exerciseCatalogViewModel().refresh()
                             measurementViewModel().refresh()
                         }
@@ -1133,7 +1135,6 @@ class MainActivity : ComponentActivity() {
                         onImported = {
                             if (userSessionViewModels.isActive(user.id)) {
                                 libraryViewModel().refresh()
-                                routineListViewModel().refresh()
                                 exerciseCatalogViewModel().refresh()
                             }
                         },
@@ -1226,11 +1227,6 @@ class MainActivity : ComponentActivity() {
         userSessionViewModels,
         LibraryViewModelFactory(AppContainer.libraryRepository, AppContainer.routineRepository),
     )[LibraryViewModel::class.java]
-
-    private fun routineListViewModel(): RoutineListViewModel = ViewModelProvider(
-        userSessionViewModels,
-        RoutineListViewModelFactory(AppContainer.routineRepository),
-    )[RoutineListViewModel::class.java]
 
     private fun routineEditorViewModel(routineId: String?): RoutineEditorViewModel = ViewModelProvider(
         userSessionViewModels,

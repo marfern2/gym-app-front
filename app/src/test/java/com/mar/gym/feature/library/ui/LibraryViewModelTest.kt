@@ -13,6 +13,9 @@ import com.mar.gym.feature.routines.model.*
 import com.mar.gym.feature.system.MainDispatcherRule
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -50,7 +53,50 @@ class LibraryViewModelTest {
 
         library.failure = NetworkFailure.Network()
         vm.refresh(); runCurrent()
-        assertTrue(vm.library.value is LibraryUiState.Error)
+        assertTrue(vm.library.value is LibraryUiState.Content)
+        assertNotNull(vm.message.value)
+    }
+
+    @Test fun placeRoutineUsesCurrentEtagForRootFolderAndCrossFolderMoves() = runTest {
+        val library = FakeLibraryRepository()
+        val second = "00000000-0000-0000-0000-000000000004"
+        library.data = library.data.copy(folders = listOf(folder(), folder().copy(id = second, position = 2)))
+        val vm = LibraryViewModel(library, FakeRoutines())
+        runCurrent()
+
+        vm.placeRoutine(ROUTINE, FOLDER); runCurrent()
+        vm.placeRoutine(ROUTINE, FOLDER, 1); runCurrent()
+        vm.placeRoutine(ROUTINE, second, 0); runCurrent()
+        vm.placeRoutine(ROUTINE, null); runCurrent()
+        vm.placeRoutine(ROUTINE, null, 1); runCurrent()
+
+        assertEquals(listOf(FOLDER, second, null), library.moveCalls.map { it.second })
+        assertEquals(listOf(0L, 2L, 4L), library.moveCalls.map { it.first.etag.version })
+        assertEquals(listOf(1L, 3L, 5L), library.reorderCalls.map { it.first.etag.version })
+        assertEquals(listOf(1, 0, 1), library.reorderCalls.map { it.second })
+    }
+
+    @Test fun conflictReloadsServerAndDoesNotKeepUnpersistedOrder() = runTest {
+        val library = FakeLibraryRepository()
+        val vm = LibraryViewModel(library, FakeRoutines())
+        runCurrent()
+        library.moveFailure = NetworkFailure.HttpProblem(412,
+            ProblemDetails(errorCode = "LIBRARY_VERSION_CONFLICT"), null)
+        vm.placeRoutine(ROUTINE, FOLDER); runCurrent()
+        assertNull((vm.library.value as LibraryUiState.Content).library.routines.single().folderId)
+        assertTrue(vm.message.value!!.contains("actualizado"))
+        assertEquals(2, library.libraryCalls)
+    }
+
+    @Test fun newRoutineIsMovedUsingFreshLibraryVersion() = runTest {
+        val library = FakeLibraryRepository()
+        library.data = library.data.copy(folders = listOf(folder()),
+            routines = listOf(routine().copy(etag = RoutineEtag.fromVersion(7)!!)))
+        val vm = LibraryViewModel(library, FakeRoutines())
+        runCurrent()
+        vm.placeNewRoutine(ROUTINE, FOLDER); runCurrent()
+        assertEquals(7L, library.moveCalls.single().first.etag.version)
+        assertEquals(FOLDER, (vm.library.value as LibraryUiState.Content).library.routines.single().folderId)
     }
 
     @Test fun programEditorSupportsRepeatedDaysLabelsReorderingAndServerConflict() = runTest {
@@ -84,7 +130,7 @@ class LibraryViewModelTest {
         vm.saveProgram(); runCurrent()
         assertEquals("Mi borrador", (vm.program.value as ProgramUiState.Editor).name)
         assertNotNull(vm.serverProgram.value)
-        assertTrue(vm.message.value!!.contains("servidor"))
+        assertTrue(vm.message.value!!.contains("actualizado"))
         vm.loadServerProgram()
         assertEquals("Plan de fuerza", (vm.program.value as ProgramUiState.Editor).name)
         assertNull(vm.serverProgram.value)
@@ -111,6 +157,23 @@ class LibraryViewModelTest {
         assertEquals(2, (vm.library.value as LibraryUiState.Content).library.routines.size)
     }
 
+    @Test fun shareRoutineReusesPublicLinkOrEnablesSharing() = runTest {
+        val routines = FakeRoutines()
+        val vm = LibraryViewModel(FakeLibraryRepository(), routines)
+        runCurrent()
+        val first = backgroundScope.async(UnconfinedTestDispatcher(testScheduler)) { vm.shareUrls.first() }
+        vm.shareRoutine(ROUTINE); runCurrent()
+        assertEquals("https://example.test/routine", first.await())
+        assertEquals(1, routines.enableSharingCalls)
+        assertFalse(vm.busy.value)
+
+        routines.publicUrl = "https://example.test/existing"
+        val second = backgroundScope.async(UnconfinedTestDispatcher(testScheduler)) { vm.shareUrls.first() }
+        vm.shareRoutine(ROUTINE); runCurrent()
+        assertEquals("https://example.test/existing", second.await())
+        assertEquals(1, routines.enableSharingCalls)
+    }
+
     @Test fun sessionScopeDropsLibraryStateAcrossLogout() = runTest {
         val library = FakeLibraryRepository()
         val scope = UserSessionViewModelScope()
@@ -134,10 +197,17 @@ class LibraryViewModelTest {
         var conflict = false
         var folderPosition = -1
         var routinePosition = -1
+        var libraryCalls = 0
+        var moveFailure: NetworkFailure? = null
+        val moveCalls = mutableListOf<Pair<LibraryRoutine, String?>>()
+        val reorderCalls = mutableListOf<Pair<LibraryRoutine, Int>>()
         var lastInput: ProgramInput? = null
         var lastUpdateEtag: RoutineEtag? = null
         var detail = program(version = 0)
-        override suspend fun library(): LibraryResult<LibraryResponse> = failure?.let { LibraryResult.Failure(it) } ?: LibraryResult.Success(data)
+        override suspend fun library(): LibraryResult<LibraryResponse> {
+            libraryCalls++
+            return failure?.let { LibraryResult.Failure(it) } ?: LibraryResult.Success(data)
+        }
         override suspend fun createFolder(name: String): LibraryResult<RoutineFolder> {
             val item = folder().copy(name = name)
             data = data.copy(folders = data.folders + item)
@@ -158,13 +228,18 @@ class LibraryViewModelTest {
             return LibraryResult.Success(Unit)
         }
         override suspend fun moveRoutine(routine: LibraryRoutine, folderId: String?): LibraryResult<LibraryRoutine> {
+            moveCalls += routine to folderId
+            moveFailure?.let { return LibraryResult.Failure(it) }
             val item = routine.copy(folderId = folderId, etag = RoutineEtag.fromVersion(routine.etag.version + 1)!!)
             data = data.copy(routines = data.routines.map { if (it.id == item.id) item else it })
             return LibraryResult.Success(item)
         }
         override suspend fun reorderRoutine(routine: LibraryRoutine, position: Int): LibraryResult<LibraryRoutine> {
+            reorderCalls += routine to position
             routinePosition = position
-            return LibraryResult.Success(routine)
+            val item = routine.copy(position = position, etag = RoutineEtag.fromVersion(routine.etag.version + 1)!!)
+            data = data.copy(routines = data.routines.map { if (it.id == item.id) item else it })
+            return LibraryResult.Success(item)
         }
         override suspend fun program(id: String) = LibraryResult.Success(detail)
         override suspend fun createProgram(input: ProgramInput): LibraryResult<ProgramDetail> {
@@ -188,9 +263,17 @@ class LibraryViewModelTest {
 
     private class FakeRoutines(private val library: FakeLibraryRepository? = null) : RoutineRepository {
         var deleteConflict = false
+        var publicUrl: String? = null
+        var enableSharingCalls = 0
         override suspend fun list(archived: Boolean, query: String?, page: Int, size: Int, sort: RoutineSort): RoutineRepositoryResult<RoutinePage> = error("unused")
         override suspend fun detail(routineId: String): RoutineRepositoryResult<RoutineDocument> =
-            RoutineRepositoryResult.Success(RoutineDocument(RoutineDetail(routineId, "A", null, false, 0, NOW, NOW, emptyList()), RoutineEtag.fromVersion(0)!!))
+            RoutineRepositoryResult.Success(RoutineDocument(RoutineDetail(routineId, "A", null, false, 0, NOW, NOW, emptyList(),
+                shareVisibility = if (publicUrl == null) RoutineShareVisibility.Private else RoutineShareVisibility.LinkPublic,
+                shareUrl = publicUrl), RoutineEtag.fromVersion(0)!!))
+        override suspend fun enableSharing(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<RoutineShare> {
+            enableSharingCalls++
+            return RoutineRepositoryResult.Success(RoutineShare("share", "https://example.test/routine", etag))
+        }
         override suspend fun create(draft: RoutineDraft): RoutineRepositoryResult<RoutineDocument> = error("unused")
         override suspend fun replace(draft: RoutineDraft, etag: RoutineEtag): RoutineRepositoryResult<RoutineDocument> = error("unused")
         override suspend fun archive(routineId: String, etag: RoutineEtag): RoutineRepositoryResult<RoutineDocument> = error("unused")
