@@ -75,6 +75,7 @@ fun SocialWorkoutDetailRoute(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenComments: (String) -> Unit,
+    onOpenExercise: (String) -> Unit = {},
     onShareWorkout: (SocialWorkoutDetail) -> Unit = {},
     onVisibilityChanged: (String, WorkoutVisibility) -> Unit = { _, _ -> },
     onMediaChanged: () -> Unit = {},
@@ -99,6 +100,7 @@ fun SocialWorkoutDetailRoute(
         preferences = preferences,
         onBack = onBack,
         onOpenProfile = onOpenProfile,
+        onOpenExercise = onOpenExercise,
         onRetry = viewModel::retry,
         engagementState = engagementState,
         onToggleLike = { workout ->
@@ -123,6 +125,7 @@ fun SocialWorkoutDetailScreen(
     state: SocialWorkoutDetailUiState,
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
+    onOpenExercise: (String) -> Unit = {},
     onRetry: () -> Unit,
     engagementState: SocialEngagementUiState = SocialEngagementUiState(),
     onToggleLike: (SocialWorkoutDetail) -> Unit = {},
@@ -268,10 +271,15 @@ fun SocialWorkoutDetailScreen(
                         }
                     }
                     items(displayedWorkout.exercises, key = SocialWorkoutExercise::id) { exercise ->
+                        val exerciseTemplateId = exercise.exerciseTemplateId
+                            ?: state.ownerDocument?.detail?.exercises
+                                ?.firstOrNull { it.id == exercise.id }?.sourceExerciseTemplateId
                         SocialExerciseDetail(
                             exercise,
                             Modifier.padding(horizontal = 12.dp),
                             preferences,
+                            onOpenExercise,
+                            exerciseTemplateId,
                         )
                     }
                     item("bottom_spacing") { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 12.dp)) }
@@ -307,10 +315,17 @@ private fun SocialExerciseDetail(
     exercise: SocialWorkoutExercise,
     modifier: Modifier = Modifier,
     preferences: UnitPreferences = UnitPreferences(),
+    onOpenExercise: (String) -> Unit = {},
+    exerciseTemplateId: String? = exercise.exerciseTemplateId,
 ) {
     Card(modifier.fillMaxWidth().testTag("social_detail_exercise_${exercise.id}")) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth().then(
+                    if (exerciseTemplateId != null) Modifier.clickable { onOpenExercise(exerciseTemplateId) } else Modifier,
+                ).padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 ExerciseThumbnail(exercise.thumbnailUrl, exercise.name)
                 Text(
                     exercise.name,
