@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
@@ -66,6 +68,8 @@ import com.mar.gym.feature.library.ui.LibraryViewModel
 import com.mar.gym.feature.library.ui.LibraryViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileRoute
 import com.mar.gym.feature.profile.ui.ProfileCalendarRoute
+import com.mar.gym.feature.profile.ui.CalendarSettingsRoute
+import com.mar.gym.feature.profile.ui.CalendarDayScreen
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModel
 import com.mar.gym.feature.profile.ui.ProfileCalendarViewModelFactory
 import com.mar.gym.feature.profile.ui.ProfileEditRoute
@@ -274,6 +278,10 @@ class MainActivity : ComponentActivity() {
         var socialListType by rememberSaveable { mutableStateOf(SocialListType.Followers.name) }
         var sharedRoutineId by rememberSaveable { mutableStateOf<String?>(null) }
         var progressPhotoId by rememberSaveable { mutableStateOf<String?>(null) }
+        var calendarDay by rememberSaveable { mutableStateOf<String?>(null) }
+        val calendarListState = rememberLazyListState()
+        val calendarYearsListState = rememberLazyListState()
+        val calendarYearScrollState = rememberScrollState()
 
         val pendingDeepLink by incomingShareLinks.pending.collectAsStateWithLifecycle()
         LaunchedEffect(pendingDeepLink, user.id) {
@@ -361,6 +369,7 @@ class MainActivity : ComponentActivity() {
                         DEEP_ROUTINE_VIEWER -> DEEP_ROUTINE_VIEWER
                         DEEP_ROUTINE_EDITOR -> DEEP_ROUTINE_EDITOR
                         DEEP_WORKOUT -> DEEP_WORKOUT
+                        DEEP_SOCIAL_WORKOUT -> DEEP_SOCIAL_WORKOUT
                         else -> {
                             exerciseCatalogViewModel().refresh()
                             DEEP_CATALOG
@@ -424,6 +433,8 @@ class MainActivity : ComponentActivity() {
                         tab = TAB_PROFILE
                         null
                     }
+                    DEEP_PROFILE_CALENDAR_DAY -> DEEP_PROFILE_CALENDAR
+                    DEEP_PROFILE_CALENDAR_SETTINGS -> DEEP_PROFILE_CALENDAR
                     DEEP_BLOCKED_USERS -> DEEP_PROFILE_SETTINGS
                     DEEP_USER_SEARCH -> {
                         tab = userSearchOrigin
@@ -993,7 +1004,38 @@ class MainActivity : ComponentActivity() {
                         deep = null
                         tab = TAB_PROFILE
                     },
+                    onOpenWorkout = { workoutId ->
+                        socialWorkoutId = workoutId
+                        socialWorkoutOrigin = DEEP_PROFILE_CALENDAR
+                        deep = DEEP_SOCIAL_WORKOUT
+                    },
+                    onOpenDay = { date ->
+                        calendarDay = date.toString()
+                        deep = DEEP_PROFILE_CALENDAR_DAY
+                    },
+                    onOpenSettings = { deep = DEEP_PROFILE_CALENDAR_SETTINGS },
+                    listState = calendarListState,
+                    yearsListState = calendarYearsListState,
+                    yearScrollState = calendarYearScrollState,
                 )
+                DEEP_PROFILE_CALENDAR_SETTINGS -> CalendarSettingsRoute(
+                    viewModel = remember { profileCalendarViewModel() },
+                    onBack = { deep = DEEP_PROFILE_CALENDAR },
+                )
+                DEEP_PROFILE_CALENDAR_DAY -> calendarDay?.let { day ->
+                    val date = java.time.LocalDate.parse(day)
+                    val calendarState by remember { profileCalendarViewModel() }.uiState.collectAsStateWithLifecycle()
+                    CalendarDayScreen(
+                        date = date,
+                        workouts = calendarState.workoutsByDate[date].orEmpty(),
+                        onBack = { deep = DEEP_PROFILE_CALENDAR },
+                        onOpenWorkout = { workoutId ->
+                            socialWorkoutId = workoutId
+                            socialWorkoutOrigin = DEEP_PROFILE_CALENDAR_DAY
+                            deep = DEEP_SOCIAL_WORKOUT
+                        },
+                    )
+                }
                 DEEP_USER_SEARCH -> UserSearchRoute(
                     viewModel = remember { userSearchViewModel() },
                     onBack = {
@@ -1106,6 +1148,11 @@ class MainActivity : ComponentActivity() {
                             publicUsername = username
                             publicProfileOrigin = DEEP_SOCIAL_WORKOUT
                             deep = DEEP_PUBLIC_PROFILE
+                        },
+                        onOpenExercise = { exerciseId ->
+                            detailId = exerciseId
+                            detailOrigin = DEEP_SOCIAL_WORKOUT
+                            deep = DEEP_DETAIL
                         },
                         onOpenComments = {
                             socialCommentsOrigin = DEEP_SOCIAL_WORKOUT
@@ -1388,6 +1435,7 @@ class MainActivity : ComponentActivity() {
             AppContainer.workoutRepository,
             DeviceTimeZoneProvider,
             AppContainer.applicationClock,
+            AppContainer.calendarPreferences,
         ),
     )[ProfileCalendarViewModel::class.java]
 
@@ -1467,6 +1515,8 @@ class MainActivity : ComponentActivity() {
         const val DEEP_PROFILE_SETTINGS = "profile_settings"
         const val DEEP_PROFILE_STATS = "profile_stats"
         const val DEEP_PROFILE_CALENDAR = "profile_calendar"
+        const val DEEP_PROFILE_CALENDAR_DAY = "profile_calendar_day"
+        const val DEEP_PROFILE_CALENDAR_SETTINGS = "profile_calendar_settings"
         const val DEEP_BLOCKED_USERS = "blocked_users"
         const val DEEP_USER_SEARCH = "user_search"
         const val DEEP_PUBLIC_PROFILE = "public_profile"

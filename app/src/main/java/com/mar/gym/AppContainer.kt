@@ -33,6 +33,7 @@ import com.mar.gym.feature.library.data.LibraryApi
 import com.mar.gym.feature.library.data.LibraryRepository
 import com.mar.gym.feature.library.data.DefaultLibraryRepository
 import com.mar.gym.feature.profile.data.DefaultProfileRepository
+import com.mar.gym.feature.profile.data.LocalCalendarPreferences
 import com.mar.gym.feature.profile.data.ProfileApi
 import com.mar.gym.feature.profile.data.ProfileRepository
 import com.mar.gym.feature.profile.data.DefaultUserDataTransferRepository
@@ -186,6 +187,7 @@ object AppContainer {
 
     private val profileApi: ProfileApi by lazy { protectedApi(ProfileApi::class.java) }
     val profileRepository: ProfileRepository by lazy { DefaultProfileRepository(profileApi) }
+    val calendarPreferences by lazy { LocalCalendarPreferences(applicationContext) }
     val userDataTransferRepository by lazy {
         DefaultUserDataTransferRepository(protectedApi(UserDataTransferApi::class.java))
     }

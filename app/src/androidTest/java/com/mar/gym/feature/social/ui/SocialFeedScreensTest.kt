@@ -334,6 +334,25 @@ class SocialFeedScreensTest {
         }
     }
 
+    @Test fun completedWorkoutExerciseOpensExistingExerciseDetail() {
+        var openedExercise: String? = null
+        val workout = detail().let { detail ->
+            detail.copy(exercises = detail.exercises.map { it.copy(exerciseTemplateId = EXERCISE_ID) })
+        }
+        composeRule.setContent {
+            GYmAppTheme {
+                SocialWorkoutDetailScreen(
+                    state = SocialWorkoutDetailUiState.Content(workout),
+                    onBack = {}, onOpenProfile = {}, onRetry = {},
+                    onOpenExercise = { openedExercise = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("social_detail_exercise_$EXERCISE_ID").performScrollTo()
+        composeRule.onNodeWithText("Bench press").performClick()
+        composeRule.runOnIdle { assertEquals(EXERCISE_ID, openedExercise) }
+    }
+
     @Test fun privateWorkoutDoesNotOfferShareAndForeignWorkoutHasNoVisibilityControl() {
         composeRule.setContent {
             GYmAppTheme {
