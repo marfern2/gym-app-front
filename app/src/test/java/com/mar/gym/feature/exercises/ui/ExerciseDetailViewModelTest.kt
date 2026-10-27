@@ -3,6 +3,10 @@ package com.mar.gym.feature.exercises.ui
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
+import com.mar.gym.feature.exercises.data.ExerciseLocalSettings
+import com.mar.gym.core.units.WeightUnit
+import com.mar.gym.feature.progress.model.HistoryRange
+import java.time.LocalDate
 import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
 import com.mar.gym.feature.system.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,6 +21,59 @@ import org.junit.Test
 class ExerciseDetailViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun selectionsAndLocalSettingsSurviveReload() = runTest {
+        val settings = object : ExerciseLocalSettings {
+            var note: String? = null
+            var unit: WeightUnit? = null
+            override fun note(userId: String, exerciseId: String) = note
+            override fun weightUnit(userId: String, exerciseId: String) = unit
+            override fun saveNote(userId: String, exerciseId: String, note: String?) { this.note = note }
+            override fun saveWeightUnit(userId: String, exerciseId: String, unit: WeightUnit?) { this.unit = unit }
+        }
+        val viewModel = ExerciseDetailViewModel(FakeExerciseTemplateRepository(), settings, "user")
+        viewModel.load(EXERCISE_ID)
+        runCurrent()
+        viewModel.selectTab(ExerciseDetailTab.History)
+        viewModel.selectRange(HistoryRange.AllTime)
+        viewModel.selectMetric(ExerciseMetric.SessionVolume)
+        val selectedDate = LocalDate.parse("2026-10-27")
+        viewModel.selectChartPoint(selectedDate)
+        viewModel.saveNote("Mi nota")
+        viewModel.setWeightUnitOverride(WeightUnit.LB)
+        viewModel.reload()
+        runCurrent()
+        assertEquals(ExerciseDetailTab.History, viewModel.options.value.tab)
+        assertEquals(HistoryRange.AllTime, viewModel.options.value.range)
+        assertEquals(ExerciseMetric.SessionVolume, viewModel.options.value.metric)
+        assertEquals(selectedDate, viewModel.options.value.selectedChartDate)
+        assertEquals("Mi nota", viewModel.options.value.note)
+        assertEquals(WeightUnit.LB, viewModel.options.value.weightUnitOverride)
+        assertEquals("Mi nota", settings.note)
+        viewModel.saveNote(null)
+        assertEquals(null, settings.note)
+    }
+
+    @Test
+    fun metricAndPeriodResetPointButTabSwitchKeepsIt() = runTest {
+        val viewModel = ExerciseDetailViewModel(FakeExerciseTemplateRepository())
+        viewModel.load(EXERCISE_ID)
+        runCurrent()
+        val date = LocalDate.parse("2026-10-27")
+        viewModel.selectChartPoint(date)
+        viewModel.selectTab(ExerciseDetailTab.History)
+        viewModel.selectTab(ExerciseDetailTab.Summary)
+        viewModel.load(EXERCISE_ID)
+        assertEquals(date, viewModel.options.value.selectedChartDate)
+        assertEquals(ExerciseDetailTab.Summary, viewModel.options.value.tab)
+
+        viewModel.selectMetric(ExerciseMetric.TotalReps)
+        assertEquals(null, viewModel.options.value.selectedChartDate)
+        viewModel.selectChartPoint(date)
+        viewModel.selectRange(HistoryRange.AllTime)
+        assertEquals(null, viewModel.options.value.selectedChartDate)
+    }
 
     @Test
     fun loadsDetailAndOrdersInstructions() = runTest {

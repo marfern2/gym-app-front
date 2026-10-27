@@ -7,8 +7,12 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.exercises.data.ExerciseLocalSettings
 import com.mar.gym.feature.exercises.model.ExerciseTemplateDocument
 import com.mar.gym.feature.exercises.model.ExerciseTemplateSource
+import com.mar.gym.core.units.WeightUnit
+import com.mar.gym.feature.progress.model.HistoryRange
+import java.time.LocalDate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,11 +43,24 @@ sealed interface ExerciseDetailUiState {
 
 enum class ExerciseDetailOperation { Archiving, Restoring }
 
+data class ExerciseDetailOptions(
+    val tab: ExerciseDetailTab = ExerciseDetailTab.Summary,
+    val range: HistoryRange = HistoryRange.ThreeMonths,
+    val metric: ExerciseMetric? = null,
+    val selectedChartDate: LocalDate? = null,
+    val note: String? = null,
+    val weightUnitOverride: WeightUnit? = null,
+)
+
 class ExerciseDetailViewModel(
     private val repository: ExerciseTemplateRepository,
+    private val settings: ExerciseLocalSettings? = null,
+    private val userId: String = "",
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<ExerciseDetailUiState>(ExerciseDetailUiState.Loading)
     val uiState: StateFlow<ExerciseDetailUiState> = _uiState.asStateFlow()
+    private val _options = MutableStateFlow(ExerciseDetailOptions())
+    val options: StateFlow<ExerciseDetailOptions> = _options.asStateFlow()
     private var loadJob: Job? = null
     private var currentId: String? = null
 
@@ -52,6 +69,12 @@ class ExerciseDetailViewModel(
             _uiState.value !is ExerciseDetailUiState.Error
         ) {
             return
+        }
+        if (currentId != exerciseTemplateId) {
+            _options.value = ExerciseDetailOptions(
+                note = settings?.note(userId, exerciseTemplateId),
+                weightUnitOverride = settings?.weightUnit(userId, exerciseTemplateId),
+            )
         }
         currentId = exerciseTemplateId
         loadJob?.cancel()
@@ -89,6 +112,31 @@ class ExerciseDetailViewModel(
     }
 
     fun reload() = currentId?.let { load(it, force = true) }
+
+    fun selectTab(tab: ExerciseDetailTab) { _options.value = _options.value.copy(tab = tab) }
+    fun selectRange(range: HistoryRange) {
+        _options.value = _options.value.copy(range = range, selectedChartDate = null)
+    }
+    fun selectMetric(metric: ExerciseMetric) {
+        _options.value = _options.value.copy(metric = metric, selectedChartDate = null)
+    }
+    fun selectChartPoint(date: LocalDate) {
+        if (_options.value.selectedChartDate != date) {
+            _options.value = _options.value.copy(selectedChartDate = date)
+        }
+    }
+
+    fun saveNote(value: String?) {
+        val id = currentId ?: return
+        settings?.saveNote(userId, id, value)
+        _options.value = _options.value.copy(note = value?.trim()?.takeIf(String::isNotEmpty))
+    }
+
+    fun setWeightUnitOverride(unit: WeightUnit?) {
+        val id = currentId ?: return
+        settings?.saveWeightUnit(userId, id, unit)
+        _options.value = _options.value.copy(weightUnitOverride = unit)
+    }
 
     fun archive() = mutate(ExerciseDetailOperation.Archiving)
 
@@ -181,10 +229,12 @@ class ExerciseDetailViewModel(
 
 class ExerciseDetailViewModelFactory(
     private val repository: ExerciseTemplateRepository,
+    private val settings: ExerciseLocalSettings? = null,
+    private val userId: String = "",
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
         require(modelClass.isAssignableFrom(ExerciseDetailViewModel::class.java))
         @Suppress("UNCHECKED_CAST")
-        return ExerciseDetailViewModel(repository) as T
+        return ExerciseDetailViewModel(repository, settings, userId) as T
     }
 }
