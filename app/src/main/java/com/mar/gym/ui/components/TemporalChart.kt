@@ -1,6 +1,8 @@
 package com.mar.gym.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,14 +29,30 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
-data class TemporalChartPoint(val date: LocalDate, val value: Double)
+data class TemporalChartPoint(val date: LocalDate, val value: Double, val workoutId: String? = null)
+
+internal fun linePointX(points: List<TemporalChartPoint>, index: Int, width: Float, side: Float): Float {
+    require(index in points.indices)
+    if (points.size == 1) return width / 2f
+    val firstDay = points.first().date.toEpochDay()
+    val span = (points.last().date.toEpochDay() - firstDay).coerceAtLeast(1)
+    return side + (points[index].date.toEpochDay() - firstDay).toFloat() / span *
+        (width - 2 * side).coerceAtLeast(0f)
+}
+
+internal fun nearestLinePointIndex(points: List<TemporalChartPoint>, touchX: Float,
+    width: Float, side: Float): Int? = points.indices.minByOrNull { index ->
+    abs(linePointX(points, index, width, side) - touchX)
+}
 
 enum class TemporalChartStyle { Bars, Line }
 
@@ -45,6 +64,8 @@ fun TemporalChart(
     modifier: Modifier = Modifier,
     integerTicks: Boolean = false,
     chartHeight: Dp = 204.dp,
+    selectedPointIndex: Int? = null,
+    onPointSelected: ((Int) -> Unit)? = null,
 ) {
     require(points.isNotEmpty())
     val fontScale = LocalDensity.current.fontScale
@@ -71,6 +92,7 @@ fun TemporalChart(
         if (sorted.first().date.year == sorted.last().date.year) "MMM" else "MMM yy"
     } else "d MMM"
     val dateFormat = remember(locale, datePattern) { DateTimeFormatter.ofPattern(datePattern, locale) }
+    val currentOnPointSelected = rememberUpdatedState(onPointSelected)
 
     Column(modifier.testTag("temporal_chart")) {
         Row(Modifier.fillMaxWidth()) {
@@ -89,7 +111,36 @@ fun TemporalChart(
                     )
                 }
             }
-            Canvas(Modifier.weight(1f).height(effectiveHeight)) {
+            val interaction = if (style == TemporalChartStyle.Line && onPointSelected != null) {
+                Modifier.pointerInput(sorted) {
+                    fun select(x: Float) {
+                        nearestLinePointIndex(sorted, x, size.width.toFloat(), 5.dp.toPx())
+                            ?.let { currentOnPointSelected.value?.invoke(it) }
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var horizontal = false
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!horizontal && !change.isConsumed) select(change.position.x)
+                                break
+                            }
+                            val delta = change.position - down.position
+                            if (!horizontal && abs(delta.y) > viewConfiguration.touchSlop &&
+                                abs(delta.y) > abs(delta.x)) break
+                            if (!horizontal && abs(delta.x) > viewConfiguration.touchSlop &&
+                                abs(delta.x) > abs(delta.y)) horizontal = true
+                            if (horizontal) {
+                                select(change.position.x)
+                                change.consume()
+                            }
+                        }
+                    }
+                }
+            } else Modifier
+            Canvas(Modifier.weight(1f).height(effectiveHeight)
+                .testTag("temporal_chart_plot").then(interaction)) {
                 val top = chartTop.toPx()
                 val baseline = size.height - chartBottom.toPx()
                 val plotHeight = baseline - top
@@ -125,18 +176,28 @@ fun TemporalChart(
                     }
                     TemporalChartStyle.Line -> {
                         val side = 5.dp.toPx()
-                        val firstDay = sorted.first().date.toEpochDay()
-                        val span = (sorted.last().date.toEpochDay() - firstDay).coerceAtLeast(1)
-                        fun x(point: TemporalChartPoint): Float = if (sorted.size == 1) size.width / 2f else
-                            side + (point.date.toEpochDay() - firstDay).toFloat() / span * (size.width - 2 * side)
+                        fun x(index: Int): Float = linePointX(sorted, index, size.width, side)
                         val path = Path()
                         sorted.forEachIndexed { index, point ->
-                            if (index == 0) path.moveTo(x(point), y(point.value)) else path.lineTo(x(point), y(point.value))
+                            if (index == 0) path.moveTo(x(index), y(point.value))
+                            else path.lineTo(x(index), y(point.value))
                         }
                         drawPath(path, primary, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
-                        sorted.forEach { point ->
-                            drawCircle(primary, 4.dp.toPx(), Offset(x(point), y(point.value)))
-                            drawCircle(Color.White, 1.5.dp.toPx(), Offset(x(point), y(point.value)))
+                        selectedPointIndex?.takeIf { it in sorted.indices }?.let { index ->
+                            val selectedX = x(index)
+                            drawLine(primary.copy(alpha = 0.6f), Offset(selectedX, top),
+                                Offset(selectedX, baseline), strokeWidth = 1.dp.toPx())
+                        }
+                        sorted.forEachIndexed { index, point ->
+                            val center = Offset(x(index), y(point.value))
+                            if (index == selectedPointIndex) {
+                                drawCircle(primary.copy(alpha = 0.23f), 10.dp.toPx(), center)
+                                drawCircle(primary, 5.5.dp.toPx(), center)
+                                drawCircle(Color.White, 2.dp.toPx(), center)
+                            } else {
+                                drawCircle(primary, 4.dp.toPx(), center)
+                                drawCircle(Color.White, 1.5.dp.toPx(), center)
+                            }
                         }
                     }
                 }

@@ -280,6 +280,7 @@ class MainActivity : ComponentActivity() {
         var progressPhotoId by rememberSaveable { mutableStateOf<String?>(null) }
         var calendarDay by rememberSaveable { mutableStateOf<String?>(null) }
         val calendarListState = rememberLazyListState()
+        val exerciseHistoryListState = rememberLazyListState()
         val calendarYearsListState = rememberLazyListState()
         val calendarYearScrollState = rememberScrollState()
 
@@ -679,9 +680,12 @@ class MainActivity : ComponentActivity() {
                 DEEP_DETAIL -> detailId?.let { id ->
                     ExerciseDetailRoute(
                         exerciseTemplateId = id,
-                        viewModel = remember { exerciseDetailViewModel() },
+                        viewModel = remember(user.id) { exerciseDetailViewModel(user.id) },
+                        progressViewModel = remember(id) { exerciseProgressViewModel(id) },
                         imageLoader = AppContainer.exerciseMediaImageLoader,
                         onOpenAttribution = ::openHttpsUrl,
+                        preferences = unitPreferences,
+                        historyListState = exerciseHistoryListState,
                         onBack = {
                             if (detailOrigin == DEEP_CATALOG) exerciseCatalogViewModel().refresh()
                             deep = detailOrigin
@@ -690,10 +694,12 @@ class MainActivity : ComponentActivity() {
                             exerciseEditorId = id
                             deep = DEEP_CUSTOM_EDITOR
                         },
-                        onOpenProgress = { id ->
-                            detailId = id
-                            deep = DEEP_EXERCISE_PROGRESS
+                        onOpenWorkout = { workoutId ->
+                            socialWorkoutId = workoutId
+                            socialWorkoutOrigin = DEEP_DETAIL
+                            deep = DEEP_SOCIAL_WORKOUT
                         },
+                        onShare = { name -> openShareSheet(name, "Compartir ejercicio") },
                     )
                 } ?: ExerciseCatalogRoute(
                     viewModel = remember { exerciseCatalogViewModel() },
@@ -728,7 +734,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onSaved = { id ->
                             exerciseCatalogViewModel().refresh()
-                            exerciseDetailViewModel().load(id, force = true)
+                            exerciseDetailViewModel(user.id).load(id, force = true)
                             detailId = id
                             exerciseEditorId = id
                             deep = DEEP_DETAIL
@@ -1255,9 +1261,11 @@ class MainActivity : ComponentActivity() {
         ),
     )["catalog-exercise-picker", ExerciseCatalogViewModel::class.java]
 
-    private fun exerciseDetailViewModel(): ExerciseDetailViewModel = ViewModelProvider(
+    private fun exerciseDetailViewModel(userId: String): ExerciseDetailViewModel = ViewModelProvider(
         userSessionViewModels,
-        ExerciseDetailViewModelFactory(AppContainer.exerciseTemplateRepository),
+        ExerciseDetailViewModelFactory(
+            AppContainer.exerciseTemplateRepository, AppContainer.exerciseLocalSettings, userId,
+        ),
     )[ExerciseDetailViewModel::class.java]
 
     private fun customExerciseEditorViewModel(

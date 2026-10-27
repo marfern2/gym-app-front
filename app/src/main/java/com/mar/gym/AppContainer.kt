@@ -26,6 +26,7 @@ import com.mar.gym.feature.auth.data.SessionStore
 import com.mar.gym.feature.exercises.data.DefaultExerciseTemplateRepository
 import com.mar.gym.feature.exercises.data.ExerciseTemplateApi
 import com.mar.gym.feature.exercises.data.ExerciseTemplateRepository
+import com.mar.gym.feature.exercises.data.SharedPreferenceExerciseLocalSettings
 import com.mar.gym.feature.measurements.data.DefaultMeasurementRepository
 import com.mar.gym.feature.measurements.data.MeasurementApi
 import com.mar.gym.feature.measurements.data.MeasurementRepository
@@ -137,6 +138,7 @@ object AppContainer {
     val exerciseTemplateRepository: ExerciseTemplateRepository by lazy {
         DefaultExerciseTemplateRepository(exerciseTemplateApi)
     }
+    val exerciseLocalSettings by lazy { SharedPreferenceExerciseLocalSettings(applicationContext) }
 
     private val routineApi: RoutineApi by lazy {
         protectedApi(RoutineApi::class.java)

@@ -1,5 +1,24 @@
 package com.mar.gym.feature.exercises.ui
 
+import android.graphics.drawable.Animatable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.draw.clip
+import coil3.asDrawable
+import com.mar.gym.feature.exercises.model.ExerciseMediaType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,12 +59,39 @@ fun CoilExerciseMedia(
         contentDescription = contentDescription,
         imageLoader = imageLoader,
         contentScale = ContentScale.Fit,
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        modifier = modifier.background(MaterialTheme.colorScheme.surface),
         loading = { ExerciseMediaLoadingPlaceholder() },
         error = {
             ExerciseMediaErrorPlaceholder(onRetry = { painter.restart() })
         },
-        success = { SubcomposeAsyncImageContent() },
+        success = success@{ state ->
+            val resources = LocalContext.current.resources
+            val animation = if (media.type == ExerciseMediaType.AnimatedGif) {
+                state.result.image.asDrawable(resources) as? Animatable
+            } else null
+            var playing by remember(media.url.value) { mutableStateOf(true) }
+            LaunchedEffect(animation, playing) {
+                if (playing) animation?.start() else animation?.stop()
+            }
+            Box(Modifier.fillMaxSize()) {
+                this@success.SubcomposeAsyncImageContent(modifier = Modifier.fillMaxSize())
+                if (animation != null) {
+                    IconButton(
+                        onClick = { playing = !playing },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                            .size(48.dp).clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.86f))
+                            .testTag("exercise-demo-playback"),
+                    ) {
+                        Icon(
+                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playing) "Pausar demostración" else "Reanudar demostración",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        },
     )
 }
 
@@ -59,10 +105,11 @@ fun ExerciseMediaLoadingPlaceholder(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
+        CircularProgressIndicator(Modifier.size(23.dp), strokeWidth = 2.dp)
         Text(
             text = stringResource(R.string.exercise_media_loading),
-            modifier = Modifier.padding(top = 12.dp),
+            modifier = Modifier.padding(top = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
@@ -83,6 +130,7 @@ fun ExerciseMediaErrorPlaceholder(
         Text(
             text = stringResource(R.string.exercise_media_error),
             color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
         )
         TextButton(onClick = onRetry) {
             Text(stringResource(R.string.retry))

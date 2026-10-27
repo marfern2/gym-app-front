@@ -2,16 +2,24 @@ package com.mar.gym.feature.exercises.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertContentDescriptionContains
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import com.mar.gym.feature.exercises.model.Equipment
@@ -32,6 +40,14 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
 import com.mar.gym.feature.exercises.model.HttpsUrl
+import com.mar.gym.feature.progress.model.ExercisePerformanceSession
+import com.mar.gym.feature.progress.model.ActualPerformanceSet
+import com.mar.gym.feature.progress.model.HistoryRange
+import com.mar.gym.feature.progress.ui.ExerciseProgressUiState
+import com.mar.gym.core.units.WeightUnit
+import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import com.mar.gym.ui.theme.GYmAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -157,9 +173,145 @@ class ExerciseScreensTest {
     fun detailShowsFieldsAndOrderedInstructions() {
         setDetail(detail())
 
-        composeRule.onNodeWithText("Press de banca").assertIsDisplayed()
+        composeRule.onNodeWithTag("exercise-title").assertIsDisplayed()
+        composeRule.onNodeWithText("Indicaciones").performClick()
         composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("2. Empuja").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun detailHeaderTabsAndShare() {
+        var shared: String? = null
+        setDetail(detail(), onShare = { shared = it })
+        composeRule.onNodeWithTag("exercise-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exercise-share").performClick()
+        assertEquals("Press de banca", shared)
+        composeRule.onNodeWithText("Historial").performClick()
+        composeRule.onNodeWithTag("exercise-history").assertIsDisplayed()
+        composeRule.onNodeWithText("Indicaciones").performClick()
+        composeRule.onNodeWithTag("exercise-instructions").assertIsDisplayed()
+        composeRule.onNodeWithText("Resumen").performClick()
+        composeRule.onNodeWithTag("exercise-summary").assertIsDisplayed()
+    }
+
+    @Test
+    fun detailBackAndProgressSelectors() {
+        var backs = 0
+        setDetail(detail(), onBack = { backs += 1 })
+        composeRule.onNodeWithTag("exercise-metric-TotalReps").performClick()
+        composeRule.onNodeWithTag("exercise-range").performClick()
+        composeRule.onNodeWithText("Todo").performClick()
+        composeRule.onNodeWithContentDescription("Volver").performClick()
+        assertEquals(1, backs)
+    }
+
+    @Test
+    fun customWithoutMediaOrInstructionsKeepsNoteAction() {
+        setDetail(detail(source = ExerciseTemplateSource.Custom).copy(
+            description = null, instructions = emptyList(),
+        ))
+        composeRule.onNodeWithText("Indicaciones").performClick()
+        composeRule.onNodeWithText("Demostración no disponible").assertIsDisplayed()
+        composeRule.onNodeWithTag("exercise-note-action").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun emptyProgressKeepsInstructionsAndNotes() {
+        setDetail(detail())
+        composeRule.onNodeWithTag("exercise-progress-empty").assertIsDisplayed()
+        composeRule.onNodeWithText("Historial").performClick()
+        composeRule.onNodeWithTag("exercise-history-empty").assertIsDisplayed()
+        composeRule.onNodeWithText("Indicaciones").performClick()
+        composeRule.onNodeWithTag("exercise-note-action").performScrollTo().performClick()
+        composeRule.onNodeWithTag("exercise-note-input").performTextInput("Mi nota")
+        composeRule.onNodeWithText("Guardar").performClick()
+        composeRule.onNodeWithText("Mi nota").assertIsDisplayed()
+    }
+
+    @Test
+    fun unitsSheetChangesOverride() {
+        setDetail(detail())
+        composeRule.onNodeWithTag("exercise-menu").performClick()
+        composeRule.onNodeWithTag("exercise-unit-action").performClick()
+        composeRule.onNodeWithTag("exercise-unit-LB").performClick()
+        composeRule.onNodeWithTag("exercise-menu").performClick()
+        composeRule.onNodeWithTag("exercise-unit-action").performClick()
+        composeRule.onNodeWithTag("exercise-unit-LB").assertIsSelected()
+        composeRule.onNodeWithTag("exercise-unit-default").performClick()
+    }
+
+    @Test
+    fun historyEntryOpensExistingWorkout() {
+        var opened: String? = null
+        val session = ExercisePerformanceSession(
+            "workout-1", Instant.parse("2026-10-27T12:00:00Z"), "Press de banca",
+            ExerciseType.WeightReps,
+            listOf(ActualPerformanceSet(1, 8, 45.toBigDecimal(), null, null, null)),
+        )
+        setDetail(detail(), progress = ExerciseProgressUiState(
+            loading = false, recordsLoading = false, sessions = listOf(session), hasMore = false,
+        ), onOpenWorkout = { opened = it })
+        composeRule.onNodeWithText("Historial").performClick()
+        composeRule.onNodeWithTag("exercise-history-workout-1").performClick()
+        assertEquals("workout-1", opened)
+    }
+
+    @Test
+    fun chartTapAndHorizontalDragSelectRealSessionsAndOpenTheirWorkout() {
+        var opened: String? = null
+        val sessions = listOf(
+            chartSession("first", "2026-08-01T12:00:00Z", 70),
+            chartSession("middle", "2026-09-15T12:00:00Z", 85),
+            chartSession("latest", "2026-10-27T12:00:00Z", 95),
+        )
+        setDetail(detail(), progress = ExerciseProgressUiState(
+            loading = false, recordsLoading = false, sessions = sessions, hasMore = false,
+        ), initialOptions = ExerciseDetailOptions(range = HistoryRange.AllTime),
+            onOpenWorkout = { opened = it })
+
+        val selected = composeRule.onNodeWithTag("exercise-progress-selected")
+        selected.assertContentDescriptionContains("95 kg")
+        selected.assertContentDescriptionContains(LocalDate.parse("2026-10-27")
+            .format(DateTimeFormatter.ofPattern("d MMM yyyy")))
+        val plot = composeRule.onNodeWithTag("temporal_chart_plot")
+        plot.performScrollTo().performTouchInput { click(percentOffset(0.02f, 0.5f)) }
+        selected.assertContentDescriptionContains("70 kg")
+        selected.assertContentDescriptionContains(LocalDate.parse("2026-08-01")
+            .format(DateTimeFormatter.ofPattern("d MMM yyyy")))
+        selected.performScrollTo().performClick()
+        assertEquals("first", opened)
+
+        plot.performScrollTo().performTouchInput {
+            swipe(percentOffset(0.05f, 0.5f), percentOffset(0.95f, 0.5f), durationMillis = 500)
+        }
+        selected.assertContentDescriptionContains("95 kg")
+        selected.performScrollTo().performClick()
+        assertEquals("latest", opened)
+
+        plot.performScrollTo().performTouchInput {
+            swipe(percentOffset(0.95f, 0.5f), percentOffset(0.5f, 0.5f), durationMillis = 100)
+        }
+        selected.assertContentDescriptionContains("85 kg")
+        selected.assertContentDescriptionContains(LocalDate.parse("2026-09-15")
+            .format(DateTimeFormatter.ofPattern("d MMM yyyy")))
+        selected.performScrollTo().performClick()
+        assertEquals("middle", opened)
+    }
+
+    @Test
+    fun ambiguousDailyPointCanBeExploredButCannotOpenAnArbitraryWorkout() {
+        val sessions = listOf(
+            chartSession("morning", "2026-10-27T08:00:00Z", 45),
+            chartSession("evening", "2026-10-27T18:00:00Z", 45),
+        )
+        setDetail(detail(), progress = ExerciseProgressUiState(
+            loading = false, recordsLoading = false, sessions = sessions, hasMore = false,
+        ), initialOptions = ExerciseDetailOptions(range = HistoryRange.AllTime))
+        composeRule.onNodeWithTag("exercise-progress-selected")
+            .assertContentDescriptionContains("45 kg").assertHasNoClickAction()
+        composeRule.onNodeWithTag("temporal_chart_plot").performScrollTo()
+            .performTouchInput { click(percentOffset(0.5f, 0.5f)) }
+        composeRule.onNodeWithTag("exercise-progress-selected").assertHasNoClickAction()
     }
 
     @Test
@@ -168,12 +320,14 @@ class ExerciseScreensTest {
 
         composeRule.onNodeWithText("Demostración").assertIsDisplayed()
         composeRule.onNodeWithText("Demostración no disponible").assertIsDisplayed()
+        composeRule.onNodeWithText("Indicaciones").performClick()
         composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun globalDetailHasNoModificationActions() {
         setDetail(detail(source = ExerciseTemplateSource.Global))
+        composeRule.onNodeWithTag("exercise-menu").performClick()
         composeRule.onNodeWithTag("exercise-edit").assertDoesNotExist()
         composeRule.onNodeWithTag("exercise-archive").assertDoesNotExist()
     }
@@ -181,6 +335,7 @@ class ExerciseScreensTest {
     @Test
     fun activeCustomDetailHasEditAndArchiveActions() {
         setDetail(detail(source = ExerciseTemplateSource.Custom))
+        composeRule.onNodeWithTag("exercise-menu").performClick()
         composeRule.onNodeWithTag("exercise-edit").assertIsDisplayed()
         composeRule.onNodeWithTag("exercise-archive").assertIsDisplayed()
     }
@@ -188,6 +343,7 @@ class ExerciseScreensTest {
     @Test
     fun archivedCustomShowsRestoreOnly() {
         setDetail(detail(source = ExerciseTemplateSource.Custom, archived = true))
+        composeRule.onNodeWithTag("exercise-menu").performClick()
 
         composeRule.onNodeWithTag("exercise-edit").assertDoesNotExist()
         composeRule.onNodeWithTag("exercise-archive").assertDoesNotExist()
@@ -254,6 +410,7 @@ class ExerciseScreensTest {
         )
 
         composeRule.onNodeWithText("No se pudo cargar la demostración.").assertIsDisplayed()
+        composeRule.onNodeWithText("Indicaciones").performClick()
         composeRule.onNodeWithText("1. Colócate").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("2. Empuja").performScrollTo().assertIsDisplayed()
     }
@@ -270,6 +427,7 @@ class ExerciseScreensTest {
             },
         )
 
+        composeRule.onNodeWithText("Indicaciones").performClick()
         composeRule.onNodeWithText("Contenido visual: proveedor de prueba")
             .performScrollTo()
             .assertIsDisplayed()
@@ -314,8 +472,14 @@ class ExerciseScreensTest {
         detail: ExerciseTemplateDetail,
         mediaRenderer: ExerciseMediaRenderer = { _, _, modifier -> Box(modifier) },
         onOpenAttribution: (HttpsUrl) -> Boolean = { false },
+        onShare: (String) -> Unit = {},
+        progress: ExerciseProgressUiState = ExerciseProgressUiState(loading = false, recordsLoading = false),
+        onOpenWorkout: (String) -> Unit = {},
+        onBack: () -> Unit = {},
+        initialOptions: ExerciseDetailOptions = ExerciseDetailOptions(),
     ) {
         composeRule.setContent {
+            var options by remember { mutableStateOf(initialOptions) }
             GYmAppTheme {
                 ExerciseDetailScreen(
                     state = ExerciseDetailUiState.Content(
@@ -324,14 +488,29 @@ class ExerciseScreensTest {
                             requireNotNull(ExerciseTemplateEtag.fromVersion(detail.version)),
                         )
                     ),
-                    onBack = {},
+                    onBack = onBack,
                     onRetry = {},
+                    options = options,
+                    progress = progress,
+                    onSelectTab = { options = options.copy(tab = it) },
+                    onSelectRange = { options = options.copy(range = it, selectedChartDate = null) },
+                    onSelectMetric = { options = options.copy(metric = it, selectedChartDate = null) },
+                    onSelectChartPoint = { options = options.copy(selectedChartDate = it) },
+                    onUnitOverride = { options = options.copy(weightUnitOverride = it) },
+                    onSaveNote = { options = options.copy(note = it) },
+                    onShare = onShare,
+                    onOpenWorkout = onOpenWorkout,
                     mediaRenderer = mediaRenderer,
                     onOpenAttribution = onOpenAttribution,
                 )
             }
         }
     }
+
+    private fun chartSession(id: String, time: String, weight: Int) = ExercisePerformanceSession(
+        id, Instant.parse(time), "Press de banca", ExerciseType.WeightReps,
+        listOf(ActualPerformanceSet(1, 8, weight.toBigDecimal(), null, null, null)),
+    )
 
     private fun summary(): ExerciseTemplateSummary = ExerciseTemplateSummary(
         id = ID,
