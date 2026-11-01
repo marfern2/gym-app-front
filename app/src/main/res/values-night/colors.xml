@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#FF8C9AFF</color>
-    <color name="notification_progress_track">#FF464B5E</color>
-    <color name="notification_thumbnail_background">#FF232735</color>
+    <color name="brand_primary">#FFC9A7E8</color>
+    <color name="notification_progress_track">#FF514A54</color>
+    <color name="notification_thumbnail_background">#FF27232C</color>
 </resources>

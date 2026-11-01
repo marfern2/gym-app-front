@@ -2,7 +2,7 @@ package com.mar.gym.feature.profile.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +25,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -40,6 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
+import com.mar.gym.ui.components.AppTextButton
+import com.mar.gym.ui.components.AppCardStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.theme.GYmAppTheme
 import java.time.Instant
 import java.time.DayOfWeek
@@ -50,8 +52,6 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
 private val locale = Locale.forLanguageTag("es-ES")
-private val activeDark = Color(0xFFAB80EF)
-private val activeLight = Color(0xFF7043B0)
 
 internal enum class HeatmapTone { Active, Inactive, Outside }
 
@@ -114,7 +114,7 @@ fun CalendarYearView(
         }
         if (historyError) Column {
             Text("No se pudo cargar toda la actividad.", color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onRetry) { Text("Reintentar") }
+            AppTextButton(onClick = onRetry) { Text("Reintentar") }
         }
         if (historyComplete && firstActivityDate == null) {
             Text("Todavía no hay entrenamientos completados.",
@@ -171,7 +171,7 @@ fun CalendarYearsView(
         if (historyError) item("error") {
             Column(Modifier.padding(12.dp)) {
                 Text("No se pudo cargar todo el historial.", color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onRetry) { Text("Reintentar") }
+                AppTextButton(onClick = onRetry) { Text("Reintentar") }
             }
         }
         if (years.isEmpty() && !loading && !historyError) item("empty") {
@@ -203,7 +203,6 @@ private fun ContinuousYearHeatmap(
     today: LocalDate,
     firstDayOfWeek: DayOfWeek,
 ) {
-    val dark = isSystemInDarkTheme()
     val weeks = remember(year, firstDayOfWeek) { yearHeatmapWeeks(year, firstDayOfWeek) }
     Column(Modifier.fillMaxWidth().testTag("calendar_year_horizontal_heatmap_$year"),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -221,7 +220,7 @@ private fun ContinuousYearHeatmap(
                         val tone = if (date.year != year) HeatmapTone.Outside else
                             heatmapTone(date, activeDates, today, firstActivityDate)
                         val color = when (tone) {
-                            HeatmapTone.Active -> if (dark) activeDark else activeLight
+                            HeatmapTone.Active -> MaterialTheme.colorScheme.primary
                             HeatmapTone.Inactive -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
                             HeatmapTone.Outside -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
                         }
@@ -245,11 +244,22 @@ private fun MiniMonthHeatmap(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val dark = isSystemInDarkTheme()
     val shape = RoundedCornerShape(8.dp)
     val count = activeDates.count { YearMonth.from(it) == month }
-    val base = modifier.clip(shape)
-    val interactive = if (onClick == null) base else base.clickable(onClick = onClick)
+    val interaction = remember { MutableInteractionSource() }
+    val base = modifier
+        .appPressedState(
+            interactionSource = interaction,
+            shape = shape,
+            enabled = onClick != null,
+            maxOverlayAlpha = AppCardStateLayerAlpha,
+        )
+        .clip(shape)
+    val interactive = if (onClick == null) base else base.clickable(
+        interactionSource = interaction,
+        indication = null,
+        onClick = onClick,
+    )
         .semantics {
             contentDescription = "${month.month.getDisplayName(TextStyle.FULL, locale)} ${month.year}, $count días de entrenamiento"
         }
@@ -262,8 +272,8 @@ private fun MiniMonthHeatmap(
                 week.forEach { date ->
                     val tone = date?.let { heatmapTone(it, activeDates, today, firstActivityDate) }
                     val color = when (tone) {
-                        HeatmapTone.Active -> if (dark) activeDark else activeLight
-                        HeatmapTone.Inactive -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (dark) 0.9f else 0.8f)
+                        HeatmapTone.Active -> MaterialTheme.colorScheme.primary
+                        HeatmapTone.Inactive -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
                         HeatmapTone.Outside -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
                         null -> Color.Transparent
                     }

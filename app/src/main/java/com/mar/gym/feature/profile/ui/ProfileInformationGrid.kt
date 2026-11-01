@@ -1,6 +1,7 @@
 package com.mar.gym.feature.profile.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,11 +19,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.mar.gym.ui.components.AppCardStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 
 @Composable
 fun ProfileInformationGrid(
@@ -55,9 +59,19 @@ private fun InformationCard(
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = MaterialTheme.shapes.medium
     Card(
-        modifier = modifier.clickable(onClick = onClick).testTag("information_$title"),
+        modifier = modifier
+            .appPressedState(
+                interactionSource = interaction,
+                shape = shape,
+                maxOverlayAlpha = AppCardStateLayerAlpha,
+            )
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .testTag("information_$title"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = shape,
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 22.dp),

@@ -12,7 +12,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +33,7 @@ import com.mar.gym.feature.profile.model.ProfilePrivacy
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.feature.workouts.ui.CompletedWorkoutCard
 import com.mar.gym.ui.components.SectionHeader
+import com.mar.gym.ui.components.AppTextButton
 
 @Composable
 fun ProfileRoute(
@@ -201,8 +201,8 @@ fun ProfileScreen(
         onDismissRequest = { confirmDeleteAvatar = false },
         title = { Text("Eliminar avatar") },
         text = { Text("¿Eliminar tu imagen de perfil?") },
-        confirmButton = { TextButton(onClick = { confirmDeleteAvatar = false; onDeleteAvatar() }) { Text("Eliminar") } },
-        dismissButton = { TextButton(onClick = { confirmDeleteAvatar = false }) { Text("Cancelar") } },
+        confirmButton = { AppTextButton(onClick = { confirmDeleteAvatar = false; onDeleteAvatar() }) { Text("Eliminar") } },
+        dismissButton = { AppTextButton(onClick = { confirmDeleteAvatar = false }) { Text("Cancelar") } },
     )
 }
 
@@ -249,6 +249,6 @@ internal fun ErrorCard(message: String, retry: () -> Unit, tag: String = "sectio
     Card(Modifier.fillMaxWidth().testTag(tag)) {
         Column(Modifier.padding(16.dp)) {
             Text(message, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = retry) { Text("Reintentar") }
+            AppTextButton(onClick = retry) { Text("Reintentar") }
         }
     }

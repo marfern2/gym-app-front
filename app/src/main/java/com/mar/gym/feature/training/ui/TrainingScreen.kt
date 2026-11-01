@@ -43,30 +43,25 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.ripple
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,10 +100,17 @@ import com.mar.gym.feature.library.model.LibraryRoutine
 import com.mar.gym.feature.library.model.RoutineFolder
 import com.mar.gym.feature.library.ui.LibraryUiState
 import com.mar.gym.feature.routines.model.RoutineEtag
-import com.mar.gym.feature.workouts.ui.ActiveWorkoutCard
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState
+import com.mar.gym.ui.components.AppButton
+import com.mar.gym.ui.components.AppCardStateLayerAlpha
+import com.mar.gym.ui.components.AppDestructiveStateLayerAlpha
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppRowStateLayerAlpha
+import com.mar.gym.ui.components.AppTextButton
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.theme.GYmAppTheme
-import java.time.Clock
+import com.mar.gym.ui.theme.primaryActionContainerColor
+import com.mar.gym.ui.theme.primaryActionContentColor
 import java.time.Instant
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
@@ -124,19 +126,12 @@ private data class DragItem(
     val scrollIndex: Int,
     val scrollOffset: Int,
 )
-private val TrainingText = Color(0xFFF4F1F7)
-private val TrainingMuted = Color(0xFFB8B2C0)
-private val RoutineSurface = Color(0xFF1C1B21)
-private val RoutinePurple = Color(0xFF492473)
-
 @Composable
 fun TrainingScreen(
     activeWorkout: ActiveWorkoutUiState,
     library: LibraryUiState,
     message: String?,
     busy: Boolean,
-    clock: Clock,
-    onContinueWorkout: () -> Unit,
     onStartEmpty: () -> Unit,
     onRetryWorkout: () -> Unit,
     onOpenRoutine: (String) -> Unit,
@@ -319,7 +314,12 @@ fun TrainingScreen(
         state = listState,
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .onGloballyPositioned { listBounds = it.rootRect() },
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(
+            start = 18.dp,
+            top = 12.dp,
+            end = 18.dp,
+            bottom = 12.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
@@ -327,7 +327,7 @@ fun TrainingScreen(
                 Text("Entrenamiento", style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.semantics { heading() })
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { onRetryWorkout(); onRetryLibrary() },
+                AppIconButton(onClick = { onRetryWorkout(); onRetryLibrary() },
                     modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Actualizar entrenamiento y rutinas",
                         modifier = Modifier.size(21.dp))
@@ -336,15 +336,15 @@ fun TrainingScreen(
         }
         item {
             when (activeWorkout) {
-                is ActiveWorkoutUiState.Active -> ActiveWorkoutCard(activeWorkout, clock, onContinueWorkout)
-                is ActiveWorkoutUiState.NoActiveWorkout -> Button(
+                is ActiveWorkoutUiState.Active -> Unit
+                is ActiveWorkoutUiState.NoActiveWorkout -> AppButton(
                     onClick = onStartEmpty,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("training-start-empty")
                         .semantics { contentDescription = "+ Empezar Entrenamiento Vacío" },
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = RoutineSurface,
-                        contentColor = TrainingText,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
@@ -361,7 +361,7 @@ fun TrainingScreen(
                 }
                 is ActiveWorkoutUiState.Error -> Column {
                     Text("No se pudo cargar el entrenamiento.", color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = onRetryWorkout) { Text("Reintentar") }
+                    AppTextButton(onClick = onRetryWorkout) { Text("Reintentar") }
                 }
                 else -> Unit
             }
@@ -370,7 +370,7 @@ fun TrainingScreen(
             Row(Modifier.padding(top = 18.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Rutinas", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
-                IconButton(onClick = { onClearMessage(); folderName = ""; createFolder = true }, enabled = !busy,
+                AppIconButton(onClick = { onClearMessage(); folderName = ""; createFolder = true }, enabled = !busy,
                     modifier = Modifier.size(48.dp).testTag("training-create-folder")) {
                     Icon(Icons.Filled.CreateNewFolder, contentDescription = "Crear carpeta",
                         modifier = Modifier.size(22.dp))
@@ -379,12 +379,14 @@ fun TrainingScreen(
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onCreateRoutine(null) },
+                AppButton(onClick = { onCreateRoutine(null) },
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("training-new-routine"),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RoutineSurface,
-                        contentColor = TrainingText)) {
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    )) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "Icono de rutina", modifier = Modifier.size(19.dp)
                             .testTag("training-new-routine-icon"))
@@ -398,8 +400,11 @@ fun TrainingScreen(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        disabledContentColor = TrainingMuted.copy(alpha = 0.6f)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, RoutineSurface)) {
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                    )) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(19.dp))
                         Text("Explorar", Modifier.padding(start = 7.dp), style = MaterialTheme.typography.labelLarge)
@@ -412,7 +417,7 @@ fun TrainingScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onClearMessage) { Text("Cerrar") }
+                AppTextButton(onClick = onClearMessage) { Text("Cerrar") }
             }
         }
         when (library) {
@@ -424,7 +429,7 @@ fun TrainingScreen(
             }
             is LibraryUiState.Error -> item {
                 Text(library.message, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onRetryLibrary) { Text("Reintentar") }
+                AppTextButton(onClick = onRetryLibrary) { Text("Reintentar") }
             }
             is LibraryUiState.Content -> {
                 val folders = data!!.folders.sortedBy { it.position }
@@ -491,7 +496,7 @@ fun TrainingScreen(
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(if (active.isEmpty()) "Aún no tienes rutinas" else "No hay rutinas en Mis rutinas",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (active.isEmpty()) TextButton(onClick = { onCreateRoutine(null) }) { Text("Crear primera rutina") }
+                            if (active.isEmpty()) AppTextButton(onClick = { onCreateRoutine(null) }) { Text("Crear primera rutina") }
                         }
                     }
                     val shownRoot = if (dragging?.folder == false && dragging?.containerId == null &&
@@ -550,27 +555,27 @@ fun TrainingScreen(
                 if (folderSaving) CircularProgressIndicator(Modifier.padding(top = 8.dp).size(20.dp), strokeWidth = 2.dp)
                 if (message != null) Text(message, color = MaterialTheme.colorScheme.error)
             } },
-            confirmButton = { TextButton(onClick = {
+            confirmButton = { AppTextButton(onClick = {
                 if (folder == null) { folderSaving = true; onCreateFolder(folderName.trim()) }
                 else { onRenameFolder(folder.id, folderName.trim()); renameFolder = null; folderName = "" }
             }, enabled = !busy && !folderSaving && folderName.trim().length in 2..100) { Text("Guardar") } },
-            dismissButton = { TextButton(onClick = { createFolder = false; renameFolder = null; folderName = "" }, enabled = !busy) { Text("Cancelar") } })
+            dismissButton = { AppTextButton(onClick = { createFolder = false; renameFolder = null; folderName = "" }, enabled = !busy) { Text("Cancelar") } })
     }
     deleteFolder?.let { folder -> AlertDialog(onDismissRequest = { deleteFolder = null },
         title = { Text("Borrar carpeta") }, text = { Text("Sus rutinas pasarán a Mis rutinas.") },
-        confirmButton = { TextButton(onClick = { onDeleteFolder(folder.id); deleteFolder = null }) { Text("Borrar") } },
-        dismissButton = { TextButton(onClick = { deleteFolder = null }) { Text("Cancelar") } }) }
+        confirmButton = { AppTextButton(onClick = { onDeleteFolder(folder.id); deleteFolder = null }) { Text("Borrar") } },
+        dismissButton = { AppTextButton(onClick = { deleteFolder = null }) { Text("Cancelar") } }) }
     deleteRoutine?.let { routine -> AlertDialog(onDismissRequest = { deleteRoutine = null },
         title = { Text("Borrar rutina") }, text = { Text("¿Quieres borrar ${routine.name}?") },
-        confirmButton = { TextButton(onClick = { onDeleteRoutine(routine.id); deleteRoutine = null }) { Text("Eliminar") } },
-        dismissButton = { TextButton(onClick = { deleteRoutine = null }) { Text("Cancelar") } }) }
+        confirmButton = { AppTextButton(onClick = { onDeleteRoutine(routine.id); deleteRoutine = null }) { Text("Eliminar") } },
+        dismissButton = { AppTextButton(onClick = { deleteRoutine = null }) { Text("Cancelar") } }) }
     moveRoutine?.let { routine -> AlertDialog(onDismissRequest = { moveRoutine = null }, title = { Text("Mover a carpeta") },
         text = { Column {
-            TextButton(onClick = { onMoveRoutine(routine.id, null); moveRoutine = null }) { Text("Mis rutinas") }
+            AppTextButton(onClick = { onMoveRoutine(routine.id, null); moveRoutine = null }) { Text("Mis rutinas") }
             data?.folders?.sortedBy { it.position }?.forEach { folder ->
-                TextButton(onClick = { onMoveRoutine(routine.id, folder.id); moveRoutine = null }) { Text(folder.name) }
+                AppTextButton(onClick = { onMoveRoutine(routine.id, folder.id); moveRoutine = null }) { Text(folder.name) }
             }
-        } }, confirmButton = { TextButton(onClick = { moveRoutine = null }) { Text("Cancelar") } }) }
+        } }, confirmButton = { AppTextButton(onClick = { moveRoutine = null }) { Text("Cancelar") } }) }
 }
 
 private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
@@ -581,16 +586,16 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
 @Composable private fun LibrarySectionHeader(title: String, expanded: Boolean, targeted: Boolean,
     modifier: Modifier = Modifier, onToggle: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Row(modifier.fillMaxWidth().heightIn(min = 52.dp)
-        .background(if (targeted) RoutinePurple.copy(alpha = 0.26f) else Color.Transparent)
-        .graphicsLayer { alpha = if (pressed) 0.7f else 1f }
-        .clickable(interactionSource = interaction, indication = ripple(color = Color.White), onClick = onToggle)
+        .appPressedState(interaction, maxOverlayAlpha = AppRowStateLayerAlpha)
+        .background(if (targeted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
+        .clickable(interactionSource = interaction, indication = null, onClick = onToggle)
         .semantics { stateDescription = if (expanded) "Desplegada" else "Contraída" },
         verticalAlignment = Alignment.CenterVertically) {
         Icon(if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
             contentDescription = if (expanded) "Contraer $title" else "Desplegar $title",
-            modifier = Modifier.size(22.dp).testTag("training-routines-chevron"), tint = TrainingMuted)
+            modifier = Modifier.size(22.dp).testTag("training-routines-chevron"),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(title, Modifier.weight(1f).padding(start = 9.dp).testTag("training-routines-title"),
             style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -601,27 +606,29 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
     onUp: () -> Unit, onDown: () -> Unit, canUp: Boolean, canDown: Boolean) {
     var menu by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Row(modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("training-folder-${folder.id}")
-        .background(if (targeted) RoutinePurple.copy(alpha = 0.26f) else Color.Transparent)
+        .background(if (targeted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
         .semantics { stateDescription = if (expanded) "Desplegada. Mantén pulsado para ordenar" else "Contraída. Mantén pulsado para ordenar" },
         verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).heightIn(min = 52.dp)
-            .graphicsLayer { alpha = if (pressed) 0.7f else 1f }
-            .clickable(interactionSource = interaction, indication = ripple(color = Color.White), onClick = onToggle),
+            .appPressedState(interaction, maxOverlayAlpha = AppRowStateLayerAlpha)
+            .clickable(interactionSource = interaction, indication = null, onClick = onToggle),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
                 contentDescription = if (expanded) "Contraer ${folder.name}" else "Desplegar ${folder.name}",
-                modifier = Modifier.size(22.dp).testTag("training-folder-chevron-${folder.id}"), tint = TrainingMuted)
+                modifier = Modifier.size(22.dp).testTag("training-folder-chevron-${folder.id}"),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(buildAnnotatedString {
                 append(folder.name)
-                withStyle(SpanStyle(color = TrainingMuted)) { append(" (${folder.routineCount})") }
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                    append(" (${folder.routineCount})")
+                }
             }, Modifier.weight(1f).padding(start = 9.dp), style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = { menu = true }, enabled = !busy, modifier = Modifier.size(48.dp)) {
+        AppIconButton(onClick = { menu = true }, enabled = !busy, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Filled.MoreVert, contentDescription = "Opciones de carpeta ${folder.name}",
-                modifier = Modifier.size(20.dp), tint = TrainingMuted)
+                modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     if (menu) TrainingActionsSheet(folder.name, "training-folder-sheet", { menu = false }) {
@@ -641,18 +648,19 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
     onUp: () -> Unit, onDown: () -> Unit, canUp: Boolean, canDown: Boolean) {
     var menu by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
+    val cardShape = RoundedCornerShape(12.dp)
     Surface(modifier.fillMaxWidth().testTag("training-routine-${routine.id}")
-        .graphicsLayer { alpha = if (pressed) 0.88f else 1f }
-        .clickable(interactionSource = interaction, indication = ripple(color = Color.White),
+        .appPressedState(interaction, shape = cardShape, enabled = !busy,
+            maxOverlayAlpha = AppCardStateLayerAlpha)
+        .clickable(interactionSource = interaction, indication = null,
             enabled = !busy, onClick = onOpen)
         .semantics {
             contentDescription = "Abrir ${routine.name}"
             stateDescription = "Mantén pulsado para mover. También puedes usar Opciones."
         },
-        color = if (targeted) Color(0xFF282033) else RoutineSurface,
-        contentColor = TrainingText,
-        shape = RoundedCornerShape(12.dp), tonalElevation = if (targeted) 2.dp else 0.dp) {
+        color = if (targeted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        contentColor = if (targeted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = cardShape, tonalElevation = if (targeted) 2.dp else 0.dp) {
         Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 9.dp, bottom = 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -668,21 +676,27 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
                         }
                     }, Modifier.padding(top = 3.dp, end = 4.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = TrainingMuted,
+                        color = if (targeted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                IconButton(onClick = { menu = true }, enabled = !busy) {
+                AppIconButton(onClick = { menu = true }, enabled = !busy) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "Opciones de ${routine.name}",
-                        modifier = Modifier.size(20.dp), tint = TrainingMuted)
+                        modifier = Modifier.size(20.dp),
+                        tint = if (targeted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(onClick = onStart, enabled = !busy,
+            AppButton(onClick = onStart, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp, end = 6.dp).heightIn(min = 50.dp)
                     .testTag("training-start-${routine.id}"),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = RoutinePurple,
-                    contentColor = Color.White, disabledContainerColor = RoutinePurple.copy(alpha = 0.35f),
-                    disabledContentColor = Color.White.copy(alpha = 0.5f))) {
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = primaryActionContainerColor(),
+                    contentColor = primaryActionContentColor(),
+                    disabledContainerColor = primaryActionContainerColor().copy(alpha = 0.35f),
+                    disabledContentColor = primaryActionContentColor().copy(alpha = 0.5f),
+                )) {
                 Text("Empezar rutina", style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -737,10 +751,22 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
 @Composable private fun TrainingSheetAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit, enabled: Boolean = true, destructive: Boolean = false) {
     val color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val interaction = remember { MutableInteractionSource() }
     Row(Modifier.fillMaxWidth().heightIn(min = 50.dp)
         .testTag("training-action-$label")
         .then(if (destructive) Modifier.semantics { stateDescription = "Acción destructiva" } else Modifier)
-        .clickable(enabled = enabled, onClick = onClick)
+        .appPressedState(
+            interactionSource = interaction,
+            enabled = enabled,
+            overlayColor = color,
+            maxOverlayAlpha = if (destructive) AppDestructiveStateLayerAlpha else AppRowStateLayerAlpha,
+        )
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick,
+        )
         .padding(horizontal = 24.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(21.dp),
@@ -778,8 +804,8 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
     TrainingScreen(
         activeWorkout = activeWorkout,
         library = library,
-        message = null, busy = false, clock = Clock.systemUTC(),
-        onContinueWorkout = {}, onStartEmpty = {}, onRetryWorkout = {},
+        message = null, busy = false,
+        onStartEmpty = {}, onRetryWorkout = {},
         onOpenRoutine = {}, onStartRoutine = {}, onEditRoutine = {},
         onDuplicateRoutine = {}, onShareRoutine = {}, onDeleteRoutine = {}, onCreateRoutine = {},
         onCreateFolder = {}, onRenameFolder = { _, _ -> }, onDeleteFolder = {},

@@ -2,7 +2,7 @@ package com.mar.gym.feature.profile.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -21,18 +21,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +50,11 @@ import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.progress.model.TrainingCalendarDay
 import com.mar.gym.feature.workouts.model.WorkoutHistoryItem
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppDropdownMenuItem
+import com.mar.gym.ui.components.AppTextButton
+import com.mar.gym.ui.components.AppButtonStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.components.SecondaryButton
 import java.time.LocalDate
 import java.time.DayOfWeek
@@ -65,10 +66,6 @@ import java.util.Locale
 
 private val spanish = Locale.forLanguageTag("es-ES")
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm", spanish)
-private val calendarPurpleLight = Color(0xFFE9DFFF)
-private val calendarPurpleDark = Color(0xFF4B306F)
-private val calendarPurpleTextLight = Color(0xFF4D247E)
-private val calendarPurpleTextDark = Color(0xFFF4EAFF)
 
 @Composable
 fun ProfileCalendarRoute(
@@ -128,7 +125,7 @@ fun ProfileCalendarScreen(
                 val visibleMonth = state.months.getOrNull((listState.firstVisibleItemIndex - offset).coerceAtLeast(0))?.month
                 onSelectView(view, visibleMonth.takeIf { state.selectedView == CalendarView.Month })
             }
-            IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("calendar_open_settings")) {
+            AppIconButton(onClick = onOpenSettings, modifier = Modifier.testTag("calendar_open_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = "Ajustes del calendario")
             }
         })
@@ -227,12 +224,12 @@ fun ProfileCalendarScreen(
 private fun CalendarViewSelector(view: CalendarView, onSelect: (CalendarView) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        TextButton(
+        AppTextButton(
             onClick = { expanded = true },
             modifier = Modifier.semantics { contentDescription = "Vista del calendario: ${view.label()}. Cambiar vista" }
                 .testTag("calendar_view_selector"),
             colors = ButtonDefaults.textButtonColors(
-                contentColor = if (isSystemInDarkTheme()) calendarPurpleTextDark else calendarPurpleTextLight,
+                contentColor = MaterialTheme.colorScheme.primary,
             ),
         ) {
             Text(view.label(), maxLines = 1)
@@ -240,7 +237,7 @@ private fun CalendarViewSelector(view: CalendarView, onSelect: (CalendarView) ->
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             CalendarView.entries.forEach { option ->
-                DropdownMenuItem(
+                AppDropdownMenuItem(
                     text = { Text(option.label()) },
                     onClick = { expanded = false; onSelect(option) },
                     trailingIcon = { if (option == view) Icon(Icons.Default.Check, contentDescription = null) },
@@ -325,21 +322,35 @@ private fun CalendarDayCell(
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
+    val interaction = remember { MutableInteractionSource() }
     val trained = inRange && (day != null || workouts.isNotEmpty())
     val enabled = inRange && workouts.isNotEmpty()
     val shape = RoundedCornerShape(10.dp)
-    val trainedBackground = if (isSystemInDarkTheme()) calendarPurpleDark else calendarPurpleLight
-    val trainedText = if (isSystemInDarkTheme()) calendarPurpleTextDark else calendarPurpleTextLight
+    val trainedBackground = MaterialTheme.colorScheme.primaryContainer
+    val trainedText = MaterialTheme.colorScheme.onPrimaryContainer
     val label = when {
         !trained -> null
         workouts.size > 1 -> "${workouts.size} ent."
         workouts.size == 1 -> workouts.single().title.trim().takeIf { it.length in 1..6 } ?: "Hecho"
         else -> "Hecho"
     }
-    val cell = modifier.height(58.dp).padding(2.dp).clip(shape)
+    val cell = modifier
+        .height(58.dp)
+        .padding(2.dp)
+        .appPressedState(
+            interactionSource = interaction,
+            shape = shape,
+            enabled = enabled,
+            maxOverlayAlpha = AppButtonStateLayerAlpha,
+        )
+        .clip(shape)
         .background(if (trained) trainedBackground else MaterialTheme.colorScheme.background)
     Column(
-        modifier = if (enabled) cell.clickable(onClick = onClick)
+        modifier = if (enabled) cell.clickable(
+            interactionSource = interaction,
+            indication = null,
+            onClick = onClick,
+        )
             .semantics { contentDescription = "${date?.dayOfMonth} de ${date?.month?.getDisplayName(TextStyle.FULL, spanish)}, ${workouts.size} entrenamientos" }
             .testTag("trained_day_$date") else cell,
         horizontalAlignment = Alignment.CenterHorizontally,

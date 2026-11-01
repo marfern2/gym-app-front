@@ -6,14 +6,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +27,8 @@ import com.mar.gym.feature.progress.model.AnalyticsPeriod
 import com.mar.gym.feature.progress.model.MuscleDistribution
 import com.mar.gym.feature.progress.model.ProgressSummary
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.AppButtonStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.components.SectionHeader
 import java.math.RoundingMode
 
@@ -52,10 +57,23 @@ fun ProfileStatsScreen(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AnalyticsPeriod.entries.forEach { period ->
+                    val interaction = remember(period) { MutableInteractionSource() }
+                    val chipShape = MaterialTheme.shapes.small
                     FilterChip(
                         selected = state.selectedStatsPeriod == period,
                         onClick = { onPeriod(period) },
+                        modifier = Modifier.appPressedState(
+                            interactionSource = interaction,
+                            shape = chipShape,
+                            maxOverlayAlpha = AppButtonStateLayerAlpha,
+                        ),
                         label = { Text(period.label()) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ),
+                        interactionSource = interaction,
+                        shape = chipShape,
                     )
                 }
             }
