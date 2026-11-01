@@ -7,9 +7,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -20,6 +23,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,7 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -119,12 +125,17 @@ import com.mar.gym.feature.social.ui.BlockedUsersViewModelFactory
 import com.mar.gym.feature.social.ui.ReportViewModel
 import com.mar.gym.feature.social.ui.ReportViewModelFactory
 import com.mar.gym.feature.training.ui.TrainingScreen
+import com.mar.gym.feature.workouts.ui.ActiveWorkoutBar
+import com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModel
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutViewModelFactory
+import java.time.Clock
 import com.mar.gym.feature.workouts.ui.SaveWorkoutRoute
 import com.mar.gym.feature.workouts.ui.WorkoutCongratsRoute
 import com.mar.gym.ui.components.BarbellIcon
+import com.mar.gym.ui.components.AppIconStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.theme.GYmAppTheme
 import com.mar.gym.core.sharing.ShareDeepLink
 import com.mar.gym.core.sharing.ShareLinks
@@ -144,6 +155,10 @@ import com.mar.gym.feature.push.PushNotifications
 import com.mar.gym.feature.push.resolvePushDestination
 import com.mar.gym.feature.push.ui.PushPreferencesViewModel
 import com.mar.gym.feature.push.ui.PushPreferencesViewModelFactory
+
+private const val TAB_HOME = "home"
+private const val TAB_TRAINING = "training"
+private const val TAB_PROFILE = "profile"
 
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionViewModels: UserSessionViewModelScope
@@ -485,37 +500,32 @@ class MainActivity : ComponentActivity() {
         if (deep == null) {
             Scaffold(
                 bottomBar = {
-                    NavigationBar {
-                        NavigationBarItem(
-                            selected = tab == TAB_HOME,
-                            onClick = { tab = TAB_HOME },
-                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                            label = { Text(stringResource(R.string.nav_home)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == TAB_TRAINING,
-                            onClick = { tab = TAB_TRAINING },
-                            icon = { BarbellIcon(tint = LocalContentColor.current) },
-                            label = { Text(stringResource(R.string.nav_training)) },
-                        )
-                        NavigationBarItem(
-                            selected = tab == TAB_PROFILE,
-                            onClick = { tab = TAB_PROFILE },
-                            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
-                            label = { Text(stringResource(R.string.nav_profile)) },
-                        )
-                    }
+                    MainTabBottomBar(
+                        selectedTab = tab,
+                        activeWorkout = activeWorkoutState,
+                        clock = AppContainer.applicationClock,
+                        onSelectTab = { tab = it },
+                        onContinueWorkout = { deep = DEEP_WORKOUT },
+                        onDiscardWorkout = activeWorkoutViewModel()::discard,
+                    )
                 },
             ) { innerPadding ->
+                val showsActiveWorkoutBar =
+                    (activeWorkoutState as? ActiveWorkoutUiState.Active)?.data?.draft != null
+                val activeWorkoutBarSpace = if (showsActiveWorkoutBar) {
+                    86.dp
+                } else {
+                    0.dp
+                }
+                val contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = (innerPadding.calculateBottomPadding() - activeWorkoutBarSpace)
+                        .coerceAtLeast(0.dp),
+                )
                 Box(
                     modifier = Modifier
-                        .padding(innerPadding)
-                        .consumeWindowInsets(
-                            PaddingValues(
-                                top = innerPadding.calculateTopPadding(),
-                                bottom = innerPadding.calculateBottomPadding(),
-                            ),
-                        ),
+                        .padding(contentPadding)
+                        .consumeWindowInsets(contentPadding),
                 ) {
                     when (tab) {
                         TAB_HOME -> HomeRoute(
@@ -560,8 +570,6 @@ class MainActivity : ComponentActivity() {
                             library = libraryState,
                             message = libraryMessage,
                             busy = libraryBusy,
-                            clock = AppContainer.applicationClock,
-                            onContinueWorkout = { deep = DEEP_WORKOUT },
                             onStartEmpty = {
                                 activeWorkoutViewModel().startEmpty()
                                 deep = DEEP_WORKOUT
@@ -869,7 +877,6 @@ class MainActivity : ComponentActivity() {
                         preferences = unitPreferences,
                         onBack = {
                             deep = null
-                            tab = TAB_TRAINING
                         },
                         onOpenSaveWorkout = { deep = DEEP_WORKOUT_SAVE },
                         onOpenPicker = { ids ->
@@ -1495,10 +1502,6 @@ class MainActivity : ComponentActivity() {
     )[UserDataTransferViewModel::class.java]
 
     private companion object {
-        const val TAB_HOME = "home"
-        const val TAB_TRAINING = "training"
-        const val TAB_PROFILE = "profile"
-
         const val ROUTINE_ORIGIN_TRAINING = "training"
         const val ROUTINE_ORIGIN_VIEWER = "viewer"
 
@@ -1535,3 +1538,76 @@ class MainActivity : ComponentActivity() {
         const val DEEP_NOTIFICATIONS = "notifications"
     }
 }
+
+@Composable
+internal fun MainTabBottomBar(
+    selectedTab: String,
+    activeWorkout: ActiveWorkoutUiState,
+    clock: Clock,
+    onSelectTab: (String) -> Unit,
+    onContinueWorkout: () -> Unit,
+    onDiscardWorkout: () -> Unit,
+) {
+    val homeInteraction = remember { MutableInteractionSource() }
+    val trainingInteraction = remember { MutableInteractionSource() }
+    val profileInteraction = remember { MutableInteractionSource() }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("main_tab_bottom_bar"),
+    ) {
+        (activeWorkout as? ActiveWorkoutUiState.Active)?.let { active ->
+            ActiveWorkoutBar(
+                state = active,
+                clock = clock,
+                onContinue = onContinueWorkout,
+                onDiscard = onDiscardWorkout,
+                modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 4.dp),
+            )
+        }
+        NavigationBar {
+            NavigationBarItem(
+                selected = selectedTab == TAB_HOME,
+                onClick = { onSelectTab(TAB_HOME) },
+                modifier = Modifier
+                    .appPressedState(homeInteraction, maxOverlayAlpha = AppIconStateLayerAlpha)
+                    .testTag("main_tab_home"),
+                icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+                label = { Text(stringResource(R.string.nav_home)) },
+                colors = appNavigationItemColors(),
+                interactionSource = homeInteraction,
+            )
+            NavigationBarItem(
+                selected = selectedTab == TAB_TRAINING,
+                onClick = { onSelectTab(TAB_TRAINING) },
+                modifier = Modifier
+                    .appPressedState(trainingInteraction, maxOverlayAlpha = AppIconStateLayerAlpha)
+                    .testTag("main_tab_training"),
+                icon = { BarbellIcon(tint = LocalContentColor.current) },
+                label = { Text(stringResource(R.string.nav_training)) },
+                colors = appNavigationItemColors(),
+                interactionSource = trainingInteraction,
+            )
+            NavigationBarItem(
+                selected = selectedTab == TAB_PROFILE,
+                onClick = { onSelectTab(TAB_PROFILE) },
+                modifier = Modifier
+                    .appPressedState(profileInteraction, maxOverlayAlpha = AppIconStateLayerAlpha)
+                    .testTag("main_tab_profile"),
+                icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
+                label = { Text(stringResource(R.string.nav_profile)) },
+                colors = appNavigationItemColors(),
+                interactionSource = profileInteraction,
+            )
+        }
+    }
+}
+
+@Composable
+private fun appNavigationItemColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    selectedTextColor = MaterialTheme.colorScheme.primary,
+    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+)

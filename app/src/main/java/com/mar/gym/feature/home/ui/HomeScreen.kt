@@ -21,17 +21,13 @@ import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +56,10 @@ import com.mar.gym.feature.social.model.ReportTargetType
 import com.mar.gym.feature.social.ui.userMessage
 import com.mar.gym.feature.social.ui.workoutActionMessage
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.AppButton
+import com.mar.gym.ui.components.AppDropdownMenuItem
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppTextButton
 import com.mar.gym.ui.components.EmptyState
 import com.mar.gym.ui.components.ErrorState
 import com.mar.gym.core.units.UnitPreferences
@@ -141,14 +141,14 @@ fun HomeScreen(
             AppTopBar(
                 title = "Inicio",
                 actions = {
-                    IconButton(onClick = onSearchPeople) {
+                    AppIconButton(onClick = onSearchPeople) {
                         Icon(Icons.Default.PersonSearch, contentDescription = "Buscar personas")
                     }
                     NotificationBell(
                         unreadCount = unreadNotificationCount,
                         onClick = onOpenNotifications,
                     )
-                    IconButton(onClick = onRefresh, enabled = !feed.refreshing) {
+                    AppIconButton(onClick = onRefresh, enabled = !feed.refreshing) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualizar feed")
                     }
                 },
@@ -261,7 +261,7 @@ fun HomeScreen(
             feed.loadMoreError?.let { error -> item("load_more_error") {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(error.userMessage(), color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-                    TextButton(onClick = onLoadMore) { Text("Reintentar") }
+                    AppTextButton(onClick = onLoadMore) { Text("Reintentar") }
                 }
             } }
         }
@@ -274,7 +274,7 @@ fun NotificationBell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, modifier = modifier.testTag("notifications_bell")) {
+    AppIconButton(onClick = onClick, modifier = modifier.testTag("notifications_bell")) {
         BadgedBox(
             badge = {
                 if (unreadCount > 0) {
@@ -312,7 +312,7 @@ private fun HomeDiscoverSelector(
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             HomeFeedMode.entries.forEach { mode ->
-                DropdownMenuItem(
+                AppDropdownMenuItem(
                     text = { Text(mode.label()) },
                     onClick = {
                         expanded = false
@@ -368,7 +368,7 @@ private fun SuggestionsBlock(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(state.suggestionsError.userMessage(), textAlign = TextAlign.Center)
-                TextButton(onClick = onRetry) { Text("Reintentar") }
+                AppTextButton(onClick = onRetry) { Text("Reintentar") }
             }
             else -> LazyRow(
                 modifier = Modifier.testTag("suggestions_list"),
@@ -433,7 +433,7 @@ private fun SuggestedAthleteCard(
                     textAlign = TextAlign.Center,
                 )
             }
-            Button(
+            AppButton(
                 onClick = onFollow,
                 enabled = !followInFlight && !athlete.isFollowing,
                 modifier = Modifier.fillMaxWidth().testTag("suggestion_follow_${athlete.username}"),

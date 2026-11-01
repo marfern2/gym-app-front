@@ -16,12 +16,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -130,7 +128,7 @@ fun RestTimePickerButton(
                 )
             }
         } else {
-            OutlinedButton(
+            AppOutlinedButton(
                 onClick = { showPicker = true },
                 enabled = enabled,
                 modifier = Modifier
@@ -202,7 +200,7 @@ fun RestTimePickerBottomSheet(
                 onSelectionChanged = { pendingSeconds = it },
                 testTag = testTag,
             )
-            Button(
+            AppButton(
                 onClick = { onConfirm(pendingSeconds) },
                 modifier = Modifier
                     .fillMaxWidth()

@@ -2,43 +2,42 @@ package com.mar.gym.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Identidad: azul oscuro "navy" de alto impacto sobre neutros casi negros (dark) y casi blancos (light).
-// Contraste alto, minimalista y deportivo. La base de la marca es #0602A1; las variantes se ajustan
-// para mantener accesibilidad y legibilidad en cada tema.
+// Color real del botón "Empezar rutina". Es la base de marca y la superficie de
+// las acciones principales. En dark, BrandPurpleAccent aporta contraste cuando
+// el color se usa como texto, icono, progreso o estado seleccionado.
+val BrandPurple = Color(0xFF492473)
+val OnBrandPurple = Color(0xFFFFFFFF)
+val BrandPurpleAccent = Color(0xFFC9A7E8)
+val OnBrandPurpleAccent = Color(0xFF2A1338)
+val BrandPurpleContainerLight = Color(0xFFEBDDF2)
+val OnBrandPurpleContainerLight = Color(0xFF2B1538)
+val BrandPurpleSecondaryDark = Color(0xFFB79AC8)
+val OnBrandPurpleSecondaryDark = Color(0xFF2D1D35)
+val BrandPurpleSecondaryContainerDark = Color(0xFF3A2A43)
+val OnBrandPurpleSecondaryContainerDark = Color(0xFFE8DAEE)
+val BrandPurpleSecondaryLight = Color(0xFF6B5277)
+val BrandPurpleSecondaryContainerLight = Color(0xFFF0E6F4)
+val OnBrandPurpleSecondaryContainerLight = Color(0xFF291E2E)
 
-val RoyalBlue = Color(0xFF0602A1)
-val OnRoyalBlue = Color(0xFFFFFFFF)
-val RoyalBlueContainerDark = Color(0xFF2B2BC9)
-val OnRoyalBlueContainerDark = Color(0xFFE0E1FF)
+// Neutros con un matiz morado muy contenido para cohesionar superficies sin
+// convertir toda la interfaz en una masa de color de marca.
+val InkDark = Color(0xFF111013)
+val InkDarkSurface = Color(0xFF19171C)
+val InkDarkSurfaceVariant = Color(0xFF27232C)
+val InkDarkOnSurface = Color(0xFFF0EBF1)
+val InkDarkOnSurfaceVariant = Color(0xFFC9C1CB)
+val InkDarkOutline = Color(0xFF928A96)
+val InkDarkOutlineVariant = Color(0xFF3B3540)
 
-val RoyalBlueDark = Color(0xFF8C9AFF)
-val RoyalBlueContainerLight = Color(0xFFDEE1FF)
-val OnRoyalBlueContainerLight = Color(0xFF06006E)
-
-// Neutros fríos con ligero matiz azulado, coherentes con la identidad.
-val InkDark = Color(0xFF0F1118)
-val InkDarkSurface = Color(0xFF161924)
-val InkDarkSurfaceVariant = Color(0xFF232735)
-val InkDarkOnSurface = Color(0xFFE1E3EE)
-val InkDarkOnSurfaceVariant = Color(0xFFC1C5D6)
-val InkDarkOutline = Color(0xFF7E8498)
-val InkDarkOutlineVariant = Color(0xFF2E3342)
-
-val InkLight = Color(0xFFF8F9FF)
+val InkLight = Color(0xFFFAF8FB)
 val InkLightSurface = Color(0xFFFFFFFF)
-val InkLightSurfaceVariant = Color(0xFFE4E6F2)
-val InkLightOnSurface = Color(0xFF191B28)
-val InkLightOnSurfaceVariant = Color(0xFF464B5E)
-val InkLightOutline = Color(0xFF767C92)
-val InkLightOutlineVariant = Color(0xFFC8CBE0)
+val InkLightSurfaceVariant = Color(0xFFEDE8EF)
+val InkLightOnSurface = Color(0xFF201C22)
+val InkLightOnSurfaceVariant = Color(0xFF514A54)
+val InkLightOutline = Color(0xFF7D747F)
+val InkLightOutlineVariant = Color(0xFFD2CAD5)
 
 // Acentos de la columna SERIE del workout activo: calentamiento, fallo y drop.
 val SetWarmup = Color(0xFFFFC53D)
 val SetFailure = Color(0xFFFF5C5C)
 val SetDrop = Color(0xFF4DD0E1)
-
-// Fila de serie completada en el workout activo: verde sobrio y legible en ambos temas.
-val CompletedRowContainerLight = Color(0xFFE3F3E7)
-val CompletedRowContainerDark = Color(0xFF1D3627)
-val CompletedRowAccentLight = Color(0xFF1E7B3B)
-val CompletedRowAccentDark = Color(0xFF7ED99B)

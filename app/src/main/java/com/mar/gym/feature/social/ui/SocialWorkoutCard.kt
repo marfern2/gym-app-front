@@ -2,6 +2,7 @@ package com.mar.gym.feature.social.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,12 +25,9 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +50,11 @@ import com.mar.gym.feature.workouts.model.WorkoutVisibility
 import com.mar.gym.feature.workouts.ui.WorkoutVisibilityIndicator
 import com.mar.gym.core.units.UnitConverter
 import com.mar.gym.core.units.UnitPreferences
+import com.mar.gym.ui.components.AppCardStateLayerAlpha
+import com.mar.gym.ui.components.AppDropdownMenuItem
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppTextButton
+import com.mar.gym.ui.components.appPressedState
 import java.math.BigDecimal
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -76,12 +79,21 @@ fun SocialWorkoutCard(
     onReport: (String) -> Unit = {},
     preferences: UnitPreferences = UnitPreferences(),
 ) {
+    val cardInteraction = remember { MutableInteractionSource() }
+    val cardShape = MaterialTheme.shapes.medium
     Card(
         onClick = { onWorkoutClick(workout.workoutId) },
         modifier = modifier
             .fillMaxWidth()
+            .appPressedState(
+                interactionSource = cardInteraction,
+                shape = cardShape,
+                maxOverlayAlpha = AppCardStateLayerAlpha,
+            )
             .testTag("social_workout_${workout.workoutId}"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = cardShape,
+        interactionSource = cardInteraction,
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -159,12 +171,12 @@ fun SocialWorkoutCard(
 private fun WorkoutReportMenu(onReport: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(
+        AppIconButton(
             onClick = { expanded = true },
             modifier = Modifier.testTag("workout_report_menu"),
         ) { Icon(Icons.Default.MoreVert, contentDescription = "Opciones del entrenamiento") }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
+            AppDropdownMenuItem(
                 text = { Text("Reportar entrenamiento") },
                 onClick = { expanded = false; onReport() },
                 modifier = Modifier.testTag("report_workout_action"),
@@ -188,7 +200,7 @@ internal fun SocialWorkoutActions(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
+            AppIconButton(
                 onClick = onToggleLike,
                 enabled = !likeInFlight,
                 modifier = Modifier.testTag("social_like_action"),
@@ -205,7 +217,7 @@ internal fun SocialWorkoutActions(
                 modifier = Modifier.testTag("social_likes_count"),
             )
             Spacer(Modifier.width(12.dp))
-            IconButton(
+            AppIconButton(
                 onClick = onCommentsClick,
                 modifier = Modifier.testTag("social_comments_action"),
             ) {
@@ -222,7 +234,7 @@ internal fun SocialWorkoutActions(
             )
             Spacer(Modifier.weight(1f))
             if (canShare) {
-                IconButton(
+                AppIconButton(
                     onClick = onShare,
                     modifier = Modifier.testTag("social_share_action"),
                 ) {
@@ -289,7 +301,7 @@ internal fun AuthorHeader(
             )
         }
         if (onFollow != null) {
-            TextButton(
+            AppTextButton(
                 onClick = onFollow,
                 enabled = !followInFlight,
                 modifier = Modifier.testTag("social_follow_${author.username}"),

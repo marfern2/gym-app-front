@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +38,8 @@ import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import com.mar.gym.R
 import com.mar.gym.feature.exercises.model.ExerciseMedia
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppTextButton
 
 typealias ExerciseMediaRenderer = @Composable (
     media: ExerciseMedia,
@@ -76,7 +76,7 @@ fun CoilExerciseMedia(
             Box(Modifier.fillMaxSize()) {
                 this@success.SubcomposeAsyncImageContent(modifier = Modifier.fillMaxSize())
                 if (animation != null) {
-                    IconButton(
+                    AppIconButton(
                         onClick = { playing = !playing },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
                             .size(48.dp).clip(CircleShape)
@@ -132,7 +132,7 @@ fun ExerciseMediaErrorPlaceholder(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
         )
-        TextButton(onClick = onRetry) {
+        AppTextButton(onClick = onRetry) {
             Text(stringResource(R.string.retry))
         }
     }

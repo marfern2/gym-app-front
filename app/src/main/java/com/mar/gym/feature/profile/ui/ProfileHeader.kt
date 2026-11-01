@@ -16,10 +16,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mar.gym.feature.profile.model.PrivateProfile
 import com.mar.gym.feature.social.ui.SocialAvatar
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppTextButton
 
 @Composable
 fun ProfileHeader(
@@ -54,18 +54,18 @@ fun ProfileHeader(
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
-            IconButton(onClick = onEdit, modifier = Modifier.testTag("profile_edit")) {
+            AppIconButton(onClick = onEdit, modifier = Modifier.testTag("profile_edit")) {
                 Icon(Icons.Default.Edit, contentDescription = "Editar perfil")
             }
             if (canSharePublicly) {
-                IconButton(onClick = onShare, modifier = Modifier.testTag("profile_share")) {
+                AppIconButton(onClick = onShare, modifier = Modifier.testTag("profile_share")) {
                     Icon(Icons.Default.Share, contentDescription = "Compartir perfil")
                 }
             }
-            IconButton(onClick = onSettings, modifier = Modifier.testTag("profile_settings")) {
+            AppIconButton(onClick = onSettings, modifier = Modifier.testTag("profile_settings")) {
                 Icon(Icons.Default.Settings, contentDescription = "Ajustes")
             }
-            IconButton(onClick = onSearch, modifier = Modifier.testTag("profile_search_people")) {
+            AppIconButton(onClick = onSearch, modifier = Modifier.testTag("profile_search_people")) {
                 Icon(Icons.Default.Search, contentDescription = "Buscar personas")
             }
         }
@@ -93,8 +93,8 @@ fun ProfileHeader(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onChangeAvatar, enabled = !avatarSaving) { Text("Cambiar avatar") }
-            if (profile.avatarUrl != null) TextButton(onClick = onDeleteAvatar, enabled = !avatarSaving) {
+            AppTextButton(onClick = onChangeAvatar, enabled = !avatarSaving) { Text("Cambiar avatar") }
+            if (profile.avatarUrl != null) AppTextButton(onClick = onDeleteAvatar, enabled = !avatarSaving) {
                 Text("Eliminar avatar")
             }
             if (avatarSaving) CircularProgressIndicator(Modifier.size(20.dp))

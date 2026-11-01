@@ -62,7 +62,8 @@ fun MetricCell(
     }
     val resolvedText = when {
         ghost -> textColor
-            ?: if (enabled) Color.White else Color.White.copy(alpha = 0.45f)
+            ?: if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
         else -> textColor
             ?: if (enabled) MaterialTheme.colorScheme.onSurface
             else MaterialTheme.colorScheme.onSurfaceVariant
@@ -72,7 +73,7 @@ fun MetricCell(
     } ?: Modifier
     Box(
         modifier = modifier
-            .heightIn(min = if (ghost) 40.dp else 44.dp)
+            .heightIn(min = 48.dp)
             .clip(shape)
             .background(resolvedContainer)
             .then(if (ghost) Modifier else Modifier.border(1.dp, borderColor, shape))
@@ -94,11 +95,9 @@ fun MetricCell(
                 color = resolvedText,
                 textAlign = TextAlign.Center,
             ),
-            cursorBrush = if (ghost) {
-                SolidColor(if (isError) MaterialTheme.colorScheme.error else Color.White)
-            } else {
-                SolidColor(Color.Black)
-            },
+            cursorBrush = SolidColor(
+                if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            ),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             decorationBox = { innerTextField ->
                 Row(
@@ -114,7 +113,7 @@ fun MetricCell(
                             Text(
                                 text = "0",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = Color.White.copy(alpha = 0.35f),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
                                     textAlign = TextAlign.Center,
                                 ),
                                 modifier = Modifier.semantics { hideFromAccessibility() },
@@ -140,7 +139,7 @@ fun MetricCell(
                     .height(1.5.dp)
                     .background(
                         if (isError) MaterialTheme.colorScheme.error
-                        else Color.White.copy(alpha = 0.55f),
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
                     ),
             )
         }

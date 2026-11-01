@@ -16,6 +16,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +45,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,13 +52,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -78,7 +76,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -111,21 +108,26 @@ import com.mar.gym.feature.workouts.model.previousSetFor
 import com.mar.gym.feature.workouts.rest.RestTimer
 import com.mar.gym.ui.components.ExerciseNameLink
 import com.mar.gym.ui.components.ExerciseThumbnail
+import com.mar.gym.ui.components.AppButton
+import com.mar.gym.ui.components.AppDropdownMenuItem
+import com.mar.gym.ui.components.AppDestructiveStateLayerAlpha
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppRowStateLayerAlpha
+import com.mar.gym.ui.components.AppTextButton
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.MetricCell
 import com.mar.gym.ui.components.PrimaryButton
 import com.mar.gym.ui.components.RestTimePickerButton
 import com.mar.gym.ui.components.SecondaryButton
 import com.mar.gym.ui.theme.GYmAppTheme
-import com.mar.gym.ui.theme.CompletedRowAccentDark
-import com.mar.gym.ui.theme.CompletedRowAccentLight
-import com.mar.gym.ui.theme.CompletedRowContainerDark
-import com.mar.gym.ui.theme.CompletedRowContainerLight
 import com.mar.gym.ui.theme.SetDrop
 import com.mar.gym.ui.theme.SetFailure
 import com.mar.gym.ui.theme.SetWarmup
 import com.mar.gym.ui.theme.InkDarkSurface
-import com.mar.gym.ui.theme.InkDarkSurfaceVariant
+import com.mar.gym.ui.theme.InkDarkOutlineVariant
+import com.mar.gym.ui.theme.primaryActionContainerColor
+import com.mar.gym.ui.theme.primaryActionContentColor
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -256,8 +258,8 @@ fun ActiveWorkoutScreen(
                 ActiveRestTimerDock(timer, clock, onAdjustRestTimer, onSkipRestTimer)
             }
         },
-        containerColor = Color.Black,
-        contentColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) { padding ->
         when (state) {
             is ActiveWorkoutUiState.Loading -> LoadingState(
@@ -347,10 +349,7 @@ fun ActiveWorkoutScreen(
             }
         }
     }
-    if (confirmDiscard) ConfirmDialog(
-        title = R.string.workout_discard_confirm_title,
-        message = R.string.workout_discard_confirm_message,
-        action = R.string.workout_discard,
+    if (confirmDiscard) WorkoutDiscardDialog(
         onDismiss = { confirmDiscard = false },
         onConfirm = { confirmDiscard = false; onDiscard() },
     )
@@ -441,7 +440,7 @@ private fun ActiveRestTimerDock(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(InkDarkSurface)
+            .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
             .testTag("active_rest_timer"),
     ) {
@@ -471,7 +470,7 @@ private fun ActiveRestTimerDock(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("active_rest_timer_remaining"),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -482,15 +481,15 @@ private fun ActiveRestTimerDock(
                 onClick = { onAdjust(15) },
                 modifier = Modifier.testTag("active_rest_timer_plus"),
             )
-            Button(
+            AppButton(
                 onClick = onSkip,
                 modifier = Modifier
                     .heightIn(min = 48.dp)
                     .testTag("active_rest_timer_skip"),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White,
+                    containerColor = primaryActionContainerColor(),
+                    contentColor = primaryActionContentColor(),
                 ),
                 contentPadding = PaddingValues(horizontal = 14.dp),
             ) {
@@ -506,19 +505,19 @@ private fun RestTimerAdjustmentButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    AppButton(
         onClick = onClick,
         modifier = modifier
             .width(60.dp)
             .heightIn(min = 48.dp),
         shape = RoundedCornerShape(9.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = InkDarkSurfaceVariant,
-            contentColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         contentPadding = PaddingValues(horizontal = 8.dp),
     ) {
-        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(text = text, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -538,22 +537,22 @@ private fun ActiveWorkoutHeader(
         title = {
             Text(
                 text = stringResource(R.string.workout_header_title),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 1,
             )
         },
         navigationIcon = {
-            IconButton(onClick = onBack) {
+            AppIconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.routine_back),
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         },
         actions = {
-            IconButton(
+            AppIconButton(
                 onClick = onOpenClock,
                 enabled = actionsEnabled,
                 modifier = Modifier.testTag("manual_clock_open"),
@@ -561,11 +560,11 @@ private fun ActiveWorkoutHeader(
                 Icon(
                     imageVector = Icons.Outlined.Alarm,
                     contentDescription = stringResource(R.string.workout_clock_open),
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
             Box {
-                IconButton(
+                AppIconButton(
                     onClick = { menuOpen = true },
                     enabled = actionsEnabled,
                     modifier = Modifier.testTag("active_workout_menu"),
@@ -573,11 +572,11 @@ private fun ActiveWorkoutHeader(
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
                         contentDescription = "Opciones del entrenamiento",
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
+                    AppDropdownMenuItem(
                         modifier = Modifier.testTag("active_workout_visibility_action"),
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -592,34 +591,33 @@ private fun ActiveWorkoutHeader(
                     )
                 }
             }
-            Button(
+            AppButton(
                 onClick = onFinish,
                 enabled = actionsEnabled,
                 modifier = Modifier
                     .padding(end = 8.dp)
-                    .height(40.dp)
+                    .heightIn(min = 48.dp)
                     .testTag("complete_workout"),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White,
-                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                    disabledContentColor = Color.White.copy(alpha = 0.65f),
+                    containerColor = primaryActionContainerColor(),
+                    contentColor = primaryActionContentColor(),
+                    disabledContainerColor = primaryActionContainerColor().copy(alpha = 0.45f),
+                    disabledContentColor = primaryActionContentColor().copy(alpha = 0.65f),
                 ),
                 contentPadding = PaddingValues(horizontal = 14.dp),
             ) {
                 Text(
                     text = stringResource(R.string.workout_finish),
-                    color = Color.White,
                     fontWeight = FontWeight.Bold,
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = ActiveWorkoutHeaderBackground,
-            titleContentColor = Color.White,
-            navigationIconContentColor = Color.White,
-            actionIconContentColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurface,
         ),
     )
 }
@@ -636,8 +634,8 @@ private fun ManualWorkoutClockSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = ManualClockBackground,
-        contentColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         dragHandle = null,
     ) {
         Column(
@@ -651,12 +649,15 @@ private fun ManualWorkoutClockSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 20.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
-            HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.65f))
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
             Row(Modifier.fillMaxWidth()) {
                 ManualClockTab(
                     text = stringResource(R.string.workout_clock_timer),
@@ -705,7 +706,8 @@ private fun ManualClockTab(
         Text(
             text = text,
             modifier = Modifier.padding(bottom = 12.dp),
-            color = if (selected) Color.White else Color.White.copy(alpha = 0.62f),
+            color = if (selected) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         )
@@ -748,13 +750,13 @@ private fun ManualTimerPage(state: ManualWorkoutClockState) {
                 progress = { timerProgress(snapshot.timerRemainingMillis, snapshot.timerConfiguredMillis) },
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.White.copy(alpha = 0.12f),
+                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                 strokeWidth = 6.dp,
             )
             Text(
                 text = formatTimer(snapshot.timerRemainingMillis),
                 modifier = Modifier.testTag("manual_timer_value"),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 52.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -784,7 +786,7 @@ private fun ManualTimerPage(state: ManualWorkoutClockState) {
                 },
             ),
             onClick = if (snapshot.timerRunning) state::cancelTimer else state::startTimer,
-            blue = !snapshot.timerRunning,
+            emphasized = !snapshot.timerRunning,
             enabled = if (snapshot.timerRunning) true else snapshot.timerRemainingMillis > 0L,
             modifier = Modifier.testTag("manual_timer_start"),
         )
@@ -797,7 +799,7 @@ private fun TimerAdjustmentButton(
     testTag: String,
     onClick: () -> Unit,
 ) {
-    TextButton(
+    AppTextButton(
         onClick = onClick,
         modifier = Modifier
             .heightIn(min = 48.dp)
@@ -833,7 +835,7 @@ private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
         Text(
             text = formatStopwatch(snapshot.stopwatchElapsedMillis),
             modifier = Modifier.testTag("manual_stopwatch_value"),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 52.sp,
             fontWeight = FontWeight.Bold,
         )
@@ -841,13 +843,13 @@ private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
             StopwatchStatus.Initial -> ClockActionButton(
                 text = stringResource(R.string.workout_clock_start),
                 onClick = state::startStopwatch,
-                blue = true,
+                emphasized = true,
                 modifier = Modifier.testTag("manual_stopwatch_start"),
             )
             StopwatchStatus.Running -> ClockActionButton(
                 text = stringResource(R.string.workout_clock_stop),
                 onClick = state::stopStopwatch,
-                blue = false,
+                emphasized = false,
                 modifier = Modifier.testTag("manual_stopwatch_stop"),
             )
             StopwatchStatus.Stopped -> Row(
@@ -857,7 +859,7 @@ private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
                 ClockActionButton(
                     text = stringResource(R.string.workout_clock_reset),
                     onClick = state::resetStopwatch,
-                    blue = false,
+                    emphasized = false,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("manual_stopwatch_reset"),
@@ -865,7 +867,7 @@ private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
                 ClockActionButton(
                     text = stringResource(R.string.workout_clock_start),
                     onClick = state::startStopwatch,
-                    blue = true,
+                    emphasized = true,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("manual_stopwatch_resume"),
@@ -879,11 +881,11 @@ private fun ManualStopwatchPage(state: ManualWorkoutClockState) {
 private fun ClockActionButton(
     text: String,
     onClick: () -> Unit,
-    blue: Boolean,
+    emphasized: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    Button(
+    AppButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
@@ -891,17 +893,17 @@ private fun ClockActionButton(
             .heightIn(min = 52.dp),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (blue) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = Color.White,
-            disabledContainerColor = if (blue) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+            containerColor = if (emphasized) primaryActionContainerColor() else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (emphasized) primaryActionContentColor() else MaterialTheme.colorScheme.onSurface,
+            disabledContainerColor = if (emphasized) {
+                primaryActionContainerColor().copy(alpha = 0.4f)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             },
-            disabledContentColor = Color.White.copy(alpha = 0.55f),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
         ),
     ) {
-        Text(text = text, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(text = text, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -926,9 +928,8 @@ internal fun formatStopwatch(milliseconds: Long): String {
     return "%02d:%02d.%03d".format(totalSeconds / 60L, totalSeconds % 60L, safe % 1_000L)
 }
 
-internal val ActiveWorkoutHeaderBackground = Color(0xFF242424)
-private val ActiveWorkoutProgressTrack = Color(0xFF333333)
-private val ManualClockBackground = Color(0xFF121212)
+internal val ActiveWorkoutHeaderBackground = InkDarkSurface
+private val ActiveWorkoutProgressTrack = InkDarkOutlineVariant
 
 @Composable
 private fun WorkoutProgressBar(
@@ -1011,7 +1012,7 @@ private fun WorkoutEditorContent(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onRetryPrevious) { Text(stringResource(R.string.retry)) }
+            AppTextButton(onClick = onRetryPrevious) { Text(stringResource(R.string.retry)) }
         }
     }
     if (draft.exercises.isEmpty()) {
@@ -1149,7 +1150,7 @@ private fun WorkoutExerciseEditor(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(
+                AppIconButton(
                     onClick = { showActions = true },
                     enabled = enabled,
                     modifier = Modifier.testTag("workout_exercise_menu_${exercise.localId}"),
@@ -1192,7 +1193,7 @@ private fun WorkoutExerciseEditor(
                 previousValue = previousValue,
             )
         }
-        TextButton(
+        AppTextButton(
             onClick = onAddSet,
             enabled = enabled && exercise.sets.size < 20,
             modifier = Modifier.padding(horizontal = WorkoutContentHorizontalPadding),
@@ -1294,16 +1295,33 @@ private fun WorkoutExerciseSheetAction(
     color: Color? = null,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val stateLayerColor = color ?: MaterialTheme.colorScheme.onSurface
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
+            .appPressedState(
+                interactionSource = interaction,
+                enabled = enabled,
+                overlayColor = stateLayerColor,
+                maxOverlayAlpha = if (color == MaterialTheme.colorScheme.error) {
+                    AppDestructiveStateLayerAlpha
+                } else {
+                    AppRowStateLayerAlpha
+                },
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            )
             .padding(horizontal = 24.dp, vertical = 16.dp),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = color ?: MaterialTheme.colorScheme.onSurface,
+            color = stateLayerColor,
         )
     }
 }
@@ -1504,14 +1522,12 @@ private fun WorkoutSetRow(
 
 @Composable
 private fun completedRowContainer(): Color {
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return if (dark) CompletedRowContainerDark else CompletedRowContainerLight
+    return MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f)
 }
 
 @Composable
 private fun completedRowAccent(): Color {
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return if (dark) CompletedRowAccentDark else CompletedRowAccentLight
+    return MaterialTheme.colorScheme.primary
 }
 
 @Composable
@@ -1541,7 +1557,7 @@ private fun SetTypeCell(
 ) {
     var showSheet by remember { mutableStateOf(false) }
     val color = when (type) {
-        SetType.Normal -> Color.White
+        SetType.Normal -> MaterialTheme.colorScheme.onSurface
         SetType.Warmup -> SetWarmup
         SetType.Failure -> SetFailure
         SetType.Drop -> SetDrop
@@ -1622,7 +1638,7 @@ private fun SetCompleteToggle(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
     }
-    val checkColor = if (accent.luminance() > 0.5f) Color.Black else Color.White
+    val checkColor = MaterialTheme.colorScheme.onPrimary
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -1696,16 +1712,19 @@ private fun WorkoutTextField(
                 .padding(vertical = 10.dp),
             singleLine = singleLine,
             textStyle = style.copy(
-                color = if (enabled) Color.White else Color.White.copy(alpha = 0.45f),
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
             ),
-            cursorBrush = SolidColor(Color.White),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             decorationBox = { innerTextField ->
                 Box {
                     if (value.isEmpty() && !focused) {
                         Text(
                             text = stringResource(label),
-                            style = style.copy(color = Color.White.copy(alpha = 0.45f)),
+                            style = style.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            ),
                         )
                     }
                     innerTextField()
@@ -1788,8 +1807,8 @@ private fun ConfirmDialog(
     onDismissRequest = onDismiss,
     title = { Text(stringResource(title)) },
     text = { Text(stringResource(message)) },
-    confirmButton = { Button(onClick = onConfirm) { Text(stringResource(action)) } },
-    dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.routine_cancel)) } },
+    confirmButton = { AppButton(onClick = onConfirm) { Text(stringResource(action)) } },
+    dismissButton = { AppTextButton(onClick = onDismiss) { Text(stringResource(R.string.routine_cancel)) } },
 )
 
 internal fun targetSummary(

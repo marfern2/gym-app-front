@@ -3,6 +3,7 @@ package com.mar.gym.feature.profile.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,6 +46,10 @@ import com.mar.gym.feature.profile.model.ProfileActivityMetric
 import com.mar.gym.feature.profile.model.ProfileActivityPoint
 import com.mar.gym.feature.progress.model.HistoryRange
 import com.mar.gym.ui.components.TemporalChart
+import com.mar.gym.ui.components.AppDropdownMenuItem
+import com.mar.gym.ui.components.AppButtonStateLayerAlpha
+import com.mar.gym.ui.components.AppRowStateLayerAlpha
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.components.TemporalChartPoint
 import com.mar.gym.ui.components.TemporalChartStyle
 import java.math.BigDecimal
@@ -178,13 +182,25 @@ fun ProfileActivityChart(
 @Composable
 private fun PeriodSelector(range: HistoryRange, onRangeSelected: (HistoryRange) -> Unit) {
     var rangeMenu by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(12.dp)
     Box {
         Row(
-            Modifier.heightIn(min = 48.dp).clip(shape)
+            Modifier
+                .heightIn(min = 48.dp)
+                .appPressedState(
+                    interactionSource = interaction,
+                    shape = shape,
+                    maxOverlayAlpha = AppRowStateLayerAlpha,
+                )
+                .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                .clickable(role = Role.Button) { rangeMenu = true }
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.Button,
+                ) { rangeMenu = true }
                 .semantics { contentDescription = "Periodo: ${range.label()}" }
                 .testTag("activity_range_selector")
                 .padding(horizontal = 12.dp),
@@ -207,7 +223,7 @@ private fun PeriodSelector(range: HistoryRange, onRangeSelected: (HistoryRange) 
         }
         DropdownMenu(expanded = rangeMenu, onDismissRequest = { rangeMenu = false }) {
             HistoryRange.entries.forEach { option ->
-                DropdownMenuItem(
+                AppDropdownMenuItem(
                     text = {
                         Text(
                             option.label(),
@@ -225,14 +241,27 @@ private fun PeriodSelector(range: HistoryRange, onRangeSelected: (HistoryRange) 
 
 @Composable
 private fun MetricPill(selected: Boolean, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(14.dp)
     val background = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
     val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier
             .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .appPressedState(
+                interactionSource = interaction,
+                shape = shape,
+                maxOverlayAlpha = AppButtonStateLayerAlpha,
+            )
+            .clip(shape)
             .background(background)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick),
+            .selectable(
+                selected = selected,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(

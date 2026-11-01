@@ -2,6 +2,7 @@ package com.mar.gym.feature.exercises.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
@@ -34,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -145,17 +145,6 @@ fun ExerciseDetailScreen(
     var noteEditor by remember { mutableStateOf(false) }
     var noteDraft by remember { mutableStateOf("") }
     val units = preferences.copy(weight = effectiveWeightUnit(preferences.weight, options.weightUnitOverride))
-    val baseColors = MaterialTheme.colorScheme
-    val dark = baseColors.background.luminance() < 0.5f
-    val accent = if (dark) Color(0xFFB79AFF) else Color(0xFF6848BB)
-    MaterialTheme(
-        colorScheme = baseColors.copy(
-            primary = accent,
-            onPrimary = if (dark) Color(0xFF24133F) else Color.White,
-            primaryContainer = if (dark) Color(0xFF34264F) else Color(0xFFE9DFFF),
-            onPrimaryContainer = if (dark) Color(0xFFEBDDFF) else Color(0xFF2E175B),
-        ),
-    ) {
     Scaffold(modifier.fillMaxSize(), topBar = {
         Column {
             CenterAlignedTopAppBar(
@@ -170,18 +159,18 @@ fun ExerciseDetailScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("exercise-back")) {
+                    AppIconButton(onClick = onBack, modifier = Modifier.testTag("exercise-back")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver",
                             modifier = Modifier.size(22.dp))
                     }
                 },
                 actions = {
                     if (detail != null) {
-                        IconButton({ onShare(detail.name) }, Modifier.testTag("exercise-share")) {
+                        AppIconButton({ onShare(detail.name) }, Modifier.testTag("exercise-share")) {
                             Icon(Icons.Default.Share, contentDescription = "Compartir ejercicio",
                                 modifier = Modifier.size(21.dp))
                         }
-                        IconButton({ sheet = "menu" }, Modifier.testTag("exercise-menu")) {
+                        AppIconButton({ sheet = "menu" }, Modifier.testTag("exercise-menu")) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Más opciones",
                                 modifier = Modifier.size(23.dp))
                         }
@@ -210,8 +199,12 @@ fun ExerciseDetailScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)) },
             ) {
                 ExerciseDetailTab.entries.forEach { tab ->
+                    val interaction = remember(tab) { MutableInteractionSource() }
                     Tab(options.tab == tab, { onSelectTab(tab) },
-                        Modifier.height(48.dp).testTag("exercise-tab-${tab.name}"),
+                        Modifier
+                            .height(48.dp)
+                            .appPressedState(interaction)
+                            .testTag("exercise-tab-${tab.name}"),
                         content = {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(when (tab) {
@@ -229,6 +222,7 @@ fun ExerciseDetailScreen(
                         },
                         selectedContentColor = MaterialTheme.colorScheme.primary,
                         unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        interactionSource = interaction,
                     )
                 }
                 }
@@ -309,15 +303,14 @@ fun ExerciseDetailScreen(
         title = { Text("Nota del ejercicio") },
         text = { TextField(noteDraft, { noteDraft = it }, Modifier.fillMaxWidth().testTag("exercise-note-input"),
             placeholder = { Text("Añade una nota") }, minLines = 3) },
-        confirmButton = { TextButton({ onSaveNote(noteDraft); noteEditor = false }) { Text("Guardar") } },
+        confirmButton = { AppTextButton({ onSaveNote(noteDraft); noteEditor = false }) { Text("Guardar") } },
         dismissButton = {
             Row {
-                if (options.note != null) TextButton({ onSaveNote(null); noteEditor = false }) { Text("Eliminar") }
-                TextButton({ noteEditor = false }) { Text("Cancelar") }
+                if (options.note != null) AppTextButton({ onSaveNote(null); noteEditor = false }) { Text("Eliminar") }
+                AppTextButton({ noteEditor = false }) { Text("Cancelar") }
             }
         },
     )
-    }
 }
 
 @Composable
@@ -337,9 +330,16 @@ private fun SheetAction(
     onClick: () -> Unit,
 ) {
     val color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val interaction = remember { MutableInteractionSource() }
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(tag)
         .semantics { this.selected = selected }
-        .clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
+        .appPressedState(
+            interactionSource = interaction,
+            overlayColor = color,
+            maxOverlayAlpha = if (destructive) AppDestructiveStateLayerAlpha else AppRowStateLayerAlpha,
+        )
+        .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+        .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(20.dp),
             tint = if (destructive) color else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -373,7 +373,7 @@ private fun SummaryTab(
         item { ExerciseIdentity(detail) }
         if (state is ExerciseDetailUiState.Conflict) item {
             Text(stringResource(R.string.exercise_conflict_message), color = MaterialTheme.colorScheme.error)
-            TextButton(onReload) { Text(stringResource(R.string.exercise_reload_server)) }
+            AppTextButton(onReload) { Text(stringResource(R.string.exercise_reload_server)) }
         }
         item { SectionDivider() }
         item {
@@ -381,7 +381,7 @@ private fun SummaryTab(
                 SectionHeading("Progreso", Modifier.weight(1f))
                 var expanded by remember { mutableStateOf(false) }
                 Box {
-                    TextButton({ expanded = true }, Modifier.testTag("exercise-range"),
+                    AppTextButton({ expanded = true }, Modifier.testTag("exercise-range"),
                         contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp)) {
                         Text(when (options.range) {
                             HistoryRange.ThreeMonths -> "3 meses"
@@ -393,7 +393,7 @@ private fun SummaryTab(
                         listOf(HistoryRange.ThreeMonths to "Últimos 3 meses",
                             HistoryRange.OneYear to "Último año", HistoryRange.AllTime to "Todo")
                             .forEach { (range, label) ->
-                                DropdownMenuItem(text = { Text(label) }, onClick = {
+                                AppDropdownMenuItem(text = { Text(label) }, onClick = {
                                     onSelectRange(range); expanded = false
                                 })
                             }
@@ -451,16 +451,26 @@ private fun SummaryTab(
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 metrics.forEach { choice ->
+                    val interaction = remember(choice) { MutableInteractionSource() }
+                    val chipShape = RoundedCornerShape(10.dp)
                     FilterChip(choice == metric, { onSelectMetric(choice) },
                         label = { Text(choice.label, style = MaterialTheme.typography.labelMedium) },
-                        modifier = Modifier.height(36.dp).testTag("exercise-metric-${choice.name}"),
-                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .appPressedState(
+                                interactionSource = interaction,
+                                shape = chipShape,
+                                maxOverlayAlpha = AppButtonStateLayerAlpha,
+                            )
+                            .testTag("exercise-metric-${choice.name}"),
+                        shape = chipShape,
                         colors = FilterChipDefaults.filterChipColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         ),
+                        interactionSource = interaction,
                     )
                 }
             }
@@ -469,7 +479,7 @@ private fun SummaryTab(
             Column {
                 Text("Gráfico basado en sesiones cargadas.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onLoadMore, Modifier.testTag("exercise-summary-more")) { Text("Cargar más sesiones") }
+                AppTextButton(onLoadMore, Modifier.testTag("exercise-summary-more")) { Text("Cargar más sesiones") }
             }
         }
         item { SectionDivider() }
@@ -615,7 +625,7 @@ private fun HistoryTab(progress: ExerciseProgressUiState, units: UnitPreferences
             Message("No se pudo cargar más historial.", onRetry)
         }
         else if (progress.hasMore && progress.sessions.isNotEmpty()) item {
-            TextButton(onLoadMore, Modifier.fillMaxWidth().testTag("exercise-history-more")) { Text("Cargar más") }
+            AppTextButton(onLoadMore, Modifier.fillMaxWidth().testTag("exercise-history-more")) { Text("Cargar más") }
         }
     }
 }
@@ -662,7 +672,7 @@ private fun InstructionsTab(detail: ExerciseTemplateDetail, note: String?,
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
             attribution.url?.let { url -> item {
                 var failed by remember { mutableStateOf(false) }
-                TextButton({ failed = !onOpenAttribution(url) }) { Text("Abrir fuente") }
+                AppTextButton({ failed = !onOpenAttribution(url) }) { Text("Abrir fuente") }
                 if (failed) Text(stringResource(R.string.exercise_media_attribution_open_error),
                     color = MaterialTheme.colorScheme.error)
             } }
@@ -679,7 +689,7 @@ private fun InstructionsTab(detail: ExerciseTemplateDetail, note: String?,
                     lineHeight = 22.sp)
             }
         }
-        item { TextButton(onEditNote, Modifier.testTag("exercise-note-action")) {
+        item { AppTextButton(onEditNote, Modifier.testTag("exercise-note-action")) {
             Text(if (note == null) "+ Añadir nota" else "Editar nota")
         } }
     }
@@ -803,7 +813,7 @@ private fun Message(message: String, retry: (() -> Unit)?, modifier: Modifier = 
         Icon(Icons.Default.ErrorOutline, null, Modifier.size(26.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(message, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-        if (retry != null) TextButton(retry) { Text("Reintentar") }
+        if (retry != null) AppTextButton(retry) { Text("Reintentar") }
     }
 }
 

@@ -2,7 +2,6 @@ package com.mar.gym.ui.components
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -42,7 +41,7 @@ fun AppTopBar(
         },
         navigationIcon = {
             if (onBack != null) {
-                IconButton(onClick = onBack) {
+                AppIconButton(onClick = onBack) {
                     Icon(
                         imageVector = navigationIcon,
                         contentDescription = backContentDescription,

@@ -24,7 +24,6 @@ import com.mar.gym.feature.library.ui.LibraryUiState
 import com.mar.gym.feature.routines.model.RoutineEtag
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState
 import com.mar.gym.ui.theme.GYmAppTheme
-import java.time.Clock
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -390,7 +389,7 @@ class TrainingScreenTest {
             TrainingScreen(
                 activeWorkout = ActiveWorkoutUiState.NoActiveWorkout(),
                 library = LibraryUiState.Content(data), message = null, busy = busy,
-                clock = Clock.systemUTC(), onContinueWorkout = {}, onStartEmpty = onStartEmpty,
+                onStartEmpty = onStartEmpty,
                 onRetryWorkout = {}, onOpenRoutine = onOpen, onStartRoutine = onStart,
                 onEditRoutine = onEdit, onDuplicateRoutine = onDuplicate,
                 onShareRoutine = onShare,
