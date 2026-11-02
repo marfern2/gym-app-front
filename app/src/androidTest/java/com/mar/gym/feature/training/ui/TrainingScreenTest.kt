@@ -160,6 +160,18 @@ class TrainingScreenTest {
         composeRule.onNodeWithContentDescription("+ Empezar Entrenamiento Vacío").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(true, emptyStarted) }
         composeRule.onNodeWithTag("training-new-routine").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("routine-destination-sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("routine-destination-handle", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Elegir carpeta").assertIsDisplayed()
+        val folderTop = composeRule.onNodeWithTag("routine-destination-$folderId")
+            .fetchSemanticsNode().boundsInRoot.top
+        val rootTop = composeRule.onNodeWithTag("routine-destination-root")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue(folderTop < rootTop)
+        composeRule.onNodeWithContentDescription("Crear rutina en Pata").performClick()
+        composeRule.runOnIdle { assertEquals(folderId, createdIn) }
+        composeRule.onNodeWithTag("training-new-routine").performClick()
+        composeRule.onNodeWithContentDescription("Crear rutina en Mis rutinas").performClick()
         composeRule.runOnIdle { assertEquals(null, createdIn) }
         composeRule.onNodeWithTag("training-new-routine-icon", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("training-explore").assertIsDisplayed().assertIsNotEnabled()
@@ -179,6 +191,41 @@ class TrainingScreenTest {
         composeRule.onNodeWithContentDescription("Abrir Fuerza").assertIsDisplayed()
         composeRule.onNodeWithTag("training-routines-header").performClick()
         composeRule.onNodeWithContentDescription("Abrir Fuerza").assertDoesNotExist()
+    }
+
+    @Test fun newRoutineWithoutFoldersOpensRootDirectly() {
+        var createdIn: String? = "unchanged"
+        show(
+            LibraryResponse(emptyList(), emptyList(), emptyList()),
+            onCreateRoutine = { createdIn = it },
+        )
+
+        composeRule.onNodeWithTag("training-new-routine").performClick()
+
+        composeRule.onNodeWithTag("routine-destination-sheet").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(null, createdIn) }
+    }
+
+    @Test fun routineDestinationSheetClosesOnBackAndOutsideWithoutCreating() {
+        var createdIn: String? = "unchanged"
+        show(
+            LibraryResponse(
+                listOf(RoutineFolder(folderId, "Pata", 1, 0, now, now)),
+                emptyList(),
+                emptyList(),
+            ),
+            onCreateRoutine = { createdIn = it },
+        )
+        composeRule.onNodeWithTag("training-new-routine").performClick()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("routine-destination-sheet").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals("unchanged", createdIn) }
+
+        composeRule.onNodeWithTag("training-new-routine").performClick()
+        composeRule.onAllNodes(isRoot())[1]
+            .performTouchInput { click(androidx.compose.ui.geometry.Offset(8f, 8f)) }
+        composeRule.onNodeWithTag("routine-destination-sheet").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals("unchanged", createdIn) }
     }
 
     @Test fun routineMenuRetainsMoveDuplicateDeleteAndStart() {

@@ -1,5 +1,6 @@
 package com.mar.gym.feature.routines.ui
 
+import com.mar.gym.routineEditorViewModelKey
 import com.mar.gym.core.network.NetworkFailure
 import com.mar.gym.core.network.ProblemDetails
 import com.mar.gym.feature.exercises.data.ExerciseRepositoryResult
@@ -38,9 +39,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -285,10 +289,43 @@ class RoutineViewModelTest {
         assertTrue(viewModel.uiState.value is RoutineEditorUiState.ValidationError)
 
         viewModel.updateName("Rutina nueva")
+        val completed = async { viewModel.effects.first() }
+        runCurrent()
         viewModel.save(); runCurrent()
         assertTrue(viewModel.uiState.value is RoutineEditorUiState.Saved)
+        assertEquals(RoutineEditorEffect.SaveCompleted(ROUTINE_ID), completed.await())
+        assertNull(withTimeoutOrNull(1) { viewModel.effects.first() })
         assertFalse(viewModel.uiState.value.data.hasUnsavedChanges)
         assertEquals(1, repository.createRequests.size)
+    }
+
+    @Test
+    fun createRoutine_twice_withoutRestart_doesNotImmediatelyCloseSecondEditor() = runTest {
+        val repository = FakeRoutineRepository()
+        val firstEntryKey = routineEditorViewModelKey(null, entryId = 1)
+        val secondEntryKey = routineEditorViewModelKey(null, entryId = 2)
+        assertNotEquals(firstEntryKey, secondEntryKey)
+
+        val first = RoutineEditorViewModel(null, repository, FakeExerciseRepository(), SequentialIds())
+        first.updateName("Rutina A")
+        val firstCompleted = async { first.effects.first() }
+        runCurrent()
+        first.save()
+        runCurrent()
+        assertEquals(RoutineEditorEffect.SaveCompleted(ROUTINE_ID), firstCompleted.await())
+
+        val second = RoutineEditorViewModel(null, repository, FakeExerciseRepository(), SequentialIds())
+        assertTrue(second.uiState.value is RoutineEditorUiState.Editing)
+        assertEquals(RoutineDraft(), second.uiState.value.data.draft)
+        assertNull(withTimeoutOrNull(1) { second.effects.first() })
+
+        second.updateName("Rutina B")
+        val secondCompleted = async { second.effects.first() }
+        runCurrent()
+        second.save()
+        runCurrent()
+        assertEquals(RoutineEditorEffect.SaveCompleted(ROUTINE_ID), secondCompleted.await())
+        assertEquals(listOf("Rutina A", "Rutina B"), repository.createRequests.map { it.name })
     }
 
     @Test
@@ -318,6 +355,7 @@ class RoutineViewModelTest {
         assertTrue(viewModel.uiState.value.data.hasUnsavedChanges)
         assertEquals("Cambio local", viewModel.uiState.value.data.draft.name)
         assertEquals(1, repository.replaceRequests)
+        assertNull(withTimeoutOrNull(1) { viewModel.effects.first() })
 
         viewModel.reloadServerVersion(); runCurrent()
         assertEquals("Rutina", viewModel.uiState.value.data.draft.name)

@@ -2,12 +2,14 @@ package com.mar.gym.feature.routines.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -99,12 +101,22 @@ class RoutineScreensTest {
             state,
             onOpenPicker = { pickerOpened = true },
             onSave = { saved = true },
+            onNameChanged = { value ->
+                state = RoutineEditorUiState.Editing(
+                    RoutineEditorData(draft = RoutineDraft(name = value), hasUnsavedChanges = true),
+                )
+            },
             stateProvider = { state },
         )
-        composeRule.onNodeWithText("La rutina no contiene ejercicios.").assertIsDisplayed()
+        val rootCenter = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.center.x
+        val titleCenter = composeRule.onNodeWithText("Crear rutina")
+            .fetchSemanticsNode().boundsInRoot.center.x
+        assertEquals(rootCenter, titleCenter, 1f)
+        composeRule.onNodeWithText("Empieza agregando un ejercicio a tu rutina.").assertIsDisplayed()
+        composeRule.onNodeWithTag("save_routine").assertIsNotEnabled()
         composeRule.onNodeWithTag("add_exercises").performClick()
         composeRule.onNodeWithTag("routine_name").performTextInput("Rutina")
-        composeRule.onNodeWithTag("save_routine").performScrollTo().performClick()
+        composeRule.onNodeWithTag("save_routine").assertIsEnabled().performClick()
         composeRule.runOnIdle {
             assertEquals(true, pickerOpened)
             assertEquals(true, saved)
@@ -134,7 +146,10 @@ class RoutineScreensTest {
         composeRule.onNodeWithText("KG").assertDoesNotExist()
         composeRule.onNodeWithText("REPS").assertDoesNotExist()
         composeRule.onNodeWithText("Añadir serie").performScrollTo().performClick()
-        composeRule.onNodeWithText("Eliminar serie").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("Opciones de la serie 1")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithText("Eliminar serie").performClick()
         composeRule.runOnIdle {
             assertEquals("exercise-local", addedTo)
             assertEquals("exercise-local" to "set-local", removed)
@@ -186,6 +201,53 @@ class RoutineScreensTest {
     }
 
     @Test
+    fun exerciseNoteIsEditedAsRoutineExerciseData() {
+        val draftExercise = exercise(ExerciseType.BodyweightReps).copy(notes = "")
+        var updatedNotes: String? = null
+        setEditor(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(name = "Rutina", exercises = listOf(draftExercise)),
+            )),
+            onUpdateExercise = { _, transform -> updatedNotes = transform(draftExercise).notes },
+        )
+
+        composeRule.onNodeWithTag("routine_note_exercise-local").performScrollTo().performClick()
+        composeRule.onNodeWithTag("routine_note_input_exercise-local").performTextInput("Pausa arriba")
+        composeRule.onNodeWithText("Guardar nota").performClick()
+
+        composeRule.runOnIdle { assertEquals("Pausa arriba", updatedNotes) }
+    }
+
+    @Test
+    fun columnsAdaptToBodyweightAndDistanceDurationTypes() {
+        var state by mutableStateOf<RoutineEditorUiState>(
+            RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(
+                    name = "Tipos",
+                    exercises = listOf(exercise(ExerciseType.BodyweightReps)),
+                ),
+            )),
+        )
+        setEditor(state, stateProvider = { state })
+        composeRule.onNodeWithText("REPS").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("KG").assertDoesNotExist()
+        composeRule.onNodeWithText("TIEMPO").assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            state = RoutineEditorUiState.Editing(RoutineEditorData(
+                draft = RoutineDraft(
+                    name = "Tipos",
+                    exercises = listOf(exercise(ExerciseType.DistanceDuration)),
+                ),
+            ))
+        }
+        composeRule.onNodeWithText("TIEMPO").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("KM").assertIsDisplayed()
+        composeRule.onNodeWithText("REPS").assertDoesNotExist()
+        composeRule.onNodeWithText("KG").assertDoesNotExist()
+    }
+
+    @Test
     fun editorShowsGroupingAndExposesAccessibleCreateAndDissolveActions() {
         val first = exercise(ExerciseType.Duration).copy(
             localId = "first",
@@ -212,7 +274,8 @@ class RoutineScreensTest {
         )
 
         composeRule.onNodeWithTag("routine_superset_first").assertIsDisplayed()
-        composeRule.onNodeWithTag("routine_superset_dissolve_first").performScrollTo().performClick()
+        composeRule.onNodeWithTag("routine_exercise_menu_first").performScrollTo().performClick()
+        composeRule.onNodeWithTag("routine_superset_dissolve_first").performClick()
         composeRule.runOnIdle { assertEquals("first", dissolved) }
 
         composeRule.runOnIdle {
@@ -223,7 +286,8 @@ class RoutineScreensTest {
                 ),
             ))
         }
-        composeRule.onNodeWithTag("routine_group_next_first").performScrollTo().performClick()
+        composeRule.onNodeWithTag("routine_exercise_menu_first").performScrollTo().performClick()
+        composeRule.onNodeWithTag("routine_group_next_first").performClick()
         composeRule.runOnIdle { assertEquals("first" to 1, grouped) }
     }
 
@@ -243,7 +307,7 @@ class RoutineScreensTest {
         composeRule.onNodeWithText("La rutina ha cambiado").assertIsDisplayed()
         composeRule.onNodeWithText("Si recargas, perderás los cambios locales sin guardar.").assertIsDisplayed()
         composeRule.onNodeWithText("Recargar versión del servidor").performClick()
-        composeRule.onNodeWithContentDescription("Volver").performClick()
+        composeRule.onNodeWithTag("cancel_routine_editor").performClick()
         composeRule.onNodeWithText("Tienes cambios sin guardar. Si sales, se perderán.").assertIsDisplayed()
         composeRule.onNodeWithText("Descartar y salir").performClick()
         composeRule.runOnIdle { assertEquals(1, reloads); assertEquals(1, exited) }
@@ -435,6 +499,7 @@ class RoutineScreensTest {
         onBack: () -> Unit = {},
         onOpenPicker: () -> Unit = {},
         onSave: () -> Unit = {},
+        onNameChanged: (String) -> Unit = {},
         onAddSet: (String) -> Unit = {},
         onRemoveSet: (String, String) -> Unit = { _, _ -> },
         onReload: () -> Unit = {},
@@ -451,7 +516,7 @@ class RoutineScreensTest {
                     preferences = preferences,
                     onBack = onBack,
                     onOpenPicker = onOpenPicker,
-                    onNameChanged = {},
+                    onNameChanged = onNameChanged,
                     onDescriptionChanged = {},
                     onRemoveExercise = {},
                     onMoveExercise = { _, _ -> },

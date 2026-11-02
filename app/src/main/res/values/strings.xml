@@ -67,14 +67,24 @@
     <string name="routine_cancel">Cancelar</string>
     <string name="routine_back">Volver</string>
 
-    <string name="routine_editor_new_title">Nueva rutina</string>
+    <string name="routine_editor_new_title">Crear rutina</string>
     <string name="routine_editor_title">Editar rutina</string>
+    <string name="routine_title_placeholder">Título de la rutina</string>
+    <string name="routine_add_description">Añadir descripción</string>
+    <string name="routine_description_optional">Descripción opcional</string>
     <string name="routine_name_label">Nombre</string>
     <string name="routine_description_label">Descripción</string>
     <string name="routine_exercises_title">Ejercicios</string>
     <string name="routine_add_exercises">Añadir ejercicios</string>
+    <string name="routine_add_exercise">Agregar ejercicio</string>
+    <string name="routine_empty_editor_message">Empieza agregando un ejercicio a tu rutina.</string>
     <string name="routine_no_exercises">La rutina no contiene ejercicios.</string>
     <string name="routine_notes_label">Notas</string>
+    <string name="routine_note_action">Nota</string>
+    <string name="routine_note_added">Nota añadida</string>
+    <string name="routine_note_title">Nota del ejercicio</string>
+    <string name="routine_note_placeholder">Añade indicaciones para este ejercicio en la rutina</string>
+    <string name="routine_note_save">Guardar nota</string>
     <string name="rest_time_title">Tiempo de descanso</string>
     <string name="rest_time_done">Listo</string>
     <string name="rest_time_button">Descanso %1$s</string>
@@ -82,6 +92,8 @@
     <string name="routine_move_up">Mover arriba</string>
     <string name="routine_move_down">Mover abajo</string>
     <string name="routine_remove_exercise">Eliminar ejercicio</string>
+    <string name="routine_reorder_exercise">Mantén pulsado y arrastra para reordenar</string>
+    <string name="routine_exercise_options">Opciones de %1$s</string>
     <string name="superset_badge">Superserie %1$d</string>
     <string name="superset_group_previous">Agrupar con anterior</string>
     <string name="superset_group_next">Agrupar con siguiente</string>
@@ -92,6 +104,7 @@
     <string name="routine_sets_title">Series previstas</string>
     <string name="routine_add_set">Añadir serie</string>
     <string name="routine_remove_set">Eliminar serie</string>
+    <string name="routine_set_options">Opciones de la serie %1$d</string>
     <string name="routine_set_number">Serie %1$d</string>
     <string name="routine_set_type">Tipo de serie</string>
     <string name="routine_set_normal">Normal</string>
@@ -292,6 +305,8 @@
 
     <string name="exercise_picker_title_single">Seleccionar ejercicio</string>
     <string name="exercise_picker_title_multiple">Seleccionar ejercicios</string>
+    <string name="exercise_picker_add_title">Agregar ejercicio</string>
+    <string name="exercise_add_selected">Agregar (%1$d)</string>
 
     <string name="exercise_editor_title_create">Crear ejercicio personalizado</string>
     <string name="exercise_editor_title_edit">Editar ejercicio personalizado</string>
