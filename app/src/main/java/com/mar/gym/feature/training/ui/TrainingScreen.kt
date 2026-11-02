@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -174,6 +176,7 @@ fun TrainingScreen(
     var deleteFolder by remember { mutableStateOf<RoutineFolder?>(null) }
     var deleteRoutine by remember { mutableStateOf<LibraryRoutine?>(null) }
     var moveRoutine by remember { mutableStateOf<LibraryRoutine?>(null) }
+    var chooseRoutineDestination by remember { mutableStateOf(false) }
     LaunchedEffect(busy, message, folderSaving) {
         if (folderSaving && !busy) {
             folderSaving = false
@@ -379,7 +382,10 @@ fun TrainingScreen(
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppButton(onClick = { onCreateRoutine(null) },
+                AppButton(onClick = {
+                    val folders = data?.folders.orEmpty()
+                    if (folders.isEmpty()) onCreateRoutine(null) else chooseRoutineDestination = true
+                },
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("training-new-routine"),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp),
@@ -545,6 +551,16 @@ fun TrainingScreen(
         }
     }
     } }
+    if (chooseRoutineDestination) {
+        RoutineDestinationSheet(
+            folders = data?.folders.orEmpty().sortedBy { it.position },
+            onDismiss = { chooseRoutineDestination = false },
+            onDestinationSelected = { folderId ->
+                chooseRoutineDestination = false
+                onCreateRoutine(folderId)
+            },
+        )
+    }
     if (createFolder || renameFolder != null) {
         val folder = renameFolder
         AlertDialog(onDismissRequest = { if (!busy) { createFolder = false; renameFolder = null } },
@@ -576,6 +592,131 @@ fun TrainingScreen(
                 AppTextButton(onClick = { onMoveRoutine(routine.id, folder.id); moveRoutine = null }) { Text(folder.name) }
             }
         } }, confirmButton = { AppTextButton(onClick = { moveRoutine = null }) { Text("Cancelar") } }) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RoutineDestinationSheet(
+    folders: List<RoutineFolder>,
+    onDismiss: () -> Unit,
+    onDestinationSelected: (String?) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("routine-destination-sheet"),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        scrimColor = Color.Black.copy(alpha = 0.48f),
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 620.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(50),
+                        )
+                        .testTag("routine-destination-handle"),
+                )
+            }
+            Text(
+                text = "Elegir carpeta",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                    .testTag("routine-destination-title")
+                    .semantics { heading() },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                tonalElevation = 0.dp,
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    val destinations = folders.map { it.id to it.name } + (null to "Mis rutinas")
+                    destinations.forEachIndexed { index, (folderId, name) ->
+                        RoutineDestinationRow(
+                            name = name,
+                            testTag = folderId?.let { "routine-destination-$it" }
+                                ?: "routine-destination-root",
+                            onClick = { onDestinationSelected(folderId) },
+                        )
+                        if (index < destinations.lastIndex) {
+                            HorizontalDivider(
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutineDestinationRow(
+    name: String,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .testTag(testTag)
+            .semantics { contentDescription = "Crear rutina en $name" }
+            .appPressedState(
+                interactionSource = interaction,
+                shape = RoundedCornerShape(10.dp),
+                maxOverlayAlpha = AppRowStateLayerAlpha,
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Folder,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = name,
+            modifier = Modifier.padding(start = 14.dp).weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {

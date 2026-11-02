@@ -25,5 +25,6 @@ sealed interface RoutineEditorUiState {
 }
 
 sealed interface RoutineEditorEffect {
+    data class SaveCompleted(val routineId: String) : RoutineEditorEffect
     data class OpenRoutine(val routineId: String) : RoutineEditorEffect
 }

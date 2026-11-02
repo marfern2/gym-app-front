@@ -2,6 +2,7 @@ package com.mar.gym.feature.exercises.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,9 +76,13 @@ import com.mar.gym.feature.exercises.model.ExerciseType
 import com.mar.gym.feature.exercises.model.MovementPattern
 import com.mar.gym.feature.exercises.model.MuscleGroup
 import com.mar.gym.ui.components.AppTopBar
+import com.mar.gym.ui.components.AppButton
+import com.mar.gym.ui.components.AppIconButton
+import com.mar.gym.ui.components.AppTextButton
 import com.mar.gym.ui.components.EmptyState
 import com.mar.gym.ui.components.LoadingState
 import com.mar.gym.ui.components.PrimaryButton
+import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.theme.GYmAppTheme
 
 @Composable
@@ -172,13 +177,8 @@ fun ExerciseCatalogScreen(
         )
     }
 
-    val title = if (pickerMode && data.selectionMode == ExerciseSelectionMode.Single) {
-        stringResource(R.string.exercise_picker_title_single)
-    } else if (pickerMode) {
-        stringResource(R.string.exercise_picker_title_multiple)
-    } else {
-        stringResource(R.string.exercise_catalog_title)
-    }
+    val title = if (pickerMode) stringResource(R.string.exercise_picker_add_title)
+        else stringResource(R.string.exercise_catalog_title)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -187,8 +187,22 @@ fun ExerciseCatalogScreen(
                 title = title,
                 onBack = onBack,
                 actions = {
-                    if (!pickerMode) {
-                        TextButton(
+                    if (pickerMode) {
+                        AppTextButton(
+                            onClick = onConfirm,
+                            enabled = data.selectedIds.isNotEmpty(),
+                            modifier = Modifier.testTag("exercise-picker-confirm"),
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.exercise_add_selected,
+                                    data.selectedIds.size,
+                                ),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    } else {
+                        AppTextButton(
                             onClick = onCreateCustom,
                             modifier = Modifier.testTag("exercise-create-custom"),
                         ) {
@@ -293,30 +307,14 @@ fun ExerciseCatalogScreen(
             }
 
             if (pickerMode) {
-                Row(
+                Text(
+                    text = stringResource(R.string.exercise_selected_count, data.selectedIds.size),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(
-                            R.string.exercise_selected_count,
-                            data.selectedIds.size,
-                        ),
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onCancel) {
-                        Text(stringResource(R.string.exercise_cancel))
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        enabled = data.selectedIds.isNotEmpty(),
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Text(stringResource(R.string.exercise_confirm))
-                    }
-                }
+                        .padding(top = 8.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             CatalogBody(
@@ -436,6 +434,7 @@ private fun ExerciseSummaryRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -445,7 +444,12 @@ private fun ExerciseSummaryRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 76.dp)
-                .clickable(onClick = onClick)
+                .appPressedState(interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -534,7 +538,7 @@ private fun CatalogSearchField(
             null
         } else {
             {
-                IconButton(onClick = { onValueChange("") }) {
+                AppIconButton(onClick = { onValueChange("") }) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(R.string.exercise_clear_search),
@@ -564,7 +568,7 @@ private fun CatalogFilterButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    AppButton(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(

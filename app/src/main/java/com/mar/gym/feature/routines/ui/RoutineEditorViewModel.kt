@@ -125,7 +125,7 @@ class RoutineEditorViewModel(
                 }
                 repository.replace(data.draft, etag)
             }
-            handleWrite(result)
+            handleWrite(result, emitSaveCompleted = true)
         }
     }
 
@@ -164,13 +164,19 @@ class RoutineEditorViewModel(
         }
     }
 
-    private fun handleWrite(result: RoutineRepositoryResult<com.mar.gym.feature.routines.model.RoutineDocument>) {
+    private suspend fun handleWrite(
+        result: RoutineRepositoryResult<com.mar.gym.feature.routines.model.RoutineDocument>,
+        emitSaveCompleted: Boolean = false,
+    ) {
         when (result) {
             is RoutineRepositoryResult.Success -> {
                 val draft = RoutineDraft.from(result.value, ids, unitPreferences)
                 baseline = draft
                 _uiState.value = RoutineEditorUiState.Saved(RoutineEditorData(draft, result.value.etag))
                 retryAction = null
+                if (emitSaveCompleted) {
+                    _effects.emit(RoutineEditorEffect.SaveCompleted(result.value.detail.id))
+                }
             }
             is RoutineRepositoryResult.Failure -> {
                 val error = result.error.toRoutineUiError()

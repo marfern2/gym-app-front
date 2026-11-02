@@ -131,7 +131,7 @@ class ExerciseScreensTest {
             onToggleSelection = { selectedId = it },
         )
 
-        composeRule.onNodeWithText("Seleccionar ejercicio").assertIsDisplayed()
+        composeRule.onNodeWithText("Agregar ejercicio").assertIsDisplayed()
         composeRule.onNodeWithText("Press de banca").performClick()
         assertEquals(ID, selectedId)
     }
@@ -153,9 +153,9 @@ class ExerciseScreensTest {
             pickerMode = true,
             stateProvider = { state },
         )
-        composeRule.onNodeWithText("Seleccionar ejercicios").assertIsDisplayed()
+        composeRule.onNodeWithText("Agregar ejercicio").assertIsDisplayed()
         composeRule.onNodeWithText("Seleccionados: 1").assertIsDisplayed()
-        composeRule.onNodeWithText("Confirmar").assertIsEnabled()
+        composeRule.onNodeWithText("Agregar (1)").assertIsEnabled()
 
         composeRule.runOnIdle {
             state = ExerciseCatalogUiState.Content(
@@ -166,7 +166,7 @@ class ExerciseScreensTest {
                 )
             )
         }
-        composeRule.onNodeWithText("Confirmar").assertIsNotEnabled()
+        composeRule.onNodeWithText("Agregar (0)").assertIsNotEnabled()
     }
 
     @Test

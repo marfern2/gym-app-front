@@ -160,6 +160,15 @@ private const val TAB_HOME = "home"
 private const val TAB_TRAINING = "training"
 private const val TAB_PROFILE = "profile"
 
+internal fun routineEditorViewModelKey(routineId: String?, entryId: Int): String =
+    "routine-editor-$entryId-${routineId ?: "new"}"
+
+internal fun routineExercisePickerViewModelKey(
+    routineId: String?,
+    editorEntryId: Int,
+    pickerRequestId: Int,
+): String = "routine-picker-$editorEntryId-$pickerRequestId-${routineId ?: "new"}"
+
 class MainActivity : ComponentActivity() {
     private lateinit var userSessionViewModels: UserSessionViewModelScope
     private val shareLinks by lazy {
@@ -270,10 +279,12 @@ class MainActivity : ComponentActivity() {
         var detailId by rememberSaveable { mutableStateOf<String?>(null) }
         var exerciseEditorId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineId by rememberSaveable { mutableStateOf<String?>(null) }
+        var routineEditorEntryId by rememberSaveable { mutableStateOf(0) }
         var pendingRoutineFolderId by rememberSaveable { mutableStateOf<String?>(null) }
         var routineEditorOrigin by rememberSaveable { mutableStateOf<String?>(null) }
         var routineViewerOrigin by rememberSaveable { mutableStateOf(TAB_TRAINING) }
         var routinePickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+        var routinePickerRequestId by rememberSaveable { mutableStateOf(0) }
         var workoutPickerInitialIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
         var workoutExerciseToReplaceId by rememberSaveable { mutableStateOf<String?>(null) }
         var workoutReplacementPickerRequest by rememberSaveable { mutableStateOf(0) }
@@ -586,6 +597,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onEditRoutine = { id ->
                                 routineId = id
+                                routineEditorEntryId++
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
@@ -595,6 +607,7 @@ class MainActivity : ComponentActivity() {
                             onCreateRoutine = { folderId ->
                                 pendingRoutineFolderId = folderId
                                 routineId = null
+                                routineEditorEntryId++
                                 routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
                                 deep = DEEP_ROUTINE_EDITOR
                             },
@@ -660,6 +673,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onEditRoutine = { id ->
                         routineId = id
+                        routineEditorEntryId++
                         routineEditorOrigin = DEEP_LIBRARY
                         deep = DEEP_ROUTINE_EDITOR
                     },
@@ -765,6 +779,7 @@ class MainActivity : ComponentActivity() {
                                 tab = if (routineViewerOrigin == DEEP_SHARED_ROUTINE) TAB_HOME else TAB_TRAINING
                             },
                             onEdit = {
+                                routineEditorEntryId++
                                 routineEditorOrigin = ROUTINE_ORIGIN_VIEWER
                                 deep = DEEP_ROUTINE_EDITOR
                             },
@@ -805,7 +820,9 @@ class MainActivity : ComponentActivity() {
                 DEEP_ROUTINE_EDITOR -> {
                     val currentId = routineId
                     RoutineEditorRoute(
-                        viewModel = remember(currentId) { routineEditorViewModel(currentId) },
+                        viewModel = remember(currentId, routineEditorEntryId) {
+                            routineEditorViewModel(currentId, routineEditorEntryId)
+                        },
                         preferences = unitPreferences,
                         onBack = {
                             libraryViewModel().refresh()
@@ -823,10 +840,12 @@ class MainActivity : ComponentActivity() {
                         },
                         onOpenPicker = { ids ->
                             routinePickerInitialIds = ids.toList()
+                            routinePickerRequestId++
                             deep = DEEP_ROUTINE_PICKER
                         },
                         onOpenRoutine = { id ->
                             routineId = id
+                            routineEditorEntryId++
                             deep = DEEP_ROUTINE_EDITOR
                         },
                         onSaved = { id ->
@@ -834,6 +853,18 @@ class MainActivity : ComponentActivity() {
                             pendingRoutineFolderId = null
                             if (destination != null) libraryViewModel().placeNewRoutine(id, destination)
                             else libraryViewModel().refresh()
+                            routineId = id
+                            when (routineEditorOrigin) {
+                                ROUTINE_ORIGIN_VIEWER -> {
+                                    refreshRoutineViewer(id)
+                                    deep = DEEP_ROUTINE_VIEWER
+                                }
+                                DEEP_LIBRARY -> deep = DEEP_LIBRARY
+                                else -> {
+                                    deep = null
+                                    tab = TAB_TRAINING
+                                }
+                            }
                         },
                         onStartRoutine = { id ->
                             pendingRoutineWorkoutId = id
@@ -848,14 +879,24 @@ class MainActivity : ComponentActivity() {
                 }
                 DEEP_ROUTINE_PICKER -> {
                     val currentId = routineId
-                    val pickerViewModel = remember(currentId, routinePickerInitialIds) {
-                        exercisePickerViewModel(routinePickerInitialIds.toSet(), currentId)
+                    val pickerViewModel = remember(
+                        currentId,
+                        routineEditorEntryId,
+                        routinePickerRequestId,
+                        routinePickerInitialIds,
+                    ) {
+                        exercisePickerViewModel(
+                            routinePickerInitialIds.toSet(),
+                            currentId,
+                            routineEditorEntryId,
+                            routinePickerRequestId,
+                        )
                     }
                     ExercisePickerRoute(
                         viewModel = pickerViewModel,
                         onResult = { outcome ->
                             if (outcome is ExercisePickerOutcome.Confirmed) {
-                                routineEditorViewModel(currentId).addSelectedExercises(
+                                routineEditorViewModel(currentId, routineEditorEntryId).addSelectedExercises(
                                     outcome.result.selectedExerciseTemplateIds
                                 )
                             }
@@ -1290,14 +1331,17 @@ class MainActivity : ComponentActivity() {
         LibraryViewModelFactory(AppContainer.libraryRepository, AppContainer.routineRepository),
     )[LibraryViewModel::class.java]
 
-    private fun routineEditorViewModel(routineId: String?): RoutineEditorViewModel = ViewModelProvider(
+    private fun routineEditorViewModel(
+        routineId: String?,
+        entryId: Int,
+    ): RoutineEditorViewModel = ViewModelProvider(
         userSessionViewModels,
         RoutineEditorViewModelFactory(
             routineId = routineId,
             repository = AppContainer.routineRepository,
             exerciseRepository = AppContainer.exerciseTemplateRepository,
         ),
-    )["routine-editor-${routineId ?: "new"}", RoutineEditorViewModel::class.java]
+    )[routineEditorViewModelKey(routineId, entryId), RoutineEditorViewModel::class.java]
 
     private fun routineViewerViewModel(routineId: String): RoutineViewerViewModel = ViewModelProvider(
         userSessionViewModels,
@@ -1311,6 +1355,8 @@ class MainActivity : ComponentActivity() {
     private fun exercisePickerViewModel(
         initialIds: Set<String>,
         routineId: String?,
+        editorEntryId: Int,
+        pickerRequestId: Int,
     ): ExerciseCatalogViewModel = ViewModelProvider(
         userSessionViewModels,
         ExerciseCatalogViewModelFactory(
@@ -1320,7 +1366,10 @@ class MainActivity : ComponentActivity() {
                 initiallySelectedIds = initialIds,
             ),
         ),
-    )["routine-picker-${routineId ?: "new"}-${initialIds.hashCode()}", ExerciseCatalogViewModel::class.java]
+    )[
+        routineExercisePickerViewModelKey(routineId, editorEntryId, pickerRequestId),
+        ExerciseCatalogViewModel::class.java,
+    ]
 
     private fun activeWorkoutViewModel(): ActiveWorkoutViewModel = ViewModelProvider(
         userSessionViewModels,
