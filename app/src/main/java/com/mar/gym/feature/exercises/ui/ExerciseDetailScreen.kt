@@ -33,7 +33,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
@@ -63,6 +62,7 @@ import com.mar.gym.feature.progress.ui.ExerciseProgressUiState
 import com.mar.gym.feature.progress.ui.ExerciseProgressViewModel
 import com.mar.gym.ui.components.*
 import com.mar.gym.ui.theme.GYmAppTheme
+import com.mar.gym.ui.theme.MediaScrim
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
@@ -260,7 +260,7 @@ fun ExerciseDetailScreen(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         containerColor = MaterialTheme.colorScheme.surface,
-        scrimColor = Color.Black.copy(alpha = 0.48f),
+        scrimColor = MediaScrim.copy(alpha = 0.48f),
     ) {
         Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 20.dp)) {
             if (sheet == "menu") {

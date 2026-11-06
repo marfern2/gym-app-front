@@ -8,16 +8,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.mar.gym.ui.theme.MediaScrim
 
 @Composable
 fun MediaFullscreenDialog(url: String, onDismiss: () -> Unit, tag: String) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black).testTag(tag)) {
+        Box(Modifier.fillMaxSize().background(MediaScrim).testTag(tag)) {
             SocialMediaImage(url, "Imagen ampliada", Modifier.fillMaxSize(), ContentScale.Fit)
             TextButton(onClick = onDismiss, Modifier.align(Alignment.TopStart)) { Text("Volver") }
         }

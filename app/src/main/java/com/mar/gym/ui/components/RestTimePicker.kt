@@ -16,10 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,8 +40,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.mar.gym.R
+import com.mar.gym.ui.theme.AppComponentSize
+import com.mar.gym.ui.theme.AppSpacing
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -97,7 +97,7 @@ fun RestTimePickerButton(
 
     val textColor = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.4f)
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.xs)) {
         if (ghost) {
             val ghostText = if (currentSeconds == 0) {
                 stringResource(R.string.workout_rest_off)
@@ -107,7 +107,7 @@ fun RestTimePickerButton(
             val ghostDescription = stringResource(R.string.rest_time_configure, formatWorkoutRestSeconds(currentSeconds))
             Row(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = AppComponentSize.touchTarget)
                     .clickable(enabled = enabled) { showPicker = true }
                     .testTag(testTag)
                     .semantics {
@@ -122,7 +122,7 @@ fun RestTimePickerButton(
                 )
                 Text(
                     text = ghostText,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = AppSpacing.sm),
                     color = textColor,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -132,7 +132,7 @@ fun RestTimePickerButton(
                 onClick = { showPicker = true },
                 enabled = enabled,
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = AppComponentSize.touchTarget)
                     .testTag(testTag)
                     .semantics {
                         contentDescription = buttonDescription
@@ -141,7 +141,7 @@ fun RestTimePickerButton(
                 Icon(imageVector = Icons.Outlined.Timer, contentDescription = null)
                 Text(
                     text = buttonText,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = AppSpacing.sm),
                 )
             }
         }
@@ -179,36 +179,28 @@ fun RestTimePickerBottomSheet(
         mutableIntStateOf(nearestRestSeconds(currentSeconds))
     }
 
-    ModalBottomSheet(
+    AppBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("${testTag}_sheet"),
+        title = stringResource(R.string.rest_time_title),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.lg),
         ) {
-            Text(
-                text = stringResource(R.string.rest_time_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
             RestTimeWheel(
                 selectedSeconds = pendingSeconds,
                 onSelectionChanged = { pendingSeconds = it },
                 testTag = testTag,
             )
-            AppButton(
+            AppPrimaryButton(
+                text = stringResource(R.string.rest_time_done),
                 onClick = { onConfirm(pendingSeconds) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp)
                     .testTag("${testTag}_confirm"),
-            ) {
-                Text(stringResource(R.string.rest_time_done))
-            }
+            )
         }
     }
 }
@@ -224,7 +216,7 @@ fun RestTimeWheel(
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
     val coroutineScope = rememberCoroutineScope()
-    val itemHeight = 56.dp
+    val itemHeight = AppComponentSize.wheelItemHeight
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo }

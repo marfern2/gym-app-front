@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +31,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import com.mar.gym.ui.theme.AppComponentSize
+import com.mar.gym.ui.theme.AppShapeTokens
+import com.mar.gym.ui.theme.AppSpacing
 
 // Celda numérica compacta para tablas de series y objetivos.
 @Composable
@@ -51,7 +52,7 @@ fun MetricCell(
     ghost: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(if (ghost) 8.dp else 10.dp)
+    val shape = if (ghost) AppShapeTokens.compact else MaterialTheme.shapes.small
     val borderColor = when {
         isError -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.outlineVariant
@@ -73,13 +74,16 @@ fun MetricCell(
     } ?: Modifier
     Box(
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = AppComponentSize.touchTarget)
             .clip(shape)
             .background(resolvedContainer)
-            .then(if (ghost) Modifier else Modifier.border(1.dp, borderColor, shape))
+            .then(if (ghost) Modifier else Modifier.border(AppComponentSize.border, borderColor, shape))
             .then(semanticsModifier)
             .onFocusChanged { focused = it.isFocused }
-            .padding(horizontal = if (ghost) 4.dp else 10.dp, vertical = if (ghost) 6.dp else 8.dp),
+            .padding(
+                horizontal = if (ghost) AppSpacing.xs else AppSpacing.md,
+                vertical = AppSpacing.sm,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         BasicTextField(
@@ -136,7 +140,7 @@ fun MetricCell(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(0.7f)
-                    .height(1.5.dp)
+                    .height(AppComponentSize.focusIndicator)
                     .background(
                         if (isError) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),

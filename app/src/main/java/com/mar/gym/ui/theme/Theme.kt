@@ -2,18 +2,15 @@ package com.mar.gym.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.unit.dp
 import com.mar.gym.ui.components.AppPressedIndication
 
 private val DarkColorScheme = darkColorScheme(
@@ -33,10 +30,10 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = InkDarkOnSurfaceVariant,
     outline = InkDarkOutline,
     outlineVariant = InkDarkOutlineVariant,
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
+    error = ErrorDark,
+    onError = OnErrorDark,
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = OnErrorContainerDark,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -45,7 +42,7 @@ private val LightColorScheme = lightColorScheme(
     primaryContainer = BrandPurpleContainerLight,
     onPrimaryContainer = OnBrandPurpleContainerLight,
     secondary = BrandPurpleSecondaryLight,
-    onSecondary = Color.White,
+    onSecondary = OnBrandPurple,
     secondaryContainer = BrandPurpleSecondaryContainerLight,
     onSecondaryContainer = OnBrandPurpleSecondaryContainerLight,
     background = InkLight,
@@ -56,18 +53,10 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = InkLightOnSurfaceVariant,
     outline = InkLightOutline,
     outlineVariant = InkLightOutlineVariant,
-    error = Color(0xFFBA1A1A),
-    onError = Color.White,
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
-)
-
-private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(26.dp),
+    error = ErrorLight,
+    onError = OnErrorLight,
+    errorContainer = ErrorContainerLight,
+    onErrorContainer = OnErrorContainerLight,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,7 +73,7 @@ fun GYmAppTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = AppTypography,
         shapes = AppShapes,
     ) {
         CompositionLocalProvider(

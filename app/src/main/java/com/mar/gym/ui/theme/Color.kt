@@ -37,6 +37,20 @@ val InkLightOnSurfaceVariant = Color(0xFF514A54)
 val InkLightOutline = Color(0xFF7D747F)
 val InkLightOutlineVariant = Color(0xFFD2CAD5)
 
+// Semantic status colors. Components should consume these through ColorScheme.
+val ErrorDark = Color(0xFFFFB4AB)
+val OnErrorDark = Color(0xFF690005)
+val ErrorContainerDark = Color(0xFF93000A)
+val OnErrorContainerDark = Color(0xFFFFDAD6)
+val ErrorLight = Color(0xFFBA1A1A)
+val OnErrorLight = Color(0xFFFFFFFF)
+val ErrorContainerLight = Color(0xFFFFDAD6)
+val OnErrorContainerLight = Color(0xFF410002)
+
+// Media and data-visualisation colors that intentionally sit outside ColorScheme.
+val MediaScrim = Color(0xFF000000)
+val ChartPointHighlight = Color(0xFFFFFFFF)
+
 // Acentos de la columna SERIE del workout activo: calentamiento, fallo y drop.
 val SetWarmup = Color(0xFFFFC53D)
 val SetFailure = Color(0xFFFF5C5C)
