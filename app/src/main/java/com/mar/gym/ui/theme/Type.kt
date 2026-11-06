@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 // Tipografía sobria y fuerte: titulares con mucho peso, cuerpo legible.
-val Typography = Typography(
+val AppTypography = Typography(
     displaySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.ExtraBold,
@@ -92,3 +92,6 @@ val Typography = Typography(
         letterSpacing = 0.4.sp,
     ),
 )
+
+/** Compatibility alias while feature screens migrate to the App-prefixed token. */
+val Typography = AppTypography

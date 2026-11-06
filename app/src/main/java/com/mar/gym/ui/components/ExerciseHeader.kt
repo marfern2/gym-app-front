@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.dp
+import com.mar.gym.ui.theme.AppComponentSize
 
 // Miniatura compacta del ejercicio. La plantilla no expone media en estos flujos,
 // por lo que se representa con un marcador visual genérico de la marca.
@@ -28,7 +28,7 @@ fun ExerciseThumbnail(
 ) {
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(AppComponentSize.thumbnail)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.small,
@@ -39,7 +39,7 @@ fun ExerciseThumbnail(
             imageVector = Icons.Filled.FitnessCenter,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(AppComponentSize.iconMedium),
         )
     }
 }
@@ -62,7 +62,7 @@ fun ExerciseNameLink(
             textDecoration = TextDecoration.Underline,
         ),
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = AppComponentSize.touchTarget)
             .wrapContentHeight(Alignment.CenterVertically)
             .combinedClickable(
                 onClick = onClick,

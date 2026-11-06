@@ -5,11 +5,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonElevation
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
@@ -27,16 +30,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import com.mar.gym.ui.theme.AppComponentSize
+import com.mar.gym.ui.theme.AppSpacing
 import com.mar.gym.ui.theme.primaryActionContainerColor
 import com.mar.gym.ui.theme.primaryActionContentColor
 
 @Composable
-fun PrimaryButton(
+fun AppPrimaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Button(
@@ -44,7 +49,7 @@ fun PrimaryButton(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = AppComponentSize.buttonHeight)
             .appPressedState(
                 interactionSource = interactionSource,
                 shape = MaterialTheme.shapes.large,
@@ -58,10 +63,59 @@ fun PrimaryButton(
         ),
         interactionSource = interactionSource,
     ) {
+        if (leadingIcon != null) {
+            leadingIcon()
+            Spacer(Modifier.width(AppSpacing.sm))
+        }
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
         )
+    }
+}
+
+@Composable
+fun PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) = AppPrimaryButton(
+    text = text,
+    onClick = onClick,
+    modifier = modifier,
+    enabled = enabled,
+)
+
+@Composable
+fun AppSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leadingIcon: (@Composable () -> Unit)? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = AppComponentSize.buttonHeight)
+            .appPressedState(
+                interactionSource = interactionSource,
+                shape = MaterialTheme.shapes.large,
+                enabled = enabled,
+                maxOverlayAlpha = AppButtonStateLayerAlpha,
+            ),
+        shape = MaterialTheme.shapes.large,
+        interactionSource = interactionSource,
+    ) {
+        if (leadingIcon != null) {
+            leadingIcon()
+            Spacer(Modifier.width(AppSpacing.sm))
+        }
+        Text(text = text, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -78,7 +132,7 @@ fun SecondaryButton(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = AppComponentSize.buttonHeight)
             .appPressedState(
                 interactionSource = interactionSource,
                 shape = MaterialTheme.shapes.large,

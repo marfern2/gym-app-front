@@ -12,7 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import com.mar.gym.ui.theme.AppComponentSize
 
 @Composable
 fun BarbellIcon(
@@ -49,7 +49,7 @@ fun BarbellIcon(
 fun BrandMark(
     tint: Color,
     containerColor: Color,
-    size: Dp = 72.dp,
+    size: Dp = AppComponentSize.brandMarkLarge,
 ) {
     Box(
         modifier = Modifier

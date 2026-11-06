@@ -21,7 +21,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -33,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.mar.gym.ui.theme.ChartPointHighlight
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
@@ -193,10 +193,10 @@ fun TemporalChart(
                             if (index == selectedPointIndex) {
                                 drawCircle(primary.copy(alpha = 0.23f), 10.dp.toPx(), center)
                                 drawCircle(primary, 5.5.dp.toPx(), center)
-                                drawCircle(Color.White, 2.dp.toPx(), center)
+                                drawCircle(ChartPointHighlight, 2.dp.toPx(), center)
                             } else {
                                 drawCircle(primary, 4.dp.toPx(), center)
-                                drawCircle(Color.White, 1.5.dp.toPx(), center)
+                                drawCircle(ChartPointHighlight, 1.5.dp.toPx(), center)
                             }
                         }
                     }
