@@ -134,6 +134,7 @@ class TrainingScreenTest {
         val routineName = "Rutina de fuerza y movilidad de cuerpo completo"
         show(LibraryResponse(listOf(RoutineFolder(folderId, folderName, 1, 1, now, now)),
             listOf(routine(rootId, folderId, 0).copy(name = routineName)), emptyList()))
+        composeRule.onNodeWithText(folderName).performClick()
         val chevron = composeRule.onNodeWithTag("training-folder-chevron-$folderId", useUnmergedTree = true)
         val options = composeRule.onNodeWithContentDescription("Opciones de carpeta $folderName")
         chevron.assertExists()
@@ -157,7 +158,7 @@ class TrainingScreenTest {
         composeRule.onNodeWithText("Programas").assertDoesNotExist()
         composeRule.onNodeWithTag("training-programs").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Actualizar entrenamiento y rutinas").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("+ Empezar Entrenamiento Vacío").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("training-start-empty").assertIsDisplayed().performClick()
         composeRule.runOnIdle { assertEquals(true, emptyStarted) }
         composeRule.onNodeWithTag("training-new-routine").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("routine-destination-sheet").assertIsDisplayed()
@@ -167,11 +168,11 @@ class TrainingScreenTest {
             .fetchSemanticsNode().boundsInRoot.top
         val rootTop = composeRule.onNodeWithTag("routine-destination-root")
             .fetchSemanticsNode().boundsInRoot.top
-        assertTrue(folderTop < rootTop)
-        composeRule.onNodeWithContentDescription("Crear rutina en Pata").performClick()
+        assertTrue(rootTop < folderTop)
+        composeRule.onNodeWithTag("routine-destination-$folderId").performClick()
         composeRule.runOnIdle { assertEquals(folderId, createdIn) }
         composeRule.onNodeWithTag("training-new-routine").performClick()
-        composeRule.onNodeWithContentDescription("Crear rutina en Mis rutinas").performClick()
+        composeRule.onNodeWithTag("routine-destination-root").performClick()
         composeRule.runOnIdle { assertEquals(null, createdIn) }
         composeRule.onNodeWithTag("training-new-routine-icon", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("training-explore").assertIsDisplayed().assertIsNotEnabled()
@@ -179,18 +180,18 @@ class TrainingScreenTest {
         composeRule.onNodeWithText("Crear nueva carpeta").assertIsDisplayed()
         composeRule.onNodeWithText("Cancelar").performClick()
         composeRule.onNodeWithTag("training-add-$folderId").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Contraer Pata").assertExists()
-        composeRule.onNodeWithText("Pata (0)").assertExists()
+        composeRule.onNodeWithText("Pata").assertExists().performClick()
+        composeRule.onNodeWithTag("training-add-$folderId").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Opciones de carpeta Pata").performClick()
         composeRule.onNodeWithText("Agregar nueva rutina").performClick()
         composeRule.runOnIdle { assertEquals(folderId, createdIn) }
         composeRule.onNodeWithTag("training-routines-header").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Mis rutinas (1)").assertIsDisplayed()
+        composeRule.onNodeWithText("Mis rutinas").assertIsDisplayed()
         composeRule.onNodeWithTag("training-routines-chevron", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithContentDescription("Opciones de Mis rutinas").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Abrir Fuerza").assertIsDisplayed()
-        composeRule.onNodeWithTag("training-routines-header").performClick()
-        composeRule.onNodeWithContentDescription("Abrir Fuerza").assertDoesNotExist()
+        composeRule.onNodeWithTag("training-routine-$rootId").assertIsDisplayed()
+        composeRule.onNodeWithText("Mis rutinas").performClick()
+        composeRule.onNodeWithTag("training-routine-$rootId").assertDoesNotExist()
     }
 
     @Test fun newRoutineWithoutFoldersOpensRootDirectly() {
@@ -333,7 +334,7 @@ class TrainingScreenTest {
         composeRule.onNodeWithTag("training-start-$rootId").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
     }
 
-    @Test fun createFolderTrimsNameAndEmptyFolderCollapses() {
+    @Test fun createFolderTrimsNameAndEmptyFolderStartsCollapsedThenShowsInlineAction() {
         var created: String? = null
         show(LibraryResponse(listOf(RoutineFolder(folderId, "Pata", 1, 0, now, now)),
             emptyList(), emptyList()), onCreateFolder = { created = it })
@@ -342,8 +343,8 @@ class TrainingScreenTest {
         composeRule.onNodeWithText("Guardar").performClick()
         composeRule.runOnIdle { assertEquals("Fuerza", created) }
         composeRule.onNodeWithTag("training-add-$folderId").assertDoesNotExist()
-        composeRule.onNodeWithText("Pata (0)").performClick()
-        composeRule.onNodeWithContentDescription("Desplegar Pata").assertExists()
+        composeRule.onNodeWithText("Pata").performClick()
+        composeRule.onNodeWithTag("training-add-$folderId").assertIsDisplayed()
     }
 
     @Test fun longPressDragMovesRootRoutineIntoFolder() {
@@ -372,6 +373,7 @@ class TrainingScreenTest {
         show(LibraryResponse(listOf(RoutineFolder(folderId, "Pata", 1, 2, now, now)),
             listOf(routine(rootId, folderId, 0), routine(second, folderId, 1)), emptyList()),
             onPlace = { id, folder, position -> placed = Triple(id, folder, position) })
+        composeRule.onNodeWithText("Pata").performClick()
         drag("training-routine-$rootId", "training-routine-$second")
         composeRule.runOnIdle { assertEquals(Triple(rootId, folderId, 1), placed) }
     }
@@ -383,6 +385,7 @@ class TrainingScreenTest {
             RoutineFolder(second, "Torso", 2, 0, now, now)),
             listOf(routine(rootId, folderId, 0)), emptyList()),
             onPlace = { id, folder, position -> placed = Triple(id, folder, position) })
+        composeRule.onNodeWithText("Pata").performClick()
         drag("training-routine-$rootId", "training-folder-$second")
         composeRule.runOnIdle { assertEquals(Triple(rootId, second, null), placed) }
     }
@@ -392,6 +395,7 @@ class TrainingScreenTest {
         show(LibraryResponse(listOf(RoutineFolder(folderId, "Pata", 1, 1, now, now)),
             listOf(routine(rootId, folderId, 0)), emptyList()),
             onPlace = { id, folder, position -> placed = Triple(id, folder, position) })
+        composeRule.onNodeWithText("Pata").performClick()
         drag("training-routine-$rootId", "training-routines-header")
         composeRule.runOnIdle { assertEquals(Triple(rootId, null, null), placed) }
     }
