@@ -6,6 +6,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -39,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -577,49 +586,50 @@ class MainActivity : ComponentActivity() {
                                 trainingLibrary.shareUrls.collect(::shareRoutine)
                             }
                             TrainingScreen(
-                            activeWorkout = activeWorkoutState,
-                            library = libraryState,
-                            message = libraryMessage,
-                            busy = libraryBusy,
-                            onStartEmpty = {
-                                activeWorkoutViewModel().startEmpty()
-                                deep = DEEP_WORKOUT
-                            },
-                            onRetryWorkout = { activeWorkoutViewModel().retry() },
-                            onOpenRoutine = { id ->
-                                routineId = id
-                                routineViewerOrigin = TAB_TRAINING
-                                deep = DEEP_ROUTINE_VIEWER
-                            },
-                            onStartRoutine = { id ->
-                                pendingRoutineWorkoutId = id
-                                deep = DEEP_WORKOUT
-                            },
-                            onEditRoutine = { id ->
-                                routineId = id
-                                routineEditorEntryId++
-                                routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
-                                deep = DEEP_ROUTINE_EDITOR
-                            },
-                            onDuplicateRoutine = trainingLibrary::duplicateRoutine,
-                            onShareRoutine = trainingLibrary::shareRoutine,
-                            onDeleteRoutine = trainingLibrary::deleteRoutine,
-                            onCreateRoutine = { folderId ->
-                                pendingRoutineFolderId = folderId
-                                routineId = null
-                                routineEditorEntryId++
-                                routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
-                                deep = DEEP_ROUTINE_EDITOR
-                            },
-                            onCreateFolder = trainingLibrary::createFolder,
-                            onRenameFolder = trainingLibrary::renameFolder,
-                            onDeleteFolder = trainingLibrary::deleteFolder,
-                            onMoveRoutine = trainingLibrary::moveRoutine,
-                            onPlaceRoutine = trainingLibrary::placeRoutine,
-                            onReorderFolder = trainingLibrary::reorderFolder,
-                            onRetryLibrary = trainingLibrary::refresh,
-                            onClearMessage = trainingLibrary::clearMessage,
-                        )
+                                activeWorkout = activeWorkoutState,
+                                library = libraryState,
+                                message = libraryMessage,
+                                busy = libraryBusy,
+                                onStartEmpty = {
+                                    activeWorkoutViewModel().startEmpty()
+                                    deep = DEEP_WORKOUT
+                                },
+                                onRetryWorkout = { activeWorkoutViewModel().retry() },
+                                onOpenRoutine = { id ->
+                                    routineId = id
+                                    routineViewerOrigin = TAB_TRAINING
+                                    deep = DEEP_ROUTINE_VIEWER
+                                },
+                                onStartRoutine = { id ->
+                                    pendingRoutineWorkoutId = id
+                                    deep = DEEP_WORKOUT
+                                },
+                                onEditRoutine = { id ->
+                                    routineId = id
+                                    routineEditorEntryId++
+                                    routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
+                                    deep = DEEP_ROUTINE_EDITOR
+                                },
+                                onDuplicateRoutine = trainingLibrary::duplicateRoutine,
+                                onShareRoutine = trainingLibrary::shareRoutine,
+                                onDeleteRoutine = trainingLibrary::deleteRoutine,
+                                onCreateRoutine = { folderId ->
+                                    pendingRoutineFolderId = folderId
+                                    routineId = null
+                                    routineEditorEntryId++
+                                    routineEditorOrigin = ROUTINE_ORIGIN_TRAINING
+                                    deep = DEEP_ROUTINE_EDITOR
+                                },
+                                onCreateFolder = trainingLibrary::createFolder,
+                                onRenameFolder = trainingLibrary::renameFolder,
+                                onDeleteFolder = trainingLibrary::deleteFolder,
+                                onMoveRoutine = trainingLibrary::moveRoutine,
+                                onPlaceRoutine = trainingLibrary::placeRoutine,
+                                onReorderFolder = trainingLibrary::reorderFolder,
+                                onRetryLibrary = trainingLibrary::refresh,
+                                onClearMessage = trainingLibrary::clearMessage,
+                                modifier = Modifier.padding(bottom = activeWorkoutBarSpace),
+                            )
                         }
                         TAB_PROFILE -> ProfileRoute(
                             viewModel = sessionProfileViewModel,
@@ -1605,14 +1615,35 @@ internal fun MainTabBottomBar(
             .fillMaxWidth()
             .testTag("main_tab_bottom_bar"),
     ) {
-        (activeWorkout as? ActiveWorkoutUiState.Active)?.let { active ->
-            ActiveWorkoutBar(
-                state = active,
-                clock = clock,
-                onContinue = onContinueWorkout,
-                onDiscard = onDiscardWorkout,
-                modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 4.dp),
-            )
+        val currentActive = activeWorkout as? ActiveWorkoutUiState.Active
+        AnimatedContent(
+            targetState = currentActive,
+            contentKey = { state -> state?.data?.draft?.workoutId ?: "no-active-workout" },
+            transitionSpec = {
+                val spatialSpec = spring<IntOffset>(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+                val effectsSpec = spring<Float>(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                )
+                (slideInVertically(animationSpec = spatialSpec) { height -> height / 4 } +
+                    fadeIn(animationSpec = effectsSpec)) togetherWith
+                    (slideOutVertically(animationSpec = spatialSpec) { height -> height / 4 } +
+                        fadeOut(animationSpec = effectsSpec))
+            },
+            label = "active-workout-bar",
+        ) { active ->
+            if (active != null) {
+                ActiveWorkoutBar(
+                    state = active,
+                    clock = clock,
+                    onContinue = onContinueWorkout,
+                    onDiscard = onDiscardWorkout,
+                    modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 8.dp, bottom = 4.dp),
+                )
+            }
         }
         NavigationBar {
             NavigationBarItem(

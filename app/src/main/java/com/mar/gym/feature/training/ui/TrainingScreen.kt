@@ -1,10 +1,15 @@
 package com.mar.gym.feature.training.ui
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -36,6 +41,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -46,6 +52,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +68,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +83,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
@@ -85,10 +93,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -100,21 +104,20 @@ import com.mar.gym.feature.library.ui.LibraryUiState
 import com.mar.gym.feature.routines.model.RoutineEtag
 import com.mar.gym.feature.workouts.ui.ActiveWorkoutUiState
 import com.mar.gym.ui.components.AppBottomSheet
+import com.mar.gym.ui.components.AppButton
 import com.mar.gym.ui.components.AppCard
 import com.mar.gym.ui.components.AppDivider
-import com.mar.gym.ui.components.AppEmptyState
 import com.mar.gym.ui.components.AppIconButton
 import com.mar.gym.ui.components.AppListRow
-import com.mar.gym.ui.components.AppOutlinedButton
-import com.mar.gym.ui.components.AppPrimaryButton
 import com.mar.gym.ui.components.AppRowStateLayerAlpha
-import com.mar.gym.ui.components.AppSecondaryButton
 import com.mar.gym.ui.components.AppSectionHeader
 import com.mar.gym.ui.components.AppTextButton
 import com.mar.gym.ui.components.appPressedState
 import com.mar.gym.ui.theme.AppComponentSize
 import com.mar.gym.ui.theme.AppSpacing
 import com.mar.gym.ui.theme.GYmAppTheme
+import com.mar.gym.ui.theme.primaryActionContainerColor
+import com.mar.gym.ui.theme.primaryActionContentColor
 import java.time.Instant
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
@@ -130,6 +133,19 @@ private data class DragItem(
     val scrollIndex: Int,
     val scrollOffset: Int,
 )
+
+private class DragPointerState(var position: Offset = Offset.Zero)
+
+private val TrainingSpatialSpring: SpringSpec<Float> = spring(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+private const val TrainingContentTypeHeader = "training-header"
+private const val TrainingContentTypeAction = "training-action"
+private const val TrainingContentTypeContainer = "training-container"
+private const val TrainingContentTypeRoutine = "training-routine"
+private const val TrainingContentTypeState = "training-state"
 @Composable
 fun TrainingScreen(
     activeWorkout: ActiveWorkoutUiState,
@@ -156,16 +172,17 @@ fun TrainingScreen(
     modifier: Modifier = Modifier,
 ) {
     val data = (library as? LibraryUiState.Content)?.library
+    val activeRoutineCount = data?.routines?.count { !it.archived }
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var listBounds by remember { mutableStateOf(Rect.Zero) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
-    val targets = remember { mutableStateMapOf<String, Rect>() }
+    val targets = remember { mutableMapOf<String, Rect>() }
     var dragging by remember { mutableStateOf<DragItem?>(null) }
-    var dragPoint by remember { mutableStateOf(Offset.Zero) }
-    var overlayTopY by remember { mutableStateOf(0f) }
+    val dragPointer = remember { DragPointerState() }
+    var overlayTopY by remember { mutableFloatStateOf(0f) }
     var previewIndex by remember { mutableStateOf<Int?>(null) }
     var released by remember { mutableStateOf(false) }
     var settled by remember { mutableStateOf(false) }
@@ -226,7 +243,7 @@ fun TrainingScreen(
                     destination == "root" -> destinationBounds.bottom + with(density) { AppSpacing.sm.toPx() }
                     destination?.startsWith("folder:") == true -> {
                         val folderId = destination.removePrefix("folder:")
-                        if (expanded[folderId] ?: true) destinationBounds.bottom + with(density) { AppSpacing.sm.toPx() }
+                        if (expanded[folderId] ?: false) destinationBounds.bottom + with(density) { AppSpacing.sm.toPx() }
                         else destinationBounds.top
                     }
                     else -> destinationBounds.top
@@ -240,7 +257,7 @@ fun TrainingScreen(
             val targetTop = landingTop ?: targets[if (source.folder) "folder:${source.id}" else "routine:${source.id}"]?.top
                 ?: overlayTopY
             scope.launch {
-                Animatable(overlayTopY).animateTo(targetTop, animationSpec = tween(180)) {
+                Animatable(overlayTopY).animateTo(targetTop, animationSpec = TrainingSpatialSpring) {
                     overlayTopY = value
                 }
                 settled = true
@@ -249,9 +266,7 @@ fun TrainingScreen(
     }
 
     fun dragModifier(id: String, isFolder: Boolean, enabled: Boolean): Modifier = Modifier
-        .graphicsLayer {
-            alpha = if (dragging?.id == id) 0f else 1f
-        }
+        .then(if (dragging?.id == id) Modifier.graphicsLayer { alpha = 0f } else Modifier)
         .pointerInput(id, busy, enabled, released) {
             if (enabled && !busy && !released) detectDragGesturesAfterLongPress(
                 onDragStart = { start ->
@@ -272,7 +287,7 @@ fun TrainingScreen(
                     released = false
                     settled = false
                     overlayTopY = bounds.top
-                    dragPoint = Offset(bounds.center.x, bounds.top + start.y)
+                    dragPointer.position = Offset(bounds.center.x, bounds.top + start.y)
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 },
                 onDrag = { change, delta ->
@@ -280,12 +295,14 @@ fun TrainingScreen(
                     if (dragging?.id != id) return@detectDragGesturesAfterLongPress
                     val verticalDelta = trainingVerticalDragOffset(Offset.Zero, delta)
                     overlayTopY += verticalDelta.y
-                    dragPoint = dragPoint.copy(y = dragPoint.y + verticalDelta.y)
+                    dragPointer.position = dragPointer.position.copy(
+                        y = dragPointer.position.y + verticalDelta.y,
+                    )
                     if (scrollJob?.isActive != true) {
                         val scroll = when {
-                            dragPoint.y < listBounds.top + AppComponentSize.listRowMinHeight.toPx() ->
+                            dragPointer.position.y < listBounds.top + AppComponentSize.listRowMinHeight.toPx() ->
                                 -AppSpacing.xl.toPx()
-                            dragPoint.y > listBounds.bottom - AppComponentSize.listRowMinHeight.toPx() ->
+                            dragPointer.position.y > listBounds.bottom - AppComponentSize.listRowMinHeight.toPx() ->
                                 AppSpacing.xl.toPx()
                             else -> 0f
                         }
@@ -303,9 +320,12 @@ fun TrainingScreen(
                         source.scrollIndex == listState.firstVisibleItemIndex &&
                         source.scrollOffset == listState.firstVisibleItemScrollOffset) source.initialCentres
                     else otherIds.mapNotNull { targets["$prefix$it"]?.center?.y }
-                    if (centres.size == otherIds.size) previewIndex = trainingPreviewIndex(centres, dragPoint.y)
+                    if (centres.size == otherIds.size) {
+                        previewIndex = trainingPreviewIndex(centres, dragPointer.position.y)
+                    }
                     hover = targets.entries.firstOrNull { (key, rect) ->
-                        dragPoint.y in rect.top..rect.bottom && key != (if (isFolder) "folder:$id" else "routine:$id") &&
+                        dragPointer.position.y in rect.top..rect.bottom &&
+                            key != (if (isFolder) "folder:$id" else "routine:$id") &&
                             (!isFolder || key.startsWith("folder:"))
                     }?.key
                 },
@@ -320,7 +340,7 @@ fun TrainingScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-            .onGloballyPositioned { listBounds = it.rootRect() },
+            .onPlaced { listBounds = it.rootRect() },
         contentPadding = PaddingValues(
             start = AppSpacing.lg,
             top = AppSpacing.sm,
@@ -329,7 +349,7 @@ fun TrainingScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.md),
     ) {
-        item {
+        item(key = "training-header", contentType = TrainingContentTypeHeader) {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = AppComponentSize.buttonHeight),
                 verticalAlignment = Alignment.CenterVertically,
@@ -344,41 +364,58 @@ fun TrainingScreen(
                 }
             }
         }
-        item {
-            when (activeWorkout) {
-                is ActiveWorkoutUiState.Active -> Unit
-                is ActiveWorkoutUiState.NoActiveWorkout -> AppSecondaryButton(
-                    text = "Empezar entrenamiento vacío",
-                    onClick = onStartEmpty,
-                    modifier = Modifier.testTag("training-start-empty")
-                        .semantics { contentDescription = "+ Empezar Entrenamiento Vacío" },
-                    leadingIcon = {
+        if (activeWorkout !is ActiveWorkoutUiState.Active) {
+            item(key = "training-quick-start", contentType = TrainingContentTypeAction) {
+                when (activeWorkout) {
+                    is ActiveWorkoutUiState.NoActiveWorkout -> TrainingQuickStartRow(
+                        onClick = onStartEmpty,
+                        modifier = Modifier.testTag("training-start-empty"),
+                    )
+                    is ActiveWorkoutUiState.Loading -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            Modifier.size(AppComponentSize.iconMedium),
+                            strokeWidth = AppComponentSize.focusIndicator,
+                        )
+                        Text("Cargando entrenamiento…", Modifier.padding(start = AppSpacing.md))
+                    }
+                    is ActiveWorkoutUiState.Error -> Column {
+                        Text(
+                            "No se pudo cargar el entrenamiento.",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        AppTextButton(onClick = onRetryWorkout) { Text("Reintentar") }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+        item(key = "training-library-header", contentType = TrainingContentTypeHeader) {
+            AppSectionHeader(
+                title = activeRoutineCount?.let { "Rutinas ($it)" } ?: "Rutinas",
+                modifier = Modifier.padding(top = AppSpacing.sm).semantics { heading() },
+                actionContent = {
+                    AppTextButton(
+                        onClick = {
+                            val folders = data?.folders.orEmpty()
+                            if (folders.isEmpty()) onCreateRoutine(null) else chooseRoutineDestination = true
+                        },
+                        enabled = !busy,
+                        modifier = Modifier
+                            .heightIn(min = AppComponentSize.touchTarget)
+                            .testTag("training-new-routine"),
+                    ) {
                         Icon(
                             Icons.Filled.Add,
                             contentDescription = null,
-                            modifier = Modifier.size(AppComponentSize.iconSmall),
+                            modifier = Modifier
+                                .size(AppComponentSize.iconSmall)
+                                .testTag("training-new-routine-icon"),
                         )
-                    },
-                )
-                is ActiveWorkoutUiState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        Modifier.size(AppComponentSize.iconMedium),
-                        strokeWidth = AppComponentSize.focusIndicator,
-                    )
-                    Text("Cargando entrenamiento…", Modifier.padding(start = AppSpacing.md))
-                }
-                is ActiveWorkoutUiState.Error -> Column {
-                    Text("No se pudo cargar el entrenamiento.", color = MaterialTheme.colorScheme.error)
-                    AppTextButton(onClick = onRetryWorkout) { Text("Reintentar") }
-                }
-                else -> Unit
-            }
-        }
-        item {
-            AppSectionHeader(
-                title = "Rutinas",
-                modifier = Modifier.padding(top = AppSpacing.sm).semantics { heading() },
-                actionContent = {
+                        Spacer(Modifier.width(AppSpacing.xs))
+                        Text("Nueva", style = MaterialTheme.typography.labelLarge)
+                    }
                     AppIconButton(
                         onClick = { onClearMessage(); folderName = ""; createFolder = true },
                         enabled = !busy,
@@ -395,48 +432,26 @@ fun TrainingScreen(
                 }
             )
         }
-        item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm),
+        item(key = "training-explore", contentType = TrainingContentTypeAction) {
+            AppTextButton(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .heightIn(min = AppComponentSize.touchTarget)
+                    .testTag("training-explore")
+                    .semantics { stateDescription = "No disponible. Próximamente" },
+                contentPadding = PaddingValues(horizontal = AppSpacing.xs),
             ) {
-                AppSecondaryButton(
-                    text = "Nueva rutina",
-                    onClick = {
-                        val folders = data?.folders.orEmpty()
-                        if (folders.isEmpty()) onCreateRoutine(null) else chooseRoutineDestination = true
-                    },
-                    modifier = Modifier.weight(1f).testTag("training-new-routine"),
-                    leadingIcon = {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Assignment,
-                            contentDescription = "Icono de rutina",
-                            modifier = Modifier
-                                .size(AppComponentSize.iconSmall)
-                                .testTag("training-new-routine-icon"),
-                        )
-                    },
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(AppComponentSize.iconSmall),
                 )
-                AppOutlinedButton(
-                    onClick = {},
-                    enabled = false,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = AppComponentSize.buttonHeight)
-                        .testTag("training-explore"),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Icon(
-                        Icons.Filled.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(AppComponentSize.iconSmall),
-                    )
-                    Spacer(Modifier.width(AppSpacing.sm))
-                    Text("Explorar", style = MaterialTheme.typography.labelLarge)
-                }
+                Spacer(Modifier.width(AppSpacing.sm))
+                Text("Explorar rutinas · Próximamente", style = MaterialTheme.typography.bodyMedium)
             }
         }
-        if (message != null) item {
+        if (message != null) item(key = "training-message", contentType = TrainingContentTypeState) {
             AppListRow(
                 title = message,
                 destructive = true,
@@ -447,7 +462,10 @@ fun TrainingScreen(
             )
         }
         when (library) {
-            is LibraryUiState.Loading -> item {
+            is LibraryUiState.Loading -> item(
+                key = "training-library-loading",
+                contentType = TrainingContentTypeState,
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
                         Modifier.size(AppComponentSize.iconMedium),
@@ -456,85 +474,49 @@ fun TrainingScreen(
                     Text("Cargando rutinas…", Modifier.padding(start = AppSpacing.md))
                 }
             }
-            is LibraryUiState.Error -> item {
+            is LibraryUiState.Error -> item(
+                key = "training-library-error",
+                contentType = TrainingContentTypeState,
+            ) {
                 Text(library.message, color = MaterialTheme.colorScheme.error)
                 AppTextButton(onClick = onRetryLibrary) { Text("Reintentar") }
             }
             is LibraryUiState.Content -> {
                 val folders = data!!.folders.sortedBy { it.position }
                 val active = data.routines.filterNot { it.archived }
-                val shownFolders = if (dragging?.folder == true && previewIndex != null) {
-                    val byId = folders.associateBy { it.id }
-                    trainingPreviewOrder(folders.map { it.id }, dragging!!.id, previewIndex!!)
-                        .mapNotNull(byId::get)
-                } else folders
-                shownFolders.forEach { folder ->
-                    val index = folders.indexOfFirst { it.id == folder.id }
-                    val isExpanded = expanded[folder.id] ?: true
-                    item(key = "folder-${folder.id}") {
-                        DisposableEffect(folder.id) { onDispose { targets.remove("folder:${folder.id}") } }
-                        FolderHeader(folder, isExpanded, busy, hover == "folder:${folder.id}" && dragging != null,
-                            modifier = Modifier
-                                .animateItem()
-                                .then(dragModifier(folder.id, true,
-                                    canDragTrainingItem(folder.id, true, data)))
-                                .onGloballyPositioned { targets["folder:${folder.id}"] = it.rootRect() },
-                            onToggle = { expanded[folder.id] = !isExpanded },
-                            onRename = { onClearMessage(); folderName = folder.name; renameFolder = folder }, onDelete = { deleteFolder = folder },
-                            onAddRoutine = { onCreateRoutine(folder.id) },
-                            onUp = { onReorderFolder(folder.id, index) },
-                            onDown = { onReorderFolder(folder.id, index + 2) },
-                            canUp = index > 0, canDown = index < folders.lastIndex)
-                    }
-                    if (isExpanded) {
-                        val children = active.filter { it.folderId == folder.id }.sortedBy { it.position }
-                        val shownChildren = if (dragging?.folder == false &&
-                            dragging?.containerId == folder.id && previewIndex != null) {
-                            val byId = children.associateBy { it.id }
-                            trainingPreviewOrder(children.map { it.id }, dragging!!.id, previewIndex!!)
-                                .mapNotNull(byId::get)
-                        } else children
-                        items(shownChildren, key = { "routine-${it.id}" }) { routine ->
-                            DisposableEffect(routine.id) { onDispose { targets.remove("routine:${routine.id}") } }
-                            TrainingRoutineCard(routine, busy, hover == "routine:${routine.id}" && dragging != null,
-                                modifier = Modifier.animateItem().then(dragModifier(routine.id, false,
-                                    canDragTrainingItem(routine.id, false, data)))
-                                    .onGloballyPositioned { targets["routine:${routine.id}"] = it.rootRect() },
-                                onOpen = { onOpenRoutine(routine.id) }, onStart = { onStartRoutine(routine.id) },
-                                onEdit = { onEditRoutine(routine.id) }, onDuplicate = { onDuplicateRoutine(routine.id) },
-                                onShare = { onShareRoutine(routine.id) },
-                                onMove = { moveRoutine = routine }, onDelete = { deleteRoutine = routine },
-                                onUp = { onPlaceRoutine(routine.id, folder.id, routine.position - 1) },
-                                onDown = { onPlaceRoutine(routine.id, folder.id, routine.position + 1) },
-                                canUp = routine != children.first(), canDown = routine != children.last())
-                        }
-                    }
-                }
-                val root = active.filter { it.folderId == null }.sortedBy { it.position }
+                val routinesByFolder = active
+                    .groupBy { it.folderId }
+                    .mapValues { (_, routines) -> routines.sortedBy { it.position } }
+                val folderIndices = folders.mapIndexed { index, folder -> folder.id to index }.toMap()
+                val root = routinesByFolder[null].orEmpty()
                 val rootExpanded = expanded["root"] ?: true
-                item(key = "root") {
+                item(key = "root", contentType = TrainingContentTypeContainer) {
                     DisposableEffect(Unit) { onDispose { targets.remove("root") } }
-                    LibrarySectionHeader("Mis rutinas (${root.size})", rootExpanded,
-                        hover == "root" && dragging != null,
-                        Modifier.animateItem().onGloballyPositioned { targets["root"] = it.rootRect() }
-                            .testTag("training-routines-header")) { expanded["root"] = !rootExpanded }
+                    TrainingContainerHeader(
+                        title = "Mis rutinas",
+                        count = root.size,
+                        expanded = rootExpanded,
+                        targeted = hover == "root" && dragging != null,
+                        dragging = false,
+                        icon = Icons.AutoMirrored.Filled.Assignment,
+                        chevronTestTag = "training-routines-chevron",
+                        modifier = Modifier
+                            .animateItem()
+                            .onPlaced { targets["root"] = it.rootRect() }
+                            .testTag("training-routines-header"),
+                        onToggle = { expanded["root"] = !rootExpanded },
+                    )
                 }
                 if (rootExpanded) {
-                    if (root.isEmpty()) item {
-                        AppEmptyState(
-                            title = if (active.isEmpty()) {
-                                "Aún no tienes rutinas"
-                            } else {
-                                "No hay rutinas en Mis rutinas"
-                            },
-                            message = if (active.isEmpty()) {
-                                "Crea una rutina para organizar tu próximo entrenamiento."
-                            } else {
-                                null
-                            },
-                            actionLabel = if (active.isEmpty()) "Crear primera rutina" else null,
-                            onAction = if (active.isEmpty()) ({ onCreateRoutine(null) }) else null,
-                            modifier = Modifier.fillMaxWidth(),
+                    if (root.isEmpty()) item(
+                        key = "root-empty",
+                        contentType = TrainingContentTypeState,
+                    ) {
+                        EmptyTrainingContainerRow(
+                            message = if (active.isEmpty()) "Aún no tienes rutinas" else "Sin rutinas",
+                            actionLabel = if (active.isEmpty()) "Crear primera" else "Añadir",
+                            onAction = { onCreateRoutine(null) },
+                            modifier = Modifier.animateItem().padding(start = AppSpacing.md),
                         )
                     }
                     val shownRoot = if (dragging?.folder == false && dragging?.containerId == null &&
@@ -543,19 +525,100 @@ fun TrainingScreen(
                         trainingPreviewOrder(root.map { it.id }, dragging!!.id, previewIndex!!)
                             .mapNotNull(byId::get)
                     } else root
-                    items(shownRoot, key = { "routine-${it.id}" }) { routine ->
+                    items(
+                        items = shownRoot,
+                        key = { "routine-${it.id}" },
+                        contentType = { TrainingContentTypeRoutine },
+                    ) { routine ->
                         DisposableEffect(routine.id) { onDispose { targets.remove("routine:${routine.id}") } }
-                        TrainingRoutineCard(routine, busy, hover == "routine:${routine.id}" && dragging != null,
-                            modifier = Modifier.animateItem().then(dragModifier(routine.id, false,
-                                canDragTrainingItem(routine.id, false, data)))
-                                .onGloballyPositioned { targets["routine:${routine.id}"] = it.rootRect() },
+                        TrainingRoutineCard(
+                            routine = routine,
+                            busy = busy,
+                            targeted = hover == "routine:${routine.id}" && dragging != null,
+                            modifier = Modifier
+                                .animateItem()
+                                .padding(start = AppSpacing.md)
+                                .then(dragModifier(routine.id, false,
+                                    canDragTrainingItem(routine.id, false, data)))
+                                .onPlaced { targets["routine:${routine.id}"] = it.rootRect() },
                             onOpen = { onOpenRoutine(routine.id) }, onStart = { onStartRoutine(routine.id) },
                             onEdit = { onEditRoutine(routine.id) }, onDuplicate = { onDuplicateRoutine(routine.id) },
                             onShare = { onShareRoutine(routine.id) },
                             onMove = { moveRoutine = routine }, onDelete = { deleteRoutine = routine },
                             onUp = { onPlaceRoutine(routine.id, null, routine.position - 1) },
                             onDown = { onPlaceRoutine(routine.id, null, routine.position + 1) },
-                            canUp = routine != root.first(), canDown = routine != root.last())
+                            canUp = routine != root.first(), canDown = routine != root.last(),
+                        )
+                    }
+                }
+                val shownFolders = if (dragging?.folder == true && previewIndex != null) {
+                    val byId = folders.associateBy { it.id }
+                    trainingPreviewOrder(folders.map { it.id }, dragging!!.id, previewIndex!!)
+                        .mapNotNull(byId::get)
+                } else folders
+                shownFolders.forEach { folder ->
+                    val index = folderIndices.getValue(folder.id)
+                    val isExpanded = expanded[folder.id] ?: false
+                    val children = routinesByFolder[folder.id].orEmpty()
+                    item(key = "folder-${folder.id}", contentType = TrainingContentTypeContainer) {
+                        DisposableEffect(folder.id) { onDispose { targets.remove("folder:${folder.id}") } }
+                        FolderHeader(folder, children.size, isExpanded, busy,
+                            hover == "folder:${folder.id}" && dragging != null,
+                            dragging = false,
+                            modifier = Modifier
+                                .animateItem()
+                                .then(dragModifier(folder.id, true,
+                                    canDragTrainingItem(folder.id, true, data)))
+                                .onPlaced { targets["folder:${folder.id}"] = it.rootRect() },
+                            onToggle = { expanded[folder.id] = !isExpanded },
+                            onRename = { onClearMessage(); folderName = folder.name; renameFolder = folder }, onDelete = { deleteFolder = folder },
+                            onAddRoutine = { onCreateRoutine(folder.id) },
+                            onUp = { onReorderFolder(folder.id, index) },
+                            onDown = { onReorderFolder(folder.id, index + 2) },
+                            canUp = index > 0, canDown = index < folders.lastIndex)
+                    }
+                    if (isExpanded) {
+                        val shownChildren = if (dragging?.folder == false &&
+                            dragging?.containerId == folder.id && previewIndex != null) {
+                            val byId = children.associateBy { it.id }
+                            trainingPreviewOrder(children.map { it.id }, dragging!!.id, previewIndex!!)
+                                .mapNotNull(byId::get)
+                        } else children
+                        if (children.isEmpty()) item(
+                            key = "folder-empty-${folder.id}",
+                            contentType = TrainingContentTypeState,
+                        ) {
+                            EmptyTrainingContainerRow(
+                                message = "Carpeta vacía",
+                                actionLabel = "Añadir",
+                                onAction = { onCreateRoutine(folder.id) },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .padding(start = AppSpacing.md)
+                                    .testTag("training-add-${folder.id}"),
+                            )
+                        }
+                        items(
+                            items = shownChildren,
+                            key = { "routine-${it.id}" },
+                            contentType = { TrainingContentTypeRoutine },
+                        ) { routine ->
+                            DisposableEffect(routine.id) { onDispose { targets.remove("routine:${routine.id}") } }
+                            TrainingRoutineCard(routine, busy, hover == "routine:${routine.id}" && dragging != null,
+                                modifier = Modifier
+                                    .animateItem()
+                                    .padding(start = AppSpacing.md)
+                                    .then(dragModifier(routine.id, false,
+                                        canDragTrainingItem(routine.id, false, data)))
+                                    .onPlaced { targets["routine:${routine.id}"] = it.rootRect() },
+                                onOpen = { onOpenRoutine(routine.id) }, onStart = { onStartRoutine(routine.id) },
+                                onEdit = { onEditRoutine(routine.id) }, onDuplicate = { onDuplicateRoutine(routine.id) },
+                                onShare = { onShareRoutine(routine.id) },
+                                onMove = { moveRoutine = routine }, onDelete = { deleteRoutine = routine },
+                                onUp = { onPlaceRoutine(routine.id, folder.id, routine.position - 1) },
+                                onDown = { onPlaceRoutine(routine.id, folder.id, routine.position + 1) },
+                                canUp = routine != children.first(), canDown = routine != children.last())
+                        }
                     }
                 }
             }
@@ -572,11 +635,14 @@ fun TrainingScreen(
             .clearAndSetSemantics { stateDescription = "Arrastrando" }
             .testTag("training-drag-overlay")) {
             if (selected.folder && folder != null) {
-                FolderHeader(folder, expanded[folder.id] ?: true, true, false,
+                val folderCount = data?.routines?.count { !it.archived && it.folderId == folder.id }
+                    ?: folder.routineCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                FolderHeader(folder, folderCount, expanded[folder.id] ?: false, true, false, dragging = true,
                     modifier = Modifier, onToggle = {}, onRename = {}, onAddRoutine = {},
                     onDelete = {}, onUp = {}, onDown = {}, canUp = false, canDown = false)
             } else if (routine != null) {
-                TrainingRoutineCard(routine, false, false, modifier = Modifier,
+                TrainingRoutineCard(routine, false, false, dragging = true,
+                    modifier = Modifier.padding(start = AppSpacing.md),
                     onOpen = {}, onStart = {}, onEdit = {}, onDuplicate = {}, onShare = {},
                     onMove = {}, onDelete = {}, onUp = {}, onDown = {}, canUp = false, canDown = false)
             }
@@ -585,11 +651,23 @@ fun TrainingScreen(
     } }
     if (chooseRoutineDestination) {
         RoutineDestinationSheet(
+            title = "Elegir carpeta",
             folders = data?.folders.orEmpty().sortedBy { it.position },
             onDismiss = { chooseRoutineDestination = false },
             onDestinationSelected = { folderId ->
                 chooseRoutineDestination = false
                 onCreateRoutine(folderId)
+            },
+        )
+    }
+    moveRoutine?.let { routine ->
+        RoutineDestinationSheet(
+            title = "Mover ${routine.name}",
+            folders = data?.folders.orEmpty().sortedBy { it.position },
+            onDismiss = { moveRoutine = null },
+            onDestinationSelected = { folderId ->
+                moveRoutine = null
+                onMoveRoutine(routine.id, folderId)
             },
         )
     }
@@ -620,18 +698,12 @@ fun TrainingScreen(
         title = { Text("Borrar rutina") }, text = { Text("¿Quieres borrar ${routine.name}?") },
         confirmButton = { AppTextButton(onClick = { onDeleteRoutine(routine.id); deleteRoutine = null }) { Text("Eliminar") } },
         dismissButton = { AppTextButton(onClick = { deleteRoutine = null }) { Text("Cancelar") } }) }
-    moveRoutine?.let { routine -> AlertDialog(onDismissRequest = { moveRoutine = null }, title = { Text("Mover a carpeta") },
-        text = { Column {
-            AppTextButton(onClick = { onMoveRoutine(routine.id, null); moveRoutine = null }) { Text("Mis rutinas") }
-            data?.folders?.sortedBy { it.position }?.forEach { folder ->
-                AppTextButton(onClick = { onMoveRoutine(routine.id, folder.id); moveRoutine = null }) { Text(folder.name) }
-            }
-        } }, confirmButton = { AppTextButton(onClick = { moveRoutine = null }) { Text("Cancelar") } }) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoutineDestinationSheet(
+    title: String,
     folders: List<RoutineFolder>,
     onDismiss: () -> Unit,
     onDestinationSelected: (String?) -> Unit,
@@ -640,7 +712,7 @@ private fun RoutineDestinationSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("routine-destination-sheet"),
-        title = "Elegir carpeta",
+        title = title,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
                 modifier = Modifier.testTag("routine-destination-handle"),
@@ -653,10 +725,11 @@ private fun RoutineDestinationSheet(
                 .heightIn(max = AppComponentSize.sheetContentMaxHeight)
                 .verticalScroll(rememberScrollState()),
         ) {
-            val destinations = folders.map { it.id to it.name } + (null to "Mis rutinas")
+            val destinations = listOf(null to "Mis rutinas") + folders.map { it.id to it.name }
             destinations.forEachIndexed { index, (folderId, name) ->
                 RoutineDestinationRow(
                     name = name,
+                    isFolder = folderId != null,
                     testTag = folderId?.let { "routine-destination-$it" }
                         ?: "routine-destination-root",
                     onClick = { onDestinationSelected(folderId) },
@@ -672,18 +745,17 @@ private fun RoutineDestinationSheet(
 @Composable
 private fun RoutineDestinationRow(
     name: String,
+    isFolder: Boolean,
     testTag: String,
     onClick: () -> Unit,
 ) {
     AppListRow(
         title = name,
         onClick = onClick,
-        modifier = Modifier
-            .testTag(testTag)
-            .semantics { contentDescription = "Crear rutina en $name" },
+        modifier = Modifier.testTag(testTag),
         leadingContent = {
             Icon(
-                imageVector = Icons.Filled.Folder,
+                imageVector = if (isFolder) Icons.Filled.Folder else Icons.AutoMirrored.Filled.Assignment,
                 contentDescription = null,
                 modifier = Modifier.size(AppComponentSize.iconMedium),
                 tint = MaterialTheme.colorScheme.primary,
@@ -697,73 +769,200 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
     return Rect(topLeft, topLeft + Offset(size.width.toFloat(), size.height.toFloat()))
 }
 
-@Composable private fun LibrarySectionHeader(title: String, expanded: Boolean, targeted: Boolean,
-    modifier: Modifier = Modifier, onToggle: () -> Unit) {
+@Composable
+private fun TrainingQuickStartRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AppListRow(
+        title = "Entrenamiento vacío",
+        supportingText = "Empezar sin una rutina",
+        onClick = onClick,
+        modifier = modifier,
+        titleStyle = MaterialTheme.typography.titleMedium,
+        shape = MaterialTheme.shapes.small,
+        contentPadding = PaddingValues(horizontal = AppSpacing.sm, vertical = AppSpacing.sm),
+        leadingContent = {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(AppComponentSize.iconMedium),
+            )
+        },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(AppComponentSize.iconSmall),
+            )
+        },
+    )
+}
+
+@Composable
+private fun EmptyTrainingContainerRow(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AppListRow(
+        title = message,
+        modifier = modifier,
+        titleStyle = MaterialTheme.typography.bodyMedium,
+        contentPadding = PaddingValues(horizontal = AppSpacing.md, vertical = AppSpacing.xs),
+        trailingContent = {
+            AppTextButton(
+                onClick = onAction,
+                modifier = Modifier.heightIn(min = AppComponentSize.touchTarget),
+            ) {
+                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
+            }
+        },
+    )
+}
+
+@Composable
+private fun TrainingContainerHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    targeted: Boolean,
+    dragging: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    chevronTestTag: String,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit,
+    trailingContent: (@Composable () -> Unit)? = null,
+) {
     val interaction = remember { MutableInteractionSource() }
-    Row(modifier.fillMaxWidth().heightIn(min = AppComponentSize.compactRowMinHeight)
-        .background(
-            if (targeted) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-            MaterialTheme.shapes.small,
-        )
-        .appPressedState(
-            interaction,
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 0f else -90f,
+        animationSpec = TrainingSpatialSpring,
+        label = "training-container-chevron",
+    )
+    val containerColor = when {
+        targeted -> MaterialTheme.colorScheme.primaryContainer
+        dragging -> MaterialTheme.colorScheme.surfaceVariant
+        else -> Color.Transparent
+    }
+    val contentColor = if (targeted) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val outlineModifier = if (targeted || dragging) {
+        Modifier.border(
+            width = AppComponentSize.focusIndicator,
+            color = MaterialTheme.colorScheme.primary,
             shape = MaterialTheme.shapes.small,
-            maxOverlayAlpha = AppRowStateLayerAlpha,
         )
-        .clickable(interactionSource = interaction, indication = null, onClick = onToggle)
-        .semantics { stateDescription = if (expanded) "Desplegada" else "Contraída" }
-        .padding(horizontal = AppSpacing.xs),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
-            contentDescription = if (expanded) "Contraer $title" else "Desplegar $title",
-            modifier = Modifier.size(AppComponentSize.iconMedium).testTag("training-routines-chevron"),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(title, Modifier.weight(1f).padding(start = AppSpacing.sm).testTag("training-routines-title"),
-            style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    } else {
+        Modifier
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = AppComponentSize.listRowMinHeight)
+            .background(containerColor, MaterialTheme.shapes.small)
+            .then(outlineModifier),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = AppComponentSize.listRowMinHeight)
+                .appPressedState(
+                    interaction,
+                    shape = MaterialTheme.shapes.small,
+                    maxOverlayAlpha = AppRowStateLayerAlpha,
+                )
+                .clickable(interactionSource = interaction, indication = null, onClick = onToggle)
+                .semantics {
+                    heading()
+                    stateDescription = if (expanded) {
+                        "Expandida, $count rutinas"
+                    } else {
+                        "Contraída, $count rutinas"
+                    }
+                }
+                .padding(start = AppSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(AppComponentSize.iconMedium)
+                    .graphicsLayer { rotationZ = chevronRotation }
+                    .testTag(chevronTestTag),
+                tint = if (targeted || dragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(start = AppSpacing.sm)
+                    .size(AppComponentSize.iconMedium),
+                tint = if (targeted || dragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = title,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = AppSpacing.sm)
+                    .testTag("training-routines-title"),
+                style = MaterialTheme.typography.titleMedium,
+                color = contentColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (targeted) contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = AppSpacing.sm),
+        )
+        if (targeted) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                contentDescription = "Soltar en $title",
+                tint = contentColor,
+                modifier = Modifier.size(AppComponentSize.iconMedium),
+            )
+        }
+        trailingContent?.invoke()
     }
 }
 
-@Composable private fun FolderHeader(folder: RoutineFolder, expanded: Boolean, busy: Boolean, targeted: Boolean,
-    modifier: Modifier, onToggle: () -> Unit, onRename: () -> Unit, onAddRoutine: () -> Unit, onDelete: () -> Unit,
+@Composable private fun FolderHeader(folder: RoutineFolder, routineCount: Int, expanded: Boolean,
+    busy: Boolean, targeted: Boolean,
+    dragging: Boolean, modifier: Modifier, onToggle: () -> Unit, onRename: () -> Unit,
+    onAddRoutine: () -> Unit, onDelete: () -> Unit,
     onUp: () -> Unit, onDown: () -> Unit, canUp: Boolean, canDown: Boolean) {
     var menu by remember { mutableStateOf(false) }
-    val interaction = remember { MutableInteractionSource() }
-    Row(modifier.fillMaxWidth().heightIn(min = AppComponentSize.compactRowMinHeight)
-        .testTag("training-folder-${folder.id}")
-        .background(
-            if (targeted) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-            MaterialTheme.shapes.small,
-        )
-        .semantics { stateDescription = if (expanded) "Desplegada. Mantén pulsado para ordenar" else "Contraída. Mantén pulsado para ordenar" },
-        verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).heightIn(min = AppComponentSize.compactRowMinHeight)
-            .appPressedState(
-                interaction,
-                shape = MaterialTheme.shapes.small,
-                maxOverlayAlpha = AppRowStateLayerAlpha,
-            )
-            .clickable(interactionSource = interaction, indication = null, onClick = onToggle)
-            .padding(start = AppSpacing.xs),
-            verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
-                contentDescription = if (expanded) "Contraer ${folder.name}" else "Desplegar ${folder.name}",
-                modifier = Modifier.size(AppComponentSize.iconMedium).testTag("training-folder-chevron-${folder.id}"),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(buildAnnotatedString {
-                append(folder.name)
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                    append(" (${folder.routineCount})")
-                }
-            }, Modifier.weight(1f).padding(start = AppSpacing.sm), style = MaterialTheme.typography.titleMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        AppIconButton(onClick = { menu = true }, enabled = !busy,
-            modifier = Modifier.size(AppComponentSize.touchTarget)) {
-            Icon(Icons.Filled.MoreVert, contentDescription = "Opciones de carpeta ${folder.name}",
-                modifier = Modifier.size(AppComponentSize.iconMedium),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    TrainingContainerHeader(
+        title = folder.name,
+        count = routineCount,
+        expanded = expanded,
+        targeted = targeted,
+        dragging = dragging,
+        icon = Icons.Filled.Folder,
+        chevronTestTag = "training-folder-chevron-${folder.id}",
+        modifier = modifier.testTag("training-folder-${folder.id}"),
+        onToggle = onToggle,
+        trailingContent = {
+            AppIconButton(onClick = { menu = true }, enabled = !busy && !dragging,
+                modifier = Modifier.size(AppComponentSize.touchTarget)) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Opciones de carpeta ${folder.name}",
+                    modifier = Modifier.size(AppComponentSize.iconMedium),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+    )
     if (menu) TrainingActionsSheet(folder.name, "training-folder-sheet", { menu = false }) {
         TrainingSheetAction("Renombrar carpeta", Icons.Filled.Edit, { menu = false; onRename() })
         TrainingSheetAction("Agregar nueva rutina", Icons.Filled.Add, { menu = false; onAddRoutine() })
@@ -776,65 +975,93 @@ private fun androidx.compose.ui.layout.LayoutCoordinates.rootRect(): Rect {
 }
 
 @Composable private fun TrainingRoutineCard(routine: LibraryRoutine, busy: Boolean, targeted: Boolean,
+    dragging: Boolean = false,
     modifier: Modifier, onOpen: () -> Unit, onStart: () -> Unit, onEdit: () -> Unit,
     onDuplicate: () -> Unit, onShare: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit,
     onUp: () -> Unit, onDown: () -> Unit, canUp: Boolean, canDown: Boolean) {
     var menu by remember { mutableStateOf(false) }
+    val emphasized = targeted || dragging
+    val cardContentColor = if (targeted) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     AppCard(
         modifier = modifier.fillMaxWidth().testTag("training-routine-${routine.id}")
         .semantics {
-            contentDescription = "Abrir ${routine.name}"
-            stateDescription = "Mantén pulsado para mover. También puedes usar Opciones."
+            if (targeted) stateDescription = "Destino de inserción"
         },
         onClick = onOpen,
-        enabled = !busy,
+        enabled = !busy && !dragging,
         colors = CardDefaults.cardColors(
             containerColor = if (targeted) {
-                MaterialTheme.colorScheme.primaryContainer
+                MaterialTheme.colorScheme.secondaryContainer
+            } else if (dragging) {
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
                 MaterialTheme.colorScheme.surface
             },
-            contentColor = if (targeted) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
+            contentColor = cardContentColor,
         ),
-        contentPadding = PaddingValues(AppSpacing.lg),
+        border = BorderStroke(
+            width = if (emphasized) AppComponentSize.focusIndicator else AppComponentSize.border,
+            color = if (emphasized) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        ),
+        contentPadding = PaddingValues(horizontal = AppSpacing.lg, vertical = AppSpacing.md),
     ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Text(routine.name, style = MaterialTheme.typography.titleMedium,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(buildAnnotatedString {
-                        withStyle(SpanStyle(fontWeight = FontWeight.Medium)) {
-                            append("${routine.exerciseCount} ejercicios")
-                        }
-                        routine.description?.takeIf { it.isNotBlank() }?.let {
-                            append(" · ")
-                            append(it)
-                        }
-                    }, Modifier.padding(top = AppSpacing.xs, end = AppSpacing.xs),
+                    routine.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Text(description, Modifier.padding(top = AppSpacing.xs, end = AppSpacing.xs),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (targeted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                        color = if (targeted) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
-                AppIconButton(onClick = { menu = true }, enabled = !busy) {
+                AppIconButton(onClick = { menu = true }, enabled = !busy && !dragging) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "Opciones de ${routine.name}",
                         modifier = Modifier.size(AppComponentSize.iconMedium),
-                        tint = if (targeted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                        tint = if (targeted) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
                             else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            AppPrimaryButton(
-                text = "Empezar rutina",
-                onClick = onStart,
-                enabled = !busy,
-                modifier = Modifier
-                    .padding(top = AppSpacing.md)
-                    .testTag("training-start-${routine.id}"),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${routine.exerciseCount} ejercicios",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (targeted) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                AppButton(
+                    onClick = onStart,
+                    enabled = !busy && !dragging,
+                    modifier = Modifier
+                        .heightIn(min = AppComponentSize.touchTarget)
+                        .testTag("training-start-${routine.id}"),
+                    shape = MaterialTheme.shapes.large,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = primaryActionContainerColor(),
+                        contentColor = primaryActionContentColor(),
+                    ),
+                    contentPadding = PaddingValues(horizontal = AppSpacing.lg, vertical = AppSpacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(AppComponentSize.iconSmall),
+                    )
+                    Spacer(Modifier.width(AppSpacing.xs))
+                    Text("Empezar", style = MaterialTheme.typography.labelLarge)
+                }
+            }
     }
     if (menu) TrainingActionsSheet(routine.name, "training-routine-sheet", { menu = false }) {
         TrainingSheetAction("Compartir rutina", Icons.Filled.Share, { menu = false; onShare() })
